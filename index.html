@@ -233,6 +233,7 @@ function mtag(m) { m = String(m || '').split('/')[0]; return m ? '<span class="m
 function modelOfSn(sn) { sn = String(sn || '').toUpperCase(); return /^P20BOTA25/.test(sn) ? 'P20BOTA25' : /^P20VA/.test(sn) ? 'P20VA' : ''; }
 function pill(stage) { var s = STAGES[stage] || ['-', 'p-gray']; return '<span class="pill ' + s[1] + '">' + s[0] + '</span>'; }
 function cid(c) { return c.torderNo ? '#' + c.torderNo : c.id; }
+function inqNo(v) { v = String(v || ''); if (!v) return ''; while (v.length < 8) v = '0' + v; return v; }
 function toast(msg, err) {
   if (!$('#toast')) return;
   var el = document.createElement('div'); el.className = 'toast' + (err ? ' err' : ''); el.textContent = msg;
@@ -547,6 +548,7 @@ function inboxDetail(i) {
   var h = '<div class="card"><div class="hd"><span class="pill ' + stt[1] + '">' + esc(stt[0]) + '</span><h3>' + esc(i.store) + '</h3><span style="flex:1"></span>' +
     (i.permalink ? '<a class="btn sm" target="_blank" href="' + esc(i.permalink) + '">Slack 원문 ↗</a>' : '') +
     (i.inquiryUrl ? '<a class="btn sm" target="_blank" href="' + esc(i.inquiryUrl) + '">문의 ↗</a>' : '') + '</div><div class="bd">';
+  if (i.editNote) h += '<div class="flag" style="background:var(--blueSoft);color:var(--blue)">✎ Slack에서 수정된 접수입니다 — ' + esc(i.editNote) + '</div>';
   if (flags.length) h += '<div class="flags">' + flags.map(function (f) { return '<div class="flag ' + (/재AS|안전|스웰링/.test(f) ? 'r' : '') + '">⚑ ' + esc(f) + '</div>'; }).join('') + '</div>';
   h += '<dl class="kv"><dt>접수</dt><dd>' + esc(String(i.postedAt).replace('T', ' ').slice(0, 16)) + ' · ' + esc(i.author || '') + '</dd>' +
     '<dt>문의번호</dt><dd>' + esc(i.inquiryNo || '-') + '</dd><dt>요청자</dt><dd>' + esc(i.requester || '-') + '</dd>' +
@@ -620,7 +622,7 @@ function vShip() {
     (list.length ? list.slice(0, 300).map(function (c) {
       var st = IDX.st[c.id], us = st.units;
       return '<tr class="click" data-act="case" data-id="' + esc(c.id) + '"><td class="nowrap mono">' + esc(cid(c)) + '</td>' +
-        '<td><b>' + esc(c.store) + '</b>' + (c.inquiryNo ? '<div class="muted small">문의 ' + esc(c.inquiryNo) + '</div>' : '') + '</td>' +
+        '<td><b>' + esc(c.store) + '</b>' + (c.inquiryNo ? '<div class="muted small">문의 ' + esc(inqNo(c.inquiryNo)) + '</div>' : '') + '</td>' +
         '<td>' + mtag(caseModel(c)) + '</td><td>' + st.expected + '</td>' +
         '<td>' + snList(us, 'outSn') + '</td><td class="nowrap">' + esc(c.reasonCode || '-') + '</td>' +
         '<td class="nowrap">' + (md(c.outDate) || '-') + '</td><td class="small">' + trkList(st.outs, c.outTracking) + '</td>' +
