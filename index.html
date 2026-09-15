@@ -186,7 +186,6 @@ textarea.inp{width:100%;resize:vertical}
     <header class="top">
       <div><h1 id="title">오늘 할 일</h1><div class="sub" id="subtitle"></div></div>
       <div class="sp"></div>
-      <label class="me">담당자 <input id="me" maxlength="12" placeholder="이름"></label>
       <button class="btn sm" data-act="reload" title="새로고침">↻ 새로고침</button>
     </header>
     <section id="view"><div class="loading"><span class="spin"></span> 불러오는 중…</div></section>
@@ -222,7 +221,7 @@ function $(s, r) { return (r || document).querySelector(s); }
 function $$(s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); }
 function esc(v) { return String(v === undefined || v === null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 function ls(k, v) { try { if (v === undefined) return localStorage.getItem('asdesk.' + k); localStorage.setItem('asdesk.' + k, v); } catch (e) { return null; } }
-function me() { return ($('#me').value || '').trim() || '담당자'; }
+function me() { return (ls('me') || '').trim() || 'AS Desk'; }
 function today() { return S.data ? S.data.meta.today : new Date().toISOString().slice(0, 10); }
 function d10(s) { return String(s || '').slice(0, 10); }
 function md(s) { s = d10(s); return s ? s.slice(5).replace('-', '.') : ''; }
@@ -349,7 +348,11 @@ function cstate(c) {
           : rets.every(function (x) { return x.stage === 'expired'; }) ? 'expired' : 'before';
   if (st.ret === 'none' && (c.returnTracking || c.returnStatus)) st.ret = (c.returnDoneAt || c.recvDate) ? 'done' : 'before';
   if (st.ret !== 'done' && (c.recvDate || c.returnDoneAt)) st.ret = 'done';
-  st.retDays = rets.length ? bizDays(rets.map(function (x) { return d10(x.createdAt); }).sort()[0]) : null;
+  st.retBase = c.outDoneAt || c.outDate || (rets.length ? d10(rets[0].createdAt) : '');
+  st.retDays = rets.length ? bizDays(st.retBase) : null;
+  if (st.out === 'expired') st.out = 'done';
+  // 서버 판정 전이라도, 반품 접수 후 기준 영업일이 지나도록 집화가 없으면 재접수 대상으로 본다
+  if (st.ret === 'before' && st.retDays !== null && st.retDays > (S.data.meta.returnFailBizDays || 2)) st.ret = 'fail';
   // 버킷
   if (c.closed === 'Y') st.b = 'closed';
   else if (!c.outDate && st.out === 'none') st.b = 'ship_wait';
@@ -473,6 +476,13 @@ function snList(us, key, max) {
   max = max || 3;
   return '<span class="mono small">' + v.slice(0, max).map(esc).join('<br>') + (v.length > max ? '<br><span class="muted">외 ' + (v.length - max) + '개</span>' : '') + '</span>';
 }
+function retSn(st) {
+  var has = st.units.some(function (u) { return u.origSn; });
+  if (has) return snList(st.units, 'origSn');
+  var outs = st.units.map(function (u) { return u.outSn; }).filter(String);
+  if (!outs.length) return '<span class="muted">-</span>';
+  return snList(st.units, 'outSn') + '<div class="muted small">교환 출고 S/N 기준</div>';
+}
 function trkList(ships, fallback, note) {
   if (!ships.length) return fallback ? '<span class="mono small muted">' + esc(String(fallback).split('\n').join(', ')) + '</span>'
     : (note ? '<span class="muted small">' + esc(note) + '</span>' : '<span class="muted">-</span>');
@@ -576,16 +586,15 @@ function vShip() {
   var all = S.data.cases.filter(function (c) { return modelOk(c) && matchQ(c); });
   var pick = function (fn) { return all.filter(fn); };
   var sets = {
-    active: pick(function (c) { var b = IDX.st[c.id].b; return b !== 'done' && b !== 'closed'; }),
-    wait: byBucket('ship_wait').filter(modelOk).filter(matchQ),
+    active: pick(function (c) { var b = IDX.st[c.id].b; return b === 'ship_wait' || b === 'shipping'; }),
+    wait: pick(function (c) { return IDX.st[c.id].b === 'ship_wait'; }),
     before: pick(function (c) { return IDX.st[c.id].out === 'before' && IDX.st[c.id].b !== 'ship_wait'; }),
     moving: pick(function (c) { return IDX.st[c.id].out === 'moving'; }),
-    done: pick(function (c) { return IDX.st[c.id].out === 'done'; }),
-    expired: pick(function (c) { return IDX.st[c.id].out === 'expired'; }),
+    done: pick(function (c) { return IDX.st[c.id].out === 'done' && IDX.st[c.id].b !== 'closed'; }),
     all: all
   };
   var list = (sets[f] || sets.active).slice().sort(function (a, b) { return String(b.outDate || b.createdAt).localeCompare(String(a.outDate || a.createdAt)); });
-  var tabs = [['active', '진행 중'], ['wait', '출고 대기'], ['before', '배송 전'], ['moving', '배송 중'], ['done', '도착 완료'], ['expired', '조회 만료'], ['all', '전체']]
+  var tabs = [['active', '진행 중(배송)'], ['wait', '출고 대기'], ['before', '배송 전'], ['moving', '배송 중'], ['done', '도착 완료'], ['all', '전체']]
     .map(function (t) { return '<button class="' + (f === t[0] ? 'on' : '') + '" data-act="ship" data-v="' + t[0] + '">' + t[1] + '<span class="n">' + (sets[t[0]] || []).length + '</span></button>'; }).join('');
   return '<div class="tabs">' + tabs + '</div>' + toolbar('출고') +
     '<div class="card"><div class="tw"><table class="t"><thead><tr><th>번호</th><th>매장</th><th>모델</th><th>수량</th><th>교체 출고 S/N</th><th>교체사유</th><th>출고일</th><th>출고 송장</th><th>상태</th></tr></thead><tbody>' +
@@ -610,11 +619,11 @@ function toolbar(kind) {
 }
 /* ======================= 회수 ======================= */
 function vReturn() {
-  var f = S.retF || 'need';
   var all = S.data.cases.filter(function (c) { return modelOk(c) && matchQ(c); });
   var byB = function (b) { return all.filter(function (c) { return IDX.st[c.id].b === b; }); };
   var sets = { need: byB('ret_need'), doing: byB('ret_doing'), fail: byB('ret_fail'), short: byB('ret_short'), done: all.filter(function (c) { return ['judge', 'dispose', 'done'].indexOf(IDX.st[c.id].b) >= 0; }) };
-  var tabs = [['need', '회수 필요'], ['doing', '회수 진행중'], ['fail', '회수 실패'], ['short', '회수 부족'], ['done', '회수 완료']]
+  var f = S.retF || (sets.fail.length ? 'fail' : sets.need.length ? 'need' : 'doing');
+  var tabs = [['fail', '회수 실패·재접수'], ['need', '회수 필요'], ['doing', '회수 진행중'], ['short', '회수 부족'], ['done', '회수 완료']]
     .map(function (t) { return '<button class="' + (f === t[0] ? 'on' : '') + '" data-act="ret" data-v="' + t[0] + '">' + t[1] + '<span class="n">' + sets[t[0]].length + '</span></button>'; }).join('');
   var list = (sets[f] || []).slice().sort(function (a, b) { return String(a.outDate).localeCompare(String(b.outDate)); });
   var head, rows;
@@ -624,7 +633,7 @@ function vReturn() {
       var st = IDX.st[c.id];
       return '<tr><td class="nowrap mono click" data-act="case" data-id="' + esc(c.id) + '">' + esc(cid(c)) + '</td>' +
         '<td class="click" data-act="case" data-id="' + esc(c.id) + '"><b>' + esc(c.store) + '</b>' + mtagSmall(c) + '</td>' +
-        '<td>' + snList(st.units, 'origSn') + '</td><td>' + st.expected + '</td><td class="nowrap">' + md(c.outDate) + '</td>' +
+        '<td>' + retSn(st) + '</td><td>' + st.expected + '</td><td class="nowrap">' + md(c.outDate) + '</td>' +
         '<td class="small">' + trkList(st.outs, c.outTracking) + '</td><td class="nowrap ' + (days(c.outDoneAt || c.outDate) > 3 ? 'hl' : '') + '">' + (days(c.outDoneAt || c.outDate) || 0) + '일</td>' +
         '<td><div class="row"><input class="inp mono sm" id="rt_' + esc(c.id) + '" placeholder="반품 송장번호" style="width:150px"><button class="btn sm pri" data-act="quickReturn" data-id="' + esc(c.id) + '">등록</button></div></td></tr>';
     }).join('');
@@ -635,10 +644,11 @@ function vReturn() {
       var over = st.retDays !== null && st.retDays > (S.data.meta.returnFailBizDays || 2);
       return '<tr><td class="nowrap mono click" data-act="case" data-id="' + esc(c.id) + '">' + esc(cid(c)) + '</td>' +
         '<td class="click" data-act="case" data-id="' + esc(c.id) + '"><b>' + esc(c.store) + '</b>' + mtagSmall(c) + '</td>' +
-        '<td>' + snList(st.units, 'origSn') + '</td><td>' + st.expected + '</td>' +
+        '<td>' + retSn(st) + '</td><td>' + st.expected + '</td>' +
         '<td class="small">' + trkList(st.rets, c.returnTracking, c.returnStatus ? c.returnStatus + ' · 송장 미등록' : '') + '</td><td>' + tagOf(RET_LABEL, st.ret) + '</td>' +
         '<td class="nowrap ' + (over ? 'hl' : '') + '">' + (st.retDays === null ? '-' : st.retDays + '일') + '</td>' +
-        '<td><div class="row"><input class="inp mono sm" id="rt_' + esc(c.id) + '" placeholder="재접수 송장" style="width:140px"><button class="btn sm" data-act="quickReturn" data-id="' + esc(c.id) + '">추가</button></div></td></tr>';
+        '<td><div class="row"><input class="inp mono sm" id="rt_' + esc(c.id) + '" placeholder="재접수 송장" style="width:130px"><button class="btn sm" data-act="quickReturn" data-id="' + esc(c.id) + '">추가</button>' +
+        '<button class="btn sm red" data-act="writeOff" data-id="' + esc(c.id) + '" title="회수를 포기하고 손망실로 확정">손망실</button></div></td></tr>';
     }).join('');
   } else if (f === 'short') {
     head = '<tr><th>번호</th><th>매장</th><th>미회수 S/N</th><th>진행</th><th>입고일</th><th></th></tr>';
@@ -661,7 +671,8 @@ function vReturn() {
         '<td>' + (IDX.st[c.id].b === 'done' ? '<button class="btn sm" data-act="closeQuick" data-id="' + esc(c.id) + '">추적 종결</button>' : '') + '</td></tr>';
     }).join('');
   }
-  var note = { need: '출고 송장이 <b>도착 완료</b>로 확인된 건입니다. 반품 송장을 등록하면 회수 진행중으로 넘어갑니다.',
+  var note = { fail: '반품 송장은 있는데 <b>집화가 안 된 채 ' + (S.data.meta.returnFailBizDays || 2) + '영업일 이상</b> 지난 건입니다. 매장에 확인 후 재접수 송장을 넣거나, 회수를 포기할 경우 [손망실]로 확정해 주세요.',
+    need: '출고 송장이 <b>도착 완료</b>로 확인된 건입니다. 반품 송장을 등록하면 회수 진행중으로 넘어갑니다.',
     doing: '반품 송장이 발행된 건입니다. 집화가 되면 <b>회수 중</b>, 배송완료되면 <b>회수 완료</b>로 자동으로 바뀝니다.',
     fail: '반품 송장 등록 후 ' + (S.data.meta.returnFailBizDays || 2) + '영업일(주말·공휴일 제외)이 지나도 집화가 없는 건입니다. 매장에 확인 후 <b>재접수</b>해 주세요.',
     short: '회수 스캔 결과 수량이 모자란 건입니다. 미회수로 확정하면 완료 처리됩니다.',
@@ -1152,6 +1163,12 @@ var ACT = {
       render();
     });
   },
+  writeOff: function (d, b) {
+    var c = IDX.caseById[d.id]; if (!c) return;
+    var r = prompt(c.store + ' — 회수를 포기하고 손망실로 확정합니다.\n사유를 적어 주세요 (예: 매장 분실, 회수 포기)', '회수 포기');
+    if (r === null) return;
+    run('writeOff', { caseId: d.id, reason: r }, function (x) { return '손망실 ' + x.count + 'EA 확정 · 건 종결'; }, b);
+  },
   markMissing: function (d, b) {
     var c = IDX.caseById[d.id]; if (!c) return;
     var ids = unitsOf(c).filter(function (u) { return !u.recvSn && !u.disposition; }).map(function (u) { return u.id; });
@@ -1219,7 +1236,6 @@ document.addEventListener('input', function (e) {
 document.addEventListener('change', function (e) {
   if (e.target.id === 'modelF') { S.model = e.target.value; render(); }
   if (e.target.id === 'anMonths') { S.an.months = +e.target.value; render(); }
-  if (e.target.id === 'me') ls('me', e.target.value.trim());
 });
 document.addEventListener('keydown', function (e) {
   if (e.key === 'Escape') { if ($('#mbg')) closeModal(); else if (S.caseSel) closeDrawer(); }
@@ -1233,7 +1249,6 @@ document.addEventListener('keydown', function (e) {
     else toast(v + ' — 해당 S/N의 AS 건이 없습니다. 출고·회수에서 입고 처리를 먼저 해 주세요.', true);
   }
 });
-$('#me').value = ls('me') || '';
 load();
 </script>
 </body>
