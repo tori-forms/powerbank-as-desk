@@ -249,9 +249,14 @@ function call(action, payload) {
     var url = ls('gasUrl') || '';
     body.key = ls('appKey') || '';
     if (!url || !body.key) { gate(); return rej(new Error('서버 주소와 접속 키를 먼저 입력해 주세요.')); }
-    fetch(url, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'text/plain;charset=utf-8' }, redirect: 'follow' })
-      .then(function (r) { return r.text(); }).then(ok)
-      .catch(function () { jsonp_(url, body).then(ok, rej); });
+    if (ls('noPost') === '1') return jsonp_(url, body).then(ok, rej);
+    var ctl = window.AbortController ? new AbortController() : null;
+    var timer = setTimeout(function () { if (ctl) ctl.abort(); }, 7000);
+    var opt = { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'text/plain;charset=utf-8' }, redirect: 'follow' };
+    if (ctl) opt.signal = ctl.signal;
+    fetch(url, opt)
+      .then(function (r) { clearTimeout(timer); return r.text(); }).then(ok)
+      .catch(function () { clearTimeout(timer); ls('noPost', '1'); jsonp_(url, body).then(ok, rej); });
   });
 }
 function jsonp_(url, body) {
@@ -898,7 +903,7 @@ function vSettings() {
     '<div class="row"><button class="btn pri" data-act="syncCj">지금 조회</button><input class="inp mono" id="trkTest" placeholder="송장번호 단건 조회" style="width:180px"><button class="btn" data-act="trackTest">조회</button></div><div id="trkOut" class="small" style="margin-top:8px"></div></div></div></div>';
   h += '<div class="card" style="margin-top:14px"><div class="hd"><h3>접속 정보</h3></div><div class="bd"><div class="row">' +
     '<span class="small">웹앱 URL <span class="mono">' + esc(m.webAppUrl || '-') + '</span></span><span class="small">접속 키 <span class="mono">' + esc(m.appKey || '-') + '</span></span>' +
-    (EXT ? '<button class="btn sm" data-act="resetConn">이 브라우저 연결 정보 지우기</button>' : '') + '</div>' +
+    (EXT ? '<span class="small muted">통신 방식 ' + (ls('noPost') === '1' ? 'JSONP(GET)' : 'POST') + '</span><button class="btn sm" data-act="resetConn">이 브라우저 연결 정보 지우기</button>' : '') + '</div>' +
     '<div class="note" style="margin-top:8px">GitHub Pages 등 외부 주소에서 열 때 위 두 값을 입력합니다. 키가 유출되면 setup 화면 없이도 데이터에 접근할 수 있으니, 스크립트 속성 <span class="mono">APP_KEY</span> 값을 바꾸면 즉시 차단됩니다.</div></div></div>' +
     '<div class="card" style="margin-top:14px"><div class="hd"><h3>티오더 시트 동기화</h3><a class="btn sm" target="_blank" href="' + esc(m.torderUrl) + '">시트 열기 ↗</a><a class="btn sm" target="_blank" href="' + esc(m.dbUrl) + '">AS Desk DB ↗</a></div><div class="bd">' +
     '<div class="two"><div><h4 style="margin:0 0 6px">가져오기 (티오더 시트 → AS Desk)</h4><div class="small muted" style="margin-bottom:8px">없는 건은 새로 만들고, AS Desk에 비어 있는 칸만 채웁니다. ERP 체크(물류팀)는 1시간마다 자동 갱신됩니다. 마지막 ' + t(m.lastImport) + '</div>' +
@@ -1095,7 +1100,7 @@ var ACT = {
       .then(function () { S.inspSel = next ? next.id : null; render(); var s = $('#scan'); if (s) s.focus(); });
   },
   // 설정
-  resetConn: function () { ls('gasUrl', ''); ls('appKey', ''); location.reload(); },
+  resetConn: function () { ls('gasUrl', ''); ls('appKey', ''); ls('noPost', ''); location.reload(); },
   saveTok: function (d, b) { var v = $('#slackTok').value.trim(); if (!/^xox[pb]-/.test(v)) return toast('xoxp- 로 시작하는 토큰을 입력해 주세요.', true); run('saveSetting', { key: 'SLACK_TOKEN', value: v }, '토큰을 저장했습니다.', b); },
   trackTest: function (d, b) {
     var no = $('#trkTest').value; b.disabled = true;
