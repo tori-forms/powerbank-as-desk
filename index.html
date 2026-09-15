@@ -422,7 +422,7 @@ function render() {
   $('#subtitle').textContent = { home: '끝나지 않은 AS를 여기서 이어서 처리합니다', inbox: 'Slack #ext-볼타레스-티오더 접수 양식 자동 수집', cases: '교환 출고 → 반품 신청 → 회수 입고', inspect: '바코드 스캔으로 회수 매칭 → 판정 · 원인 · 처분', analysis: '모델별 불량 데이터', settings: '연동 상태와 티오더 시트 동기화' }[S.view];
   var fn = { home: vHome, inbox: vInbox, ship: vShip, ret: vReturn, inspect: vInspect, analysis: vAnalysis, settings: vSettings }[S.view];
   $('#view').innerHTML = fn();
-  if (S.view === 'inbox') setTimeout(loadSlackImgs, 30);
+  if (S.view === 'inbox') { loadInboxDetail(); setTimeout(loadSlackImgs, 30); }
   if (S.caseSel) openCase(S.caseSel, true);
 }
 /* ======================= 홈 ======================= */
@@ -525,10 +525,12 @@ function inboxDetail(i) {
     '<dt>거래처 ID</dt><dd class="mono">' + esc(i.accountId || '-') + '</dd><dt>설치일자</dt><dd>' + esc(i.installDate || '-') + '</dd>' +
     '<dt>기종</dt><dd>' + esc(i.modelText || '-') + (i.reqQty ? ' · 요청 ' + esc(i.reqQty) + 'EA' : '') + '</dd>' +
     '<dt>연락처/주소</dt><dd class="muted">' + esc(i.contact || '') + ' · ' + esc(i.address || '') + '</dd></dl>';
-  var files = jparse(i.files, []), thread = jparse(i.threadText, []);
+  var det = (S.inboxDet || {})[i.id] || {};
+  var files = jparse(det.files || i.files, []), thread = jparse(det.threadText, []);
+  var rawText = det.raw || '';
   h += '<div class="sec"><h4>Slack 원문 <span class="pill p-gray">' + esc(i.reasonCode || '미분류') + '</span>' +
     '<span style="flex:1"></span><button class="btn sm" data-act="toggleRaw">' + (S.rawOff ? '요약만 보기' : '원문 전체') + '</button></h4>' +
-    '<div class="pre" style="max-height:' + (S.rawOff ? '420px' : '260px') + '">' + esc(S.rawOff ? (i.raw || i.symptom || '') : (i.symptom || '') + (i.note ? '\n\n[특이사항] ' + i.note : '')) + '</div>' +
+    '<div class="pre" style="max-height:' + (S.rawOff ? '420px' : '260px') + '">' + esc(S.rawOff ? (rawText || i.symptom || '(원문 불러오는 중…)') : (i.symptom || '') + (i.note ? '\n\n[특이사항] ' + i.note : '')) + '</div>' +
     (files.length ? '<div class="gal">' + files.map(function (f, k) {
       var isImg = /image/.test(f.mime || '') || f.thumb;
       return '<div class="ph" data-act="slkBig" data-k="' + k + '" data-id="' + esc(i.id) + '" title="' + esc(f.name || '') + '">' +
@@ -950,6 +952,18 @@ function previewHtml() {
     ch.map(function (c) { return '<tr><td>' + (c.tab === 'AS' ? 'A/S현황' : '테스트 결과') + '</td><td>' + c.row + '</td><td>' + esc(colName[c.key] || c.key) + '</td><td>' + esc(c.store) + '</td><td class="muted">' + esc(c.old) + '</td><td class="small" style="white-space:pre-wrap">' + esc(c.value) + '</td></tr>'; }).join('') + '</tbody></table></div>';
 }
 
+/* ---- 인입 상세(원문·답글·첨부) 지연 로딩 ---- */
+function loadInboxDetail() {
+  var id = S.inboxSel; if (!id) return;
+  S.inboxDet = S.inboxDet || {};
+  if (S.inboxDet[id]) return;
+  S.inboxDet[id] = null;
+  call('inboxDetail', { id: id }).then(function (r) {
+    S.inboxDet[id] = r;
+    if (S.view === 'inbox' && S.inboxSel === id) render();
+  }).catch(function () { delete S.inboxDet[id]; });
+}
+
 /* ---- Slack 첨부 이미지 (서버 프록시로 불러오기) ---- */
 var IMGC = {};
 function loadSlackImgs() {
@@ -1039,7 +1053,25 @@ var ACT = {
   },
   manualInboxGo: function (d, b) { run('inboxAddManual', { text: $('#mText').value }, '인입함에 등록했습니다.', b).then(function (r) { closeModal(); if (r && r.inbox) { S.view = 'inbox'; S.inboxFilter = '대기'; S.inboxSel = r.inbox.id; render(); } }); },
   syncSlack: function (d, b) { run('syncSlack', {}, function (r) { return r.skipped ? '다른 동기화가 진행 중입니다.' : 'Slack 동기화: 신규 ' + r.added + '건 · 자동 확정 ' + r.autoConfirmed + '건 · 방어 추정 ' + r.defendSuggested + '건' + (r.linked ? ' · 기존 이력 연결 ' + r.linked + '건' : ''); }, b); },
-  syncCj: function (d, b) { run('syncCj', {}, function (r) { return 'CJ 조회 ' + r.checked + '건 · 반품 배송완료 ' + r.returnDelivered + '건' + (r.pending ? ' · 남은 ' + r.pending + '건은 다음 주기에' : ''); }, b); },
+  syncCj: function (d, b) {
+    var total = 0, done = 0, auto = 0, rounds = 0;
+    var step = function () {
+      rounds++;
+      return call('syncCj', {}).then(function (r) {
+        total += r.checked; done += r.returnDelivered; auto += r.autoReturn || 0;
+        if (b) b.innerHTML = '<span class="spin"></span> 조회 ' + total + '건 (남은 ' + r.pending + ')';
+        if (r.pending > 0 && rounds < 8) return step();
+        return r;
+      });
+    };
+    if (S.busy) return; S.busy = true;
+    var orig = b ? b.innerHTML : ''; if (b) { b.disabled = true; }
+    step().then(function (r) {
+      toast('배송 상태 갱신: ' + total + '건 조회 · 반품 자동등록 ' + auto + '건 · 회수완료 ' + done + '건' + (r.pending ? ' · 남은 ' + r.pending + '건' : ''));
+      S.busy = false; if (b) { b.disabled = false; b.innerHTML = orig; }
+      return load(true);
+    }).catch(function (e) { toast(e.message || String(e), true); S.busy = false; if (b) { b.disabled = false; b.innerHTML = orig; } });
+  },
   // AS 건
   newCase: function () {
     modal('AS 직접 등록', '<div class="row"><label class="fld" style="flex:1"><span>매장명</span><input class="inp" id="nc_store"></label><label class="fld"><span>문의번호</span><input class="inp" id="nc_inq" style="width:120px"></label></div>' +
