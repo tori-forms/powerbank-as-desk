@@ -800,7 +800,7 @@ function scanPanel_() {
   var badN = res.filter(function (r) { return r.status !== 'ok'; }).length;
   var shortCases = S.data.cases.filter(function (c) { return IDX.st[c.id].b === 'ret_short'; })
     .sort(function (a, b) { return String(a.recvDate).localeCompare(String(b.recvDate)); });
-  var icon = { ok: '✅', dup: '⚠️', unknown: '❌' };
+  var icon = { ok: '✅', dup: '⚠️', unknown: '❌', inbox: '📨' };
   var left = '<div class="card"><div class="hd"><h3>바코드 스캔</h3><span class="muted small">찍으면 어느 매장·AS 건인지 바로 찾아 회수 처리합니다</span></div><div class="bd">' +
     '<input class="inp mono bigscan" id="scanIn" style="width:100%" placeholder="여기에 바코드를 찍으세요 (여러 개 붙여넣기도 가능)" autofocus>' +
     '<div class="row" style="margin-top:8px"><button class="btn pri" data-act="scanGo">회수 처리</button>' +
@@ -810,7 +810,11 @@ function scanPanel_() {
       var right = r.status === 'ok' || r.status === 'dup'
         ? '<span class="prog ' + (r.remain ? 'short' : 'full') + '">' + r.scanned + '/' + r.expected + '</span>' + (r.remain ? '<div class="small" style="color:var(--red)">' + r.remain + 'EA 부족</div>' : '')
         : '';
-      var mid = r.status === 'unknown'
+      var mid = r.status === 'inbox'
+        ? '<b style="color:var(--amber)">AS 건 생성 전</b><div class="small">' + esc(r.msg) + '</div>' +
+          '<button class="btn sm" style="margin-top:4px" data-act="inboxSel" data-id="' + esc(r.inboxId) + '">인입함에서 열기</button> ' +
+          '<button class="btn sm" data-act="assignOpen" data-sn="' + esc(r.sn) + '">다른 건에 배정</button>'
+        : r.status === 'unknown'
         ? '<b style="color:var(--red)">확인 필요</b><div class="small">' + esc(r.msg) + '</div>' +
           '<button class="btn sm" style="margin-top:4px" data-act="assignOpen" data-sn="' + esc(r.sn) + '">AS 건에 직접 배정</button>'
         : '<b>' + esc(r.store || '') + '</b> <span class="muted mono small">' + esc(r.label || '') + '</span>' +
@@ -971,7 +975,8 @@ function vSettings() {
     '<span class="small">웹앱 URL <span class="mono">' + esc(m.webAppUrl || '-') + '</span></span><span class="small">접속 키 <span class="mono">' + esc(m.appKey || '-') + '</span></span>' +
     (EXT ? '<span class="small muted">통신 방식 ' + (ls('noPost') === '1' ? 'JSONP(GET)' : 'POST') + '</span><button class="btn sm" data-act="resetConn">이 브라우저 연결 정보 지우기</button>' : '') + '</div>' +
     '<div class="row" style="margin-top:8px"><button class="btn sm" data-act="rebuildShips">송장 다시 정리</button>' +
-    '<span class="muted small">예전에 가져온 건의 출고·반품 송장을 배송 추적 목록으로 다시 만듭니다.</span></div>' +
+    '<button class="btn sm" data-act="fillSn">접수 S/N 채우기</button>' +
+    '<span class="muted small">Slack 접수의 S/N을 AS 건에 채워 회수 스캔이 매칭되게 합니다.</span></div>' +
     '<div class="note" style="margin-top:8px">GitHub Pages 등 외부 주소에서 열 때 위 두 값을 입력합니다. 키가 유출되면 setup 화면 없이도 데이터에 접근할 수 있으니, 스크립트 속성 <span class="mono">APP_KEY</span> 값을 바꾸면 즉시 차단됩니다.</div></div></div>' +
     '<div class="card" style="margin-top:14px"><div class="hd"><h3>티오더 시트 동기화</h3><a class="btn sm" target="_blank" href="' + esc(m.torderUrl) + '">시트 열기 ↗</a><a class="btn sm" target="_blank" href="' + esc(m.dbUrl) + '">AS Desk DB ↗</a></div><div class="bd">' +
     '<div class="two"><div><h4 style="margin:0 0 6px">가져오기 (티오더 시트 → AS Desk)</h4><div class="small muted" style="margin-bottom:8px">없는 건은 새로 만들고, AS Desk에 비어 있는 칸만 채웁니다. ERP 체크(물류팀)는 1시간마다 자동 갱신됩니다. 마지막 ' + t(m.lastImport) + '</div>' +
@@ -1235,6 +1240,7 @@ var ACT = {
   },
   // 설정
   backfill: function (d, b) { run('backfillSlack', { days: 150 }, function (r) { return '과거 ' + r.matched + '건 확인 · 사진 ' + r.files + '건 · 답글 ' + r.threads + '건 보강'; }, b); },
+  fillSn: function (d, b) { run('fillSnFromInbox', {}, function (r) { return 'AS 건 ' + r.cases + '건 · S/N ' + r.units + '개 채움'; }, b); },
   rebuildShips: function (d, b) { run('rebuildShips', {}, function (r) { return '송장 ' + r.added + '건 정리 완료. [배송 상태 갱신]을 눌러 주세요.'; }, b); },
   resetConn: function () { ls('gasUrl', ''); ls('appKey', ''); ls('noPost', ''); location.reload(); },
   saveTok: function (d, b) { var v = $('#slackTok').value.trim(); if (!/^xox[pb]-/.test(v)) return toast('xoxp- 로 시작하는 토큰을 입력해 주세요.', true); run('saveSetting', { key: 'SLACK_TOKEN', value: v }, '토큰을 저장했습니다.', b); },
