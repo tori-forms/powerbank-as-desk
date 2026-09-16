@@ -607,7 +607,7 @@ function vShip() {
   var all = S.data.cases.filter(function (c) { return modelOk(c) && matchQ(c); });
   var pick = function (fn) { return all.filter(fn); };
   var sets = {
-    active: pick(function (c) { var b = IDX.st[c.id].b; return b === 'ship_wait' || b === 'shipping'; }),
+    active: pick(function (c) { return IDX.st[c.id].b === 'shipping'; }),
     wait: pick(function (c) { return IDX.st[c.id].b === 'ship_wait'; }),
     before: pick(function (c) { return IDX.st[c.id].out === 'before' && IDX.st[c.id].b !== 'ship_wait'; }),
     moving: pick(function (c) { return IDX.st[c.id].out === 'moving'; }),
@@ -615,9 +615,10 @@ function vShip() {
     all: all
   };
   var list = (sets[f] || sets.active).slice().sort(function (a, b) { return String(b.outDate || b.createdAt).localeCompare(String(a.outDate || a.createdAt)); });
-  var tabs = [['active', '진행 중(배송)'], ['wait', '출고 대기'], ['before', '배송 전'], ['moving', '배송 중'], ['done', '도착 완료'], ['all', '전체']]
+  var tabs = [['active', '배송 중인 출고'], ['wait', '출고 대기(송장 없음)'], ['before', '배송 전'], ['moving', '배송 중'], ['done', '도착 완료'], ['all', '전체']]
     .map(function (t) { return '<button class="' + (f === t[0] ? 'on' : '') + '" data-act="ship" data-v="' + t[0] + '">' + t[1] + '<span class="n">' + (sets[t[0]] || []).length + '</span></button>'; }).join('');
   return '<div class="tabs">' + tabs + '</div>' + toolbar('출고') +
+    (f === 'active' ? '<div class="note" style="margin-bottom:10px">송장이 찍혀 실제로 배송 중인 건만 보여줍니다. 아직 송장이 없는 건은 <b>[출고 대기(송장 없음)]</b> 탭에 있습니다. 도착 완료된 건은 <b>회수</b> 탭으로 넘어갑니다.</div>' : '') +
     '<div class="card"><div class="tw"><table class="t"><thead><tr><th>번호</th><th>매장</th><th>모델</th><th>수량</th><th>교체 출고 S/N</th><th>교체사유</th><th>출고일</th><th>출고 송장</th><th>상태</th></tr></thead><tbody>' +
     (list.length ? list.slice(0, 300).map(function (c) {
       var st = IDX.st[c.id], us = st.units;
