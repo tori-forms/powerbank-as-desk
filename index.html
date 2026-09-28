@@ -443,7 +443,8 @@ function run(action, payload, okMsg, btn) {
 /* ======================= 인덱스/상태 ======================= */
 function buildIndex() {
   var d = S.data;
-  IDX = { units: {}, ships: {}, caseById: {}, unitById: {}, inboxById: {}, st: {} };
+  IDX = { units: {}, ships: {}, caseById: {}, unitById: {}, inboxById: {}, st: {}, req: {} };
+  (d.requests || []).forEach(function (q) { if (q.status === 'open' && q.caseId) (IDX.req[q.caseId] = IDX.req[q.caseId] || []).push(q); });
   d.units.forEach(function (u) { (IDX.units[u.caseId] = IDX.units[u.caseId] || []).push(u); IDX.unitById[u.id] = u; });
   (d.ships || []).forEach(function (x) { if (x.caseId && x.stage !== 'removed') (IDX.ships[x.caseId] = IDX.ships[x.caseId] || []).push(x); });
   d.cases.forEach(function (c) { IDX.caseById[c.id] = c; });
@@ -487,7 +488,7 @@ function cstate(c) {
   if (c.closed === 'Y') st.b = 'closed';
   else if (!c.outDate && st.out === 'none') st.b = 'ship_wait';
   else if (st.ret === 'none') st.b = st.out === 'done' ? 'ret_need' : 'shipping';
-  else if (st.ret === 'fail') st.b = 'ret_fail';
+  else if (st.ret === 'fail' || (st.ret !== 'done' && (IDX.req[c.id] || []).some(function (q) { return q.kind === 'recollect'; }))) st.b = 'ret_fail';
   else if (st.ret !== 'done') st.b = 'ret_doing';
   else if (open.some(function (u) { return !u.recvSn; })) st.b = 'ret_short';
   else if (open.some(function (u) { return !u.verdict; })) st.b = 'judge';
@@ -612,6 +613,11 @@ function retSn(st) {
   var outs = st.units.map(function (u) { return u.outSn; }).filter(String);
   if (!outs.length) return '<span class="muted">-</span>';
   return snList(st.units, 'outSn') + '<div class="muted small">교환 출고 S/N 기준</div>';
+}
+function reqTags(c) {
+  return (IDX.req[c.id] || []).map(function (q) {
+    return '<a class="pill ' + (q.kind === 'recollect' ? 'p-red' : 'p-ship') + '" style="text-decoration:none" target="_blank" href="' + esc(q.permalink) + '" title="' + esc(q.author + ': ' + q.text) + '">' + (q.kind === 'recollect' ? '📮 Slack 재회수 요청' : '📮 회수 여부 문의') + ' ' + md(q.postedAt) + '</a>';
+  }).join(' ');
 }
 function trkList(ships, fallback, note) {
   if (!ships.length) return fallback ? '<span class="mono small muted">' + esc(String(fallback).split('\n').join(', ')) + '</span>'
@@ -805,7 +811,7 @@ function vReturn() {
       var st = IDX.st[c.id];
       var over = st.retDays !== null && st.retDays > (S.data.meta.returnFailBizDays || 2);
       return '<tr><td class="nowrap mono click" data-act="case" data-id="' + esc(c.id) + '">' + esc(cid(c)) + '</td>' +
-        '<td class="click" data-act="case" data-id="' + esc(c.id) + '"><b>' + esc(c.store) + '</b>' + mtagSmall(c) + '</td>' +
+        '<td class="click" data-act="case" data-id="' + esc(c.id) + '"><b>' + esc(c.store) + '</b>' + mtagSmall(c) + (IDX.req[c.id] ? '<div style="margin-top:4px">' + reqTags(c) + '</div>' : '') + '</td>' +
         '<td>' + retSn(st) + '</td><td>' + st.expected + '</td>' +
         '<td class="small">' + trkList(st.retsAll, c.returnTracking, c.returnStatus ? c.returnStatus + ' · 송장 미등록' : '') + '</td><td>' + tagOf(RET_LABEL, st.ret) + '</td>' +
         '<td class="nowrap ' + (over ? 'hl' : '') + '">' + (st.retDays === null ? '-' : st.retDays + '일') + '</td>' +
@@ -836,7 +842,7 @@ function vReturn() {
   var note = { fail: '반품 송장에 <b>조회내역이 전혀 없는 채로 ' + (S.data.meta.returnFailBizDays || 2) + '영업일 이상</b> 지난 건입니다. 간선상차·인수 등 스캔 기록이 있으면 회수 진행중으로 분류됩니다. 매장에 확인 후 재접수 송장을 넣거나, 회수를 포기할 경우 [손망실]로 확정해 주세요.',
     need: '출고 송장이 <b>도착 완료</b>로 확인된 건입니다. 반품 송장을 등록하면 회수 진행중으로 넘어갑니다.',
     doing: '반품 송장이 발행된 건입니다. 집화가 되면 <b>회수 중</b>, 배송완료되면 <b>회수 완료</b>로 자동으로 바뀝니다.',
-    fail: '반품 송장 등록 후 ' + (S.data.meta.returnFailBizDays || 2) + '영업일(주말·공휴일 제외)이 지나도 <b>조회내역이 없는</b> 건입니다. 굵게 표시된 송장이 집화가 안 된 송장입니다. 매장에 확인 후 <b>재접수</b>해 주세요.',
+    fail: '반품 송장 등록 후 ' + (S.data.meta.returnFailBizDays || 2) + '영업일(주말·공휴일 제외)이 지나도 <b>조회내역이 없는</b> 건과, <b>Slack으로 재회수 요청이 들어온</b> 건입니다. 굵게 표시된 송장이 집화가 안 된 송장입니다. 매장에 확인 후 <b>재접수</b>해 주세요.',
     short: '회수 스캔 결과 수량이 모자란 건입니다. 미회수로 확정하면 완료 처리됩니다.',
     done: '회수가 끝난 건입니다. 더 추적할 필요가 없으면 종결하세요.' }[f];
   var oldBtn = oldOnes.length ? '<button class="' + (S.showOld ? 'on' : '') + '" data-act="toggleOld">' + (S.showOld ? '오래된 건 포함' : '오래된 건 숨김') + '<span class="n">' + oldOnes.length + '</span></button>' : '';
@@ -914,6 +920,14 @@ function caseDrawer(c) {
     }).join('') + '</tbody></table></div>' +
     '<div class="row" style="margin-top:8px"><span class="small muted">선택한 유닛 처분:</span><select class="inp" id="dispSel">' + L.DISPOSITIONS.map(function (d) { return '<option>' + esc(d) + '</option>'; }).join('') + '<option value="">(처분 취소)</option></select><button class="btn sm" data-act="dispose">적용</button></div></div>';
   // 이력
+  var rq = (S.data.requests || []).filter(function (q) { return q.caseId === c.id; }).sort(function (a, b) { return String(b.postedAt).localeCompare(String(a.postedAt)); });
+  if (rq.length) h += '<div class="sec"><h4>Slack 회수 요청</h4>' + rq.map(function (q) {
+    return '<div class="note" style="margin-bottom:8px;' + (q.status === 'open' ? 'background:var(--redSoft)' : '') + '"><div class="row" style="justify-content:space-between"><b>' + (q.kind === 'recollect' ? '🔁 재회수 요청' : '❓ 회수 여부 문의') + '</b>' +
+      '<span class="small muted">' + esc(q.author) + ' · ' + esc(String(q.postedAt).replace('T', ' ').slice(5, 16)) + '</span></div>' +
+      '<div class="small" style="margin:6px 0;white-space:pre-wrap">' + esc(q.text) + '</div>' +
+      '<div class="row"><a class="btn sm" target="_blank" href="' + esc(q.permalink) + '">스레드 열기 ↗</a>' +
+      (q.status === 'open' ? '<button class="btn sm pri" data-act="reqDone" data-id="' + esc(q.id) + '">처리 완료</button>' : '<span class="pill p-green">처리 완료 · ' + esc(q.doneBy || '') + '</span>') + '</div></div>';
+  }).join('') + '</div>';
   h += '<div class="sec"><h4>이력</h4>' + (hist.length ? '<div class="small">' + hist.map(function (x) { return '<div style="padding:3px 0;border-bottom:1px dashed var(--line2)"><span class="muted mono">' + esc(String(x.at).replace('T', ' ').slice(2, 16)) + '</span> <b>' + esc(x.actor) + '</b> ' + esc(x.text) + '</div>'; }).join('') + '</div>' : '<div class="muted small">이력 없음</div>') + '</div>';
   h += '<div class="sec"><div class="row">' + (c.closed === 'Y' ? '<button class="btn" data-act="reopenCase" data-id="' + esc(c.id) + '">재개</button><span class="muted small">종결 사유: ' + esc(c.closedReason) + '</span>' :
     '<input class="inp" id="closeReason" placeholder="종결 사유 (예: 고객 취소, 중복 접수)" style="flex:1;min-width:200px"><button class="btn red" data-act="closeCase" data-id="' + esc(c.id) + '">AS 종결</button>') + '</div></div>';
@@ -1435,6 +1449,7 @@ var ACT = {
   repairUnits: function (d, b) { run('repairUnits', {}, function (r) { return '중복 유닛 ' + r.merged + '개 병합 · ' + r.removed + '행 정리'; }, b); },
   rebuildShips: function (d, b) { run('rebuildShips', {}, function (r) { return '송장 ' + r.added + '건 정리 완료. [배송 상태 갱신]을 눌러 주세요.'; }, b); },
   resetConn: function () { ls('gasUrl', ''); ls('appKey', ''); ls('noPost', ''); location.reload(); },
+  reqDone: function (d, b) { run('requestDone', { id: d.id }, '처리 완료로 표시했습니다.', b).then(function () { if (S.caseSel) openCase(S.caseSel, true); }); },
   saveShip: function (d, b) {
     var a = $('#shipP20BOTA25').value.replace(/[,\s]/g, ''), v = $('#shipP20VA').value.replace(/[,\s]/g, '');
     if ((a && !/^\d+$/.test(a)) || (v && !/^\d+$/.test(v))) return toast('숫자만 입력해 주세요.', true);
