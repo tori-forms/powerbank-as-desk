@@ -951,12 +951,14 @@ function vAnalysis() {
   var shipNote = noShip ? '<a href="#" data-act="go" data-v="settings" style="color:var(--blue)">설정에서 고객사 납품 수량을 입력해 주세요 →</a>'
     : '납품 ' + fmt(shipTotal) + 'EA 기준 · 누적' + (shipMissing.length ? ' <span style="color:var(--amber)">(' + shipMissing.join(', ') + ' 납품 수량 미입력)</span>' : '');
   h += '<div class="qkpis">' +
-    '<div class="qkpi"><div class="l">불량률 <span class="muted small" style="font-weight:500">AS 교환 ÷ 총 납품</span></div><div class="v">' + (noShip ? '-' : pct2(exAll, shipTotal)) + '<small>%</small></div>' +
-    '<div class="d">교환 ' + fmt(exAll) + 'EA / ' + shipNote + '</div></div>' +
-    '<div class="qkpi hot"><div class="l">실제 불량률 <span class="small" style="font-weight:500;opacity:.8">검사 확정 불량 ÷ 총 납품</span></div><div class="v">' + (noShip ? '-' : pct2(badAll.length, shipTotal)) + '<small>%</small></div>' +
-    '<div class="d">확정 불량 ' + fmt(badAll.length) + 'EA / ' + shipNote + ' · 검사 ' + testedAll.length + 'EA 중 불량 ' + pct(badAll.length, testedAll.length) + '%' +
-    (!noShip && testedAll.length && exAll > testedAll.length ? '<br>미검사 교환분까지 같은 비율로 보면 약 <b>' + pct2(exAll * badAll.length / testedAll.length, shipTotal) + '%</b> (추정)' : '') + '</div></div></div>';
-  h += '<div class="kpis" style="grid-template-columns:repeat(5,minmax(0,1fr))">' + kp('교환 출고', cases.length + '<small>건</small>', qty + 'EA') + kp('회수 검사', tested.length + '<small>EA</small>', '불량 ' + bad.length + ' · 정상 ' + ok.length + ' (' + pct(bad.length, tested.length) + '%)') +
+    '<div class="qkpi"><div class="l">전체 납품 수량 <span class="muted small" style="font-weight:500">고객사 누적 · ' + (A.model === 'all' ? '전체 모델' : A.model) + '</span></div><div class="v">' + (noShip ? '-' : fmt(shipTotal)) + '<small>EA</small></div>' +
+    '<div class="d">' + (noShip ? shipNote : 'AS 교환 ' + fmt(exAll) + 'EA (납품 대비 ' + pct2(exAll, shipTotal) + '%)' + (shipMissing.length ? ' <span style="color:var(--amber)">· ' + shipMissing.join(', ') + ' 납품 수량 미입력</span>' : '')) + '</div></div>' +
+    '<div class="qkpi hot"><div class="l">실제 불량률 <span class="small" style="font-weight:500;opacity:.8">검사 확정 불량 ÷ 전체 납품</span></div><div class="v">' + (noShip ? '-' : pct2(badAll.length, shipTotal)) + '<small>%</small></div>' +
+    '<div class="d">확정 불량 ' + fmt(badAll.length) + 'EA / 납품 ' + (noShip ? '-' : fmt(shipTotal)) + 'EA · 누적' +
+    (!noShip && testedAll.length && exAll > testedAll.length ? ' · 미검사 교환분 포함 추정 약 <b>' + pct2(exAll * badAll.length / testedAll.length, shipTotal) + '%</b>' : '') + '</div></div></div>';
+  h += '<div class="kpis" style="grid-template-columns:repeat(5,minmax(0,1fr))">' +
+    kp('교환 출고', cases.length + '<small>건</small>', qty + 'EA · 그중 실제 불량 <b style="color:var(--red)">' + pct(bad.length, tested.length) + '%</b>') +
+    kp('회수 검사', tested.length + '<small>EA</small>', '불량 ' + bad.length + ' · 정상 ' + ok.length) +
     kp('NTF(정상) 비율', pct(ok.length, tested.length) + '<small>%</small>', '교환했지만 재현 안 됨') +
     kp('방어율', pct(defended, inb.length) + '<small>%</small>', 'Slack 인입 ' + inb.length + '건 중 ' + defended) + kp('회수 리드타임', (med === null ? '-' : med) + '<small>일</small>', '출고→회수 입고 중앙값') + '</div>';
   // 월별
