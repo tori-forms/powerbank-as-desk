@@ -58,6 +58,15 @@ main{flex:1;min-width:0;display:flex;flex-direction:column}
 .kpi .v small{font-size:12px;color:var(--ink3);font-weight:500;margin-left:3px}
 .kpi .d{font-size:11.5px;color:var(--ink3)}
 .kpi .bar{position:absolute;left:0;top:0;bottom:0;width:3px}
+.qkpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:12px}
+.qkpi{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;box-shadow:var(--sh)}
+.qkpi .l{font-size:13px;color:var(--ink2);font-weight:700;display:flex;align-items:center;gap:8px}
+.qkpi .v{font-size:34px;font-weight:800;letter-spacing:-.8px;margin-top:4px}
+.qkpi .v small{font-size:14px;color:var(--ink3);font-weight:600;margin-left:3px}
+.qkpi .d{font-size:12px;color:var(--ink3);margin-top:2px}
+.qkpi.hot{background:var(--redSoft);border-color:#e9b3a8;box-shadow:0 0 0 1px #e9b3a8 inset}
+.qkpi.hot .l,.qkpi.hot .v{color:var(--red)} .qkpi.hot .v small{color:var(--red);opacity:.75}
+@media (max-width:700px){.qkpis{grid-template-columns:1fr}}
 .pill{display:inline-flex;align-items:center;gap:4px;padding:1px 8px;border-radius:999px;font-size:11.5px;font-weight:600;white-space:nowrap;line-height:18px}
 .p-ship{background:var(--amberSoft);color:var(--amber)} .p-retreq{background:var(--redSoft);color:var(--red)}
 .p-returning{background:var(--blueSoft);color:var(--blue)} .p-inspect{background:var(--violetSoft);color:var(--violet)}
@@ -924,11 +933,31 @@ function vAnalysis() {
   var outMap = {}; S.data.units.forEach(function (u) { if (u.outSn) outMap[u.outSn] = u; });
   var reAs = units.filter(function (u) { var o = outMap[u.recvSn || u.origSn]; return o && o.caseId !== u.caseId; });
   var pct = function (a, b) { return b ? Math.round(a / b * 1000) / 10 : 0; };
+  var pct2 = function (a, b) { return b ? (Math.round(a / b * 10000) / 100).toFixed(2) : '-'; };
+  // 납품 대비 품질 지표 (누적 · 기간 필터 미적용)
+  var ST = S.data.meta.shipTotals || {};
+  var shipModels = A.model === 'all' ? ['P20BOTA25', 'P20VA'] : [A.model];
+  var shipTotal = shipModels.reduce(function (s2, m) { return s2 + (+ST[m] || 0); }, 0);
+  var shipMissing = shipModels.filter(function (m) { return !(+ST[m] > 0); });
+  var casesAll = S.data.cases.filter(function (c) { return mOk(c.model) && c.outDate; });
+  var exAll = casesAll.reduce(function (s2, c) { return s2 + (+c.qty || unitsOf(c).length || 0); }, 0);
+  var testedAll = units.filter(function (u) { return u.verdict; });
+  var badAll = testedAll.filter(function (u) { return u.verdict === '불량'; });
+  var fmt = function (n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','); };
   var kp = function (l, v, d) { return '<div class="kpi" style="cursor:default"><div class="l">' + l + '</div><div class="v">' + v + '</div><div class="d">' + d + '</div></div>'; };
   var h = '<div class="tool"><div class="tabs" style="margin:0">' + [['all', '전체 모델'], ['P20BOTA25', '기존 P20BOTA25'], ['P20VA', '신형 P20VA']].map(function (m) { return '<button class="' + (A.model === m[0] ? 'on' : '') + '" data-act="anModel" data-v="' + m[0] + '">' + m[1] + '</button>'; }).join('') + '</div>' +
     '<select class="inp" id="anMonths">' + [[3, '최근 3개월'], [6, '최근 6개월'], [12, '최근 12개월'], [0, '전체 기간']].map(function (x) { return '<option value="' + x[0] + '" ' + (A.months === x[0] ? 'selected' : '') + '>' + x[1] + '</option>'; }).join('') + '</select></div>';
-  h += '<div class="kpis">' + kp('교환 출고', cases.length + '<small>건</small>', qty + 'EA') + kp('회수 검사', tested.length + '<small>EA</small>', '불량 ' + bad.length + ' · 정상 ' + ok.length) +
-    kp('불량 확인율', pct(bad.length, tested.length) + '<small>%</small>', '검사 수량 기준') + kp('NTF(정상) 비율', pct(ok.length, tested.length) + '<small>%</small>', '교환했지만 재현 안 됨') +
+  var noShip = !shipTotal;
+  var shipNote = noShip ? '<a href="#" data-act="go" data-v="settings" style="color:var(--blue)">설정에서 고객사 납품 수량을 입력해 주세요 →</a>'
+    : '납품 ' + fmt(shipTotal) + 'EA 기준 · 누적' + (shipMissing.length ? ' <span style="color:var(--amber)">(' + shipMissing.join(', ') + ' 납품 수량 미입력)</span>' : '');
+  h += '<div class="qkpis">' +
+    '<div class="qkpi"><div class="l">불량률 <span class="muted small" style="font-weight:500">AS 교환 ÷ 총 납품</span></div><div class="v">' + (noShip ? '-' : pct2(exAll, shipTotal)) + '<small>%</small></div>' +
+    '<div class="d">교환 ' + fmt(exAll) + 'EA / ' + shipNote + '</div></div>' +
+    '<div class="qkpi hot"><div class="l">실제 불량률 <span class="small" style="font-weight:500;opacity:.8">검사 확정 불량 ÷ 총 납품</span></div><div class="v">' + (noShip ? '-' : pct2(badAll.length, shipTotal)) + '<small>%</small></div>' +
+    '<div class="d">확정 불량 ' + fmt(badAll.length) + 'EA / ' + shipNote + ' · 검사 ' + testedAll.length + 'EA 중 불량 ' + pct(badAll.length, testedAll.length) + '%' +
+    (!noShip && testedAll.length && exAll > testedAll.length ? '<br>미검사 교환분까지 같은 비율로 보면 약 <b>' + pct2(exAll * badAll.length / testedAll.length, shipTotal) + '%</b> (추정)' : '') + '</div></div></div>';
+  h += '<div class="kpis" style="grid-template-columns:repeat(5,minmax(0,1fr))">' + kp('교환 출고', cases.length + '<small>건</small>', qty + 'EA') + kp('회수 검사', tested.length + '<small>EA</small>', '불량 ' + bad.length + ' · 정상 ' + ok.length + ' (' + pct(bad.length, tested.length) + '%)') +
+    kp('NTF(정상) 비율', pct(ok.length, tested.length) + '<small>%</small>', '교환했지만 재현 안 됨') +
     kp('방어율', pct(defended, inb.length) + '<small>%</small>', 'Slack 인입 ' + inb.length + '건 중 ' + defended) + kp('회수 리드타임', (med === null ? '-' : med) + '<small>일</small>', '출고→회수 입고 중앙값') + '</div>';
   // 월별
   var ms = months || monthsBack(12);
@@ -982,6 +1011,12 @@ function vSettings() {
     '<div class="note" style="margin-top:10px">볼타레스 워크스페이스에서 만든 Slack 앱의 <b>User OAuth Token</b>을 대표님이 직접 붙여넣어 주세요. 필요한 권한은 groups:history, channels:history, users:read 입니다. 토큰은 스크립트 속성에만 저장됩니다.</div></div></div>' +
     '<div class="card"><div class="hd"><h3>CJ대한통운 배송조회</h3></div><div class="bd"><div class="small muted" style="margin-bottom:8px">1시간마다 출고·반품 송장 상태를 갱신합니다. 반품이 배송완료되면 회수 입고일이 자동 기록됩니다. 마지막 ' + t(m.lastCj) + '</div>' +
     '<div class="row"><button class="btn pri" data-act="syncCj">지금 조회</button><input class="inp mono" id="trkTest" placeholder="송장번호 단건 조회" style="width:180px"><button class="btn" data-act="trackTest">조회</button></div><div id="trkOut" class="small" style="margin-top:8px"></div></div></div></div>';
+  var STs = m.shipTotals || {};
+  h += '<div class="card" style="margin-top:14px"><div class="hd"><h3>고객사 납품 수량 (누적)</h3><span class="muted small">불량 분석의 불량률·실제 불량률 분모</span></div><div class="bd">' +
+    '<div class="row"><label class="small" style="min-width:120px">기존 P20BOTA25</label><input class="inp mono" id="shipP20BOTA25" inputmode="numeric" placeholder="예: 30000" value="' + (STs.P20BOTA25 || '') + '" style="width:160px"><span class="small muted">EA</span>' +
+    '<label class="small" style="min-width:90px;margin-left:16px">신형 P20VA</label><input class="inp mono" id="shipP20VA" inputmode="numeric" placeholder="예: 5000" value="' + (STs.P20VA || '') + '" style="width:160px"><span class="small muted">EA</span>' +
+    '<button class="btn pri" data-act="saveShip">저장</button></div>' +
+    '<div class="note" style="margin-top:8px">티오더에 지금까지 납품한 누적 수량입니다. 추가 납품이 있을 때마다 숫자만 올려 주세요.</div></div></div>';
   h += '<div class="card" style="margin-top:14px"><div class="hd"><h3>Slack 회수 알림 (DM)</h3>' + (m.botReady ? '<span class="pill p-green">켜짐</span>' : '<span class="pill p-red">Bot 토큰 필요</span>') + '</div><div class="bd">' +
     '<div class="small muted" style="margin-bottom:8px">평일 오전 9시, 대표님 DM으로 회수 실패 · 반품 재접수 현황 · 출고 배송완료 · 회수 완료를 요약해 보냅니다. 외주센터 카톡에 붙여넣을 재접수 요청 문구도 같이 옵니다. 마지막 발송 ' + t(m.lastDigest) + '</div>' +
     '<div class="row"><input class="inp mono" id="botTok" type="password" placeholder="xoxb-… (Bot User OAuth Token)" style="flex:1;min-width:220px"><button class="btn" data-act="saveBot">토큰 저장</button>' +
@@ -1263,6 +1298,11 @@ var ACT = {
   repairUnits: function (d, b) { run('repairUnits', {}, function (r) { return '중복 유닛 ' + r.merged + '개 병합 · ' + r.removed + '행 정리'; }, b); },
   rebuildShips: function (d, b) { run('rebuildShips', {}, function (r) { return '송장 ' + r.added + '건 정리 완료. [배송 상태 갱신]을 눌러 주세요.'; }, b); },
   resetConn: function () { ls('gasUrl', ''); ls('appKey', ''); ls('noPost', ''); location.reload(); },
+  saveShip: function (d, b) {
+    var a = $('#shipP20BOTA25').value.replace(/[,\s]/g, ''), v = $('#shipP20VA').value.replace(/[,\s]/g, '');
+    if ((a && !/^\d+$/.test(a)) || (v && !/^\d+$/.test(v))) return toast('숫자만 입력해 주세요.', true);
+    call('saveSetting', { key: 'SHIP_TOTAL_P20BOTA25', value: a }).then(function () { return run('saveSetting', { key: 'SHIP_TOTAL_P20VA', value: v }, '납품 수량을 저장했습니다.', b); }).catch(function (e) { toast(e.message, true); });
+  },
   saveBot: function (d, b) { var v = $('#botTok').value.trim(); if (!/^xoxb-/.test(v)) return toast('xoxb- 로 시작하는 Bot 토큰을 입력해 주세요.', true); run('saveSetting', { key: 'SLACK_BOT_TOKEN', value: v }, 'Bot 토큰을 저장했습니다.', b); },
   digestPreview: function (d, b) {
     call('digestPreview', {}).then(function (r) {
