@@ -1474,7 +1474,22 @@ var ACT = {
   importDry: function (d, b) { b.disabled = true; call('importTorder', { mode: 'dry' }).then(function (r) { S.preview = { type: 'import', data: r }; $('#syncOut').innerHTML = previewHtml(); }).catch(function (e) { toast(e.message, true); }).finally(function () { b.disabled = false; }); },
   importApply: function (d, b) { run('importTorder', { mode: 'apply' }, function (r) { return '가져오기 완료: 새 AS ' + r.casesNew + '건 · 유닛 ' + r.unitsNew + ' · 검사 매칭 ' + r.testsMatched + ' · 미매칭 ' + r.testsOrphan; }, b); },
   pushDry: function (d, b) { b.disabled = true; call('pushTorder', { mode: 'dry' }).then(function (r) { S.preview = { type: 'push', data: r }; render(); }).catch(function (e) { toast(e.message, true); }).finally(function () { b.disabled = false; }); },
-  pushApply: function (d, b) { run('pushTorder', { mode: 'apply' }, function (r) { return '티오더 시트 반영: ' + r.applied + '셀 · 새 행 ' + r.newRows + ' · 테스트 결과 ' + r.newTests; }, b).then(function () { S.preview = null; render(); }); }
+  pushApply: function (d, b) {
+    b.disabled = true; var orig = b.innerHTML; b.innerHTML = '<span class="spin"></span> 반영 중';
+    var done = function (msg, err) { b.disabled = false; b.innerHTML = orig; toast(msg, err); if (!err) { S.preview = null; load(true).then(render); } };
+    call('pushTorder', { mode: 'apply' }).then(function (job) {
+      if (job && job.applied !== undefined) return done('티오더 시트 반영: ' + job.applied + '셀');   // 이전 버전 서버
+      var n = 0;
+      (function poll() {
+        call('pushStatus', {}).then(function (j) {
+          if (j.state === 'done') { var r = j.result || {}; return done('티오더 시트 반영: ' + r.applied + '셀 · 새 행 ' + r.newRows + (r.failedCount ? ' · 실패 ' + r.failedCount + '셀 (' + (r.failed[0] || {}).error + ')' : ''), !!r.failedCount); }
+          if (j.state === 'error') return done('반영 실패: ' + j.error, true);
+          if (++n > 60) return done('반영이 오래 걸리고 있습니다. 잠시 후 미리보기로 확인해 주세요.', true);
+          setTimeout(poll, 5000);
+        }).catch(function () { if (++n > 60) return done('상태 확인 실패', true); setTimeout(poll, 5000); });
+      })();
+    }).catch(function (e) { done(e.message, true); });
+  }
 };
 document.addEventListener('click', function (e) {
   var el = e.target.closest('[data-act]'); if (!el) return;
