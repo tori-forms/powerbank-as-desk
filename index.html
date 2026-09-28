@@ -330,9 +330,11 @@ function unitsOf(c) { return IDX.units[c.id] || []; }
 function shipsOf(c, type) { return (IDX.ships[c.id] || []).filter(function (x) { return !type || x.type === type; }); }
 /** 건별 상태 요약: 출고 단계 / 회수 단계 / 스캔 진행 / 버킷 */
 function cstate(c) {
-  var us = unitsOf(c), outs = shipsOf(c, 'out'), rets = shipsOf(c, 'return');
+  var us = unitsOf(c), outs = shipsOf(c, 'out'), retsAll = shipsOf(c, 'return');
+  var rets = retsAll.filter(function (x) { return x.stage !== 'replaced'; });   // 재접수로 대체된 송장은 상태 판정에서 제외
   var open = us.filter(function (u) { return !u.disposition; });
-  var st = { outs: outs, rets: rets, units: us, open: open };
+  var st = { outs: outs, rets: rets, retsAll: retsAll, units: us, open: open };
+  st.reissued = rets.filter(function (x) { return x.reissueOf; });
   st.expected = us.length;
   st.scanned = us.filter(function (u) { return u.recvSn; }).length;
   st.short = Math.max(st.expected - st.scanned, 0);
@@ -342,14 +344,17 @@ function cstate(c) {
       : outs.some(function (x) { return x.stage === 'moving'; }) ? 'moving'
         : outs.every(function (x) { return x.stage === 'expired'; }) ? 'expired' : 'before';
   if (c.recvDate || c.returnDoneAt) st.out = 'done';   // 이미 회수까지 끝난 건은 출고 도착으로 간주
+  // 집화·간선상차 등 실제 스캔 기록이 있으면 '회수 중'이 먼저다. '회수 실패'는 조회내역이 아예 없는 건에만.
+  st.stuck = rets.filter(function (x) { return !x.doneAt && x.stage !== 'moving' && x.failFlag === 'Y'; });
   st.ret = !rets.length ? 'none'
-    : rets.some(function (x) { return x.failFlag === 'Y' && !x.doneAt; }) ? 'fail'
-      : rets.every(function (x) { return x.doneAt; }) ? 'done'
-        : rets.some(function (x) { return x.stage === 'moving'; }) ? 'moving'
+    : rets.every(function (x) { return x.doneAt; }) ? 'done'
+      : rets.some(function (x) { return x.stage === 'moving'; }) ? 'moving'
+        : st.stuck.length ? 'fail'
           : rets.every(function (x) { return x.stage === 'expired'; }) ? 'expired' : 'before';
   if (st.ret === 'none' && (c.returnTracking || c.returnStatus)) st.ret = (c.returnDoneAt || c.recvDate) ? 'done' : 'before';
   if (st.ret !== 'done' && (c.recvDate || c.returnDoneAt)) st.ret = 'done';
-  st.retBase = c.outDoneAt || c.outDate || (rets.length ? d10(rets[0].createdAt) : '');
+  st.retBase = st.reissued.length ? d10(st.reissued.map(function (x) { return x.createdAt; }).sort().slice(-1)[0])   // 재접수 송장은 재발급일 기준
+    : (c.outDoneAt || c.outDate || (rets.length ? d10(rets[0].createdAt) : ''));
   st.retDays = rets.length ? bizDays(st.retBase) : null;
   if (st.out === 'expired') st.out = 'done';
   // 서버 판정 전이라도, 반품 접수 후 기준 영업일이 지나도록 집화가 없으면 재접수 대상으로 본다
@@ -372,7 +377,7 @@ var BUCKET = {
   judge: ['판정 대기', 'p-inspect'], dispose: ['처분 대기', 'p-dispose'], done: ['완료', 'p-done'], closed: ['종결', 'p-closed']
 };
 var OUT_LABEL = { none: ['송장 없음', 'p-gray'], before: ['배송 전', 'p-gray'], moving: ['배송 중', 'p-blue'], done: ['도착 완료', 'p-green'], expired: ['조회 기간 만료', 'p-gray'] };
-var RET_LABEL = { none: ['-', 'p-gray'], before: ['회수 전', 'p-gray'], moving: ['회수 중', 'p-blue'], done: ['회수 완료', 'p-green'], fail: ['회수 실패', 'p-red'], expired: ['조회 기간 만료', 'p-gray'] };
+var RET_LABEL = { none: ['-', 'p-gray'], before: ['회수 전', 'p-gray'], moving: ['회수 중', 'p-blue'], done: ['회수 완료', 'p-green'], fail: ['회수 실패', 'p-red'], expired: ['조회 기간 만료', 'p-gray'], replaced: ['재접수로 대체', 'p-gray'] };
 function bpill(c) { var b = (IDX.st[c.id] || {}).b, x = BUCKET[b] || ['-', 'p-gray']; return '<span class="pill ' + x[1] + '">' + x[0] + '</span>'; }
 function tagOf(map, k) { var x = map[k] || ['-', 'p-gray']; return '<span class="pill ' + x[1] + '">' + x[0] + '</span>'; }
 /** 영업일 경과 (주말·공휴일 제외) */
@@ -488,8 +493,14 @@ function trkList(ships, fallback, note) {
   if (!ships.length) return fallback ? '<span class="mono small muted">' + esc(String(fallback).split('\n').join(', ')) + '</span>'
     : (note ? '<span class="muted small">' + esc(note) + '</span>' : '<span class="muted">-</span>');
   return ships.map(function (x) {
+    if (x.stage === 'replaced') return '<div class="muted"><s class="mono small">' + esc(x.no) + '</s> <span class="small">재접수로 대체</span></div>';
     var lab = x.doneAt ? '완료 ' + md(x.doneAt) : (x.status || '');
-    return '<div>' + cjLink(x.no) + (lab ? ' <span class="muted small">' + esc(String(lab).slice(0, 18)) + '</span>' : '') + (x.failFlag === 'Y' ? ' <span class="pill p-red">실패</span>' : '') + '</div>';
+    // 집화 자체가 안 된 송장(조회내역 없음)만 굵게 — 간선상차·인수 등 스캔 기록이 있으면 평범하게
+    var stuck = !x.doneAt && x.stage !== 'moving' && x.failFlag === 'Y';
+    var no = stuck ? '<b style="color:var(--red)">' + cjLink(x.no) + '</b>' : cjLink(x.no);
+    return '<div>' + no + (lab ? ' <span class="muted small">' + esc(String(lab).slice(0, 18)) + '</span>' : '') +
+      (x.reissueOf ? ' <span class="pill p-partial">재발급</span>' : '') +
+      (stuck ? ' <span class="pill p-red">집화 없음</span>' : (!x.doneAt && x.stage === 'moving' ? ' <span class="pill p-blue">회수 중</span>' : '')) + '</div>';
   }).join('');
 }
 
@@ -672,7 +683,7 @@ function vReturn() {
       return '<tr><td class="nowrap mono click" data-act="case" data-id="' + esc(c.id) + '">' + esc(cid(c)) + '</td>' +
         '<td class="click" data-act="case" data-id="' + esc(c.id) + '"><b>' + esc(c.store) + '</b>' + mtagSmall(c) + '</td>' +
         '<td>' + retSn(st) + '</td><td>' + st.expected + '</td>' +
-        '<td class="small">' + trkList(st.rets, c.returnTracking, c.returnStatus ? c.returnStatus + ' · 송장 미등록' : '') + '</td><td>' + tagOf(RET_LABEL, st.ret) + '</td>' +
+        '<td class="small">' + trkList(st.retsAll, c.returnTracking, c.returnStatus ? c.returnStatus + ' · 송장 미등록' : '') + '</td><td>' + tagOf(RET_LABEL, st.ret) + '</td>' +
         '<td class="nowrap ' + (over ? 'hl' : '') + '">' + (st.retDays === null ? '-' : st.retDays + '일') + '</td>' +
         '<td><div class="row"><input class="inp mono sm" id="rt_' + esc(c.id) + '" placeholder="재접수 송장" style="width:130px"><button class="btn sm" data-act="quickReturn" data-id="' + esc(c.id) + '">추가</button>' +
         '<button class="btn sm red" data-act="writeOff" data-id="' + esc(c.id) + '" title="회수를 포기하고 손망실로 확정">손망실</button></div></td></tr>';
@@ -698,10 +709,10 @@ function vReturn() {
         '<td>' + (IDX.st[c.id].b === 'done' ? '<button class="btn sm" data-act="closeQuick" data-id="' + esc(c.id) + '">추적 종결</button>' : '') + '</td></tr>';
     }).join('');
   }
-  var note = { fail: '반품 송장은 있는데 <b>집화가 안 된 채 ' + (S.data.meta.returnFailBizDays || 2) + '영업일 이상</b> 지난 건입니다. 매장에 확인 후 재접수 송장을 넣거나, 회수를 포기할 경우 [손망실]로 확정해 주세요.',
+  var note = { fail: '반품 송장에 <b>조회내역이 전혀 없는 채로 ' + (S.data.meta.returnFailBizDays || 2) + '영업일 이상</b> 지난 건입니다. 간선상차·인수 등 스캔 기록이 있으면 회수 진행중으로 분류됩니다. 매장에 확인 후 재접수 송장을 넣거나, 회수를 포기할 경우 [손망실]로 확정해 주세요.',
     need: '출고 송장이 <b>도착 완료</b>로 확인된 건입니다. 반품 송장을 등록하면 회수 진행중으로 넘어갑니다.',
     doing: '반품 송장이 발행된 건입니다. 집화가 되면 <b>회수 중</b>, 배송완료되면 <b>회수 완료</b>로 자동으로 바뀝니다.',
-    fail: '반품 송장 등록 후 ' + (S.data.meta.returnFailBizDays || 2) + '영업일(주말·공휴일 제외)이 지나도 집화가 없는 건입니다. 매장에 확인 후 <b>재접수</b>해 주세요.',
+    fail: '반품 송장 등록 후 ' + (S.data.meta.returnFailBizDays || 2) + '영업일(주말·공휴일 제외)이 지나도 <b>조회내역이 없는</b> 건입니다. 굵게 표시된 송장이 집화가 안 된 송장입니다. 매장에 확인 후 <b>재접수</b>해 주세요.',
     short: '회수 스캔 결과 수량이 모자란 건입니다. 미회수로 확정하면 완료 처리됩니다.',
     done: '회수가 끝난 건입니다. 더 추적할 필요가 없으면 종결하세요.' }[f];
   var oldBtn = oldOnes.length ? '<button class="' + (S.showOld ? 'on' : '') + '" data-act="toggleOld">' + (S.showOld ? '오래된 건 포함' : '오래된 건 숨김') + '<span class="n">' + oldOnes.length + '</span></button>' : '';
@@ -971,11 +982,19 @@ function vSettings() {
     '<div class="note" style="margin-top:10px">볼타레스 워크스페이스에서 만든 Slack 앱의 <b>User OAuth Token</b>을 대표님이 직접 붙여넣어 주세요. 필요한 권한은 groups:history, channels:history, users:read 입니다. 토큰은 스크립트 속성에만 저장됩니다.</div></div></div>' +
     '<div class="card"><div class="hd"><h3>CJ대한통운 배송조회</h3></div><div class="bd"><div class="small muted" style="margin-bottom:8px">1시간마다 출고·반품 송장 상태를 갱신합니다. 반품이 배송완료되면 회수 입고일이 자동 기록됩니다. 마지막 ' + t(m.lastCj) + '</div>' +
     '<div class="row"><button class="btn pri" data-act="syncCj">지금 조회</button><input class="inp mono" id="trkTest" placeholder="송장번호 단건 조회" style="width:180px"><button class="btn" data-act="trackTest">조회</button></div><div id="trkOut" class="small" style="margin-top:8px"></div></div></div></div>';
+  h += '<div class="card" style="margin-top:14px"><div class="hd"><h3>Slack 회수 알림 (DM)</h3>' + (m.botReady ? '<span class="pill p-green">켜짐</span>' : '<span class="pill p-red">Bot 토큰 필요</span>') + '</div><div class="bd">' +
+    '<div class="small muted" style="margin-bottom:8px">평일 오전 9시, 대표님 DM으로 회수 실패 · 반품 재접수 현황 · 출고 배송완료 · 회수 완료를 요약해 보냅니다. 외주센터 카톡에 붙여넣을 재접수 요청 문구도 같이 옵니다. 마지막 발송 ' + t(m.lastDigest) + '</div>' +
+    '<div class="row"><input class="inp mono" id="botTok" type="password" placeholder="xoxb-… (Bot User OAuth Token)" style="flex:1;min-width:220px"><button class="btn" data-act="saveBot">토큰 저장</button>' +
+    '<button class="btn" data-act="digestPreview">미리보기</button><button class="btn pri" data-act="digestSend"' + (m.botReady ? '' : ' disabled') + '>지금 보내기</button></div>' +
+    '<div id="digestOut" style="margin-top:10px"></div>' +
+    '<div class="note" style="margin-top:10px"><b>Bot 토큰 만드는 법</b> (한 번만) — api.slack.com/apps › 기존 AS Desk 앱 › <b>OAuth &amp; Permissions</b> › Bot Token Scopes에 <span class="mono">chat:write</span> 추가 › 상단 <b>Reinstall to Workspace</b> › <b>Bot User OAuth Token</b>(xoxb-) 복사해서 위에 저장. ' +
+    '<b>App Home</b> › Show Tabs › <b>Messages Tab</b> 켜기까지 하면 앱 DM으로 알림이 옵니다.<br>재접수 인식: 회수 실패 건의 티오더 시트 <b>회수송장 칸에 재발급 번호를 추가</b>하면(기존 번호 옆에 줄바꿈) 1시간 안에 자동으로 재접수로 잡힙니다. CJ 출고송장 조회에 재발급 번호가 먼저 뜨면 그걸로도 잡힙니다.</div></div></div>';
   h += '<div class="card" style="margin-top:14px"><div class="hd"><h3>접속 정보</h3></div><div class="bd"><div class="row">' +
     '<span class="small">웹앱 URL <span class="mono">' + esc(m.webAppUrl || '-') + '</span></span><span class="small">접속 키 <span class="mono">' + esc(m.appKey || '-') + '</span></span>' +
     (EXT ? '<span class="small muted">통신 방식 ' + (ls('noPost') === '1' ? 'JSONP(GET)' : 'POST') + '</span><button class="btn sm" data-act="resetConn">이 브라우저 연결 정보 지우기</button>' : '') + '</div>' +
     '<div class="row" style="margin-top:8px"><button class="btn sm" data-act="rebuildShips">송장 다시 정리</button>' +
     '<button class="btn sm" data-act="fillSn">접수 S/N 채우기</button>' +
+    '<button class="btn sm" data-act="repairUnits">중복 유닛 병합</button>' +
     '<span class="muted small">Slack 접수의 S/N을 AS 건에 채워 회수 스캔이 매칭되게 합니다.</span></div>' +
     '<div class="note" style="margin-top:8px">GitHub Pages 등 외부 주소에서 열 때 위 두 값을 입력합니다. 키가 유출되면 setup 화면 없이도 데이터에 접근할 수 있으니, 스크립트 속성 <span class="mono">APP_KEY</span> 값을 바꾸면 즉시 차단됩니다.</div></div></div>' +
     '<div class="card" style="margin-top:14px"><div class="hd"><h3>티오더 시트 동기화</h3><a class="btn sm" target="_blank" href="' + esc(m.torderUrl) + '">시트 열기 ↗</a><a class="btn sm" target="_blank" href="' + esc(m.dbUrl) + '">AS Desk DB ↗</a></div><div class="bd">' +
@@ -1241,8 +1260,19 @@ var ACT = {
   // 설정
   backfill: function (d, b) { run('backfillSlack', { days: 150 }, function (r) { return '과거 ' + r.matched + '건 확인 · 사진 ' + r.files + '건 · 답글 ' + r.threads + '건 보강'; }, b); },
   fillSn: function (d, b) { run('fillSnFromInbox', {}, function (r) { return 'AS 건 ' + r.cases + '건 · S/N ' + r.units + '개 채움'; }, b); },
+  repairUnits: function (d, b) { run('repairUnits', {}, function (r) { return '중복 유닛 ' + r.merged + '개 병합 · ' + r.removed + '행 정리'; }, b); },
   rebuildShips: function (d, b) { run('rebuildShips', {}, function (r) { return '송장 ' + r.added + '건 정리 완료. [배송 상태 갱신]을 눌러 주세요.'; }, b); },
   resetConn: function () { ls('gasUrl', ''); ls('appKey', ''); ls('noPost', ''); location.reload(); },
+  saveBot: function (d, b) { var v = $('#botTok').value.trim(); if (!/^xoxb-/.test(v)) return toast('xoxb- 로 시작하는 Bot 토큰을 입력해 주세요.', true); run('saveSetting', { key: 'SLACK_BOT_TOKEN', value: v }, 'Bot 토큰을 저장했습니다.', b); },
+  digestPreview: function (d, b) {
+    call('digestPreview', {}).then(function (r) {
+      var html = esc(r.text).replace(/```\n?([\s\S]*?)\n?```/g, '<pre style="background:var(--bg2,#f4f4f4);padding:8px;border-radius:6px;white-space:pre-wrap">$1</pre>')
+        .replace(/\*([^*\n]+)\*/g, '<b>$1</b>').replace(/~([^~\n]+)~/g, '<s>$1</s>').replace(/`([^`\n]+)`/g, '<span class="mono">$1</span>')
+        .replace(/&lt;(https?:[^|]+)\|([^&]+)&gt;/g, '<a href="$1" target="_blank">$2</a>').replace(/\n/g, '<br>');
+      $('#digestOut').innerHTML = '<div class="note" style="line-height:1.6">' + html + '</div>';
+    }).catch(function (e) { toast(e.message, true); });
+  },
+  digestSend: function (d, b) { run('digestSend', {}, function () { return 'Slack DM으로 보냈습니다.'; }, b); },
   saveTok: function (d, b) { var v = $('#slackTok').value.trim(); if (!/^xox[pb]-/.test(v)) return toast('xoxp- 로 시작하는 토큰을 입력해 주세요.', true); run('saveSetting', { key: 'SLACK_TOKEN', value: v }, '토큰을 저장했습니다.', b); },
   trackTest: function (d, b) {
     var no = $('#trkTest').value; b.disabled = true;
