@@ -5,6 +5,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>볼타레스 AS Desk</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
 <style>
 :root{
   --bg:#f4f5f2; --panel:#ffffff; --ink:#18201c; --ink2:#4b5650; --ink3:#86908a; --line:#e3e6e1; --line2:#eef0ec;
@@ -182,6 +183,120 @@ textarea.inp{width:100%;resize:vertical}
   .list{max-height:none}
   .bar-r{grid-template-columns:100px minmax(0,1fr) 54px}
 }
+/* ===================== Toss-style theme layer ===================== */
+:root{
+  --bg:#f2f4f6; --panel:#ffffff; --ink:#191f28; --ink2:#4e5968; --ink3:#8b95a1; --line:#e5e8eb; --line2:#f2f4f6;
+  --brand:#3182f6; --brand2:#1b64da; --brandSoft:#e8f3ff;
+  --red:#f04452; --redSoft:#ffeeee; --amber:#ff8a00; --amberSoft:#fff3e0; --blue:#3182f6; --blueSoft:#e8f3ff;
+  --violet:#7b61ff; --violetSoft:#f1edff; --gray:#6b7684; --graySoft:#f2f4f6; --green:#1fb86c; --greenSoft:#e5f8ee;
+  --r:20px; --sh:0 1px 3px rgba(0,27,55,.04),0 4px 16px rgba(0,27,55,.04);
+}
+html,body{font:15px/1.55 "Pretendard Variable",Pretendard,-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;letter-spacing:-.2px;-webkit-font-smoothing:antialiased}
+a{color:var(--brand)}
+/* 사이드바 */
+.side{width:232px;background:#fff;color:var(--ink);border-right:1px solid var(--line)}
+.brand{padding:22px 20px 18px}
+.brand .logo{width:36px;height:36px;border-radius:12px;background:var(--brand);font-size:13px;box-shadow:0 4px 12px rgba(49,130,246,.3)}
+.brand b{color:var(--ink);font-size:15px;letter-spacing:-.2px} .brand small{color:var(--ink3);font-size:12px}
+.nav{padding:4px 12px;gap:4px}
+.nav button{padding:11px 12px;border-radius:12px;color:var(--ink2);font-size:15px;font-weight:500;transition:background .15s}
+.nav button:hover{background:#f2f4f6}
+.nav button.on{background:var(--brandSoft);color:var(--brand);font-weight:700}
+.nav .ic{opacity:.7} .nav button.on .ic{opacity:1}
+.nav .cnt{background:var(--red);color:#fff;border-radius:999px;padding:1px 8px;font-size:12px}
+.nav .cnt.z{background:#f2f4f6;color:var(--ink3)}
+.side .foot{color:var(--ink3);border-top:1px solid var(--line);padding:14px 20px;font-size:12px}
+/* 상단 */
+.top{background:rgba(242,244,246,.85);backdrop-filter:saturate(180%) blur(12px);-webkit-backdrop-filter:saturate(180%) blur(12px);border-bottom:none;padding:22px 32px 10px}
+.top h1{font-size:24px;font-weight:800;letter-spacing:-.6px}
+.top .sub{font-size:13.5px;color:var(--ink3)}
+#view{padding:12px 32px 80px}
+/* 버튼 */
+.btn{border:none;background:#f2f4f6;color:var(--ink2);border-radius:12px;padding:9px 16px;font-size:14px;font-weight:600;transition:background .15s,transform .05s}
+.btn:hover{background:#e5e8eb;border-color:transparent}
+.btn:active{transform:scale(.98)}
+.btn.pri{background:var(--brand);color:#fff} .btn.pri:hover{background:var(--brand2)}
+.btn.red{background:var(--redSoft);color:var(--red)} .btn.red:hover{background:#ffdede}
+.btn.sm{padding:6px 12px;font-size:13px;border-radius:10px}
+.top .btn,.tool .btn{background:#fff;box-shadow:var(--sh)} .top .btn:hover,.tool .btn:hover{background:#f9fafb}
+.tool .btn.pri{background:var(--brand);color:#fff} .tool .btn.pri:hover{background:var(--brand2)}
+.qkpi .l{margin-bottom:12px}
+/* 카드 */
+.card{border:none;border-radius:var(--r);box-shadow:var(--sh)}
+.card h3{font-size:17px;font-weight:700;letter-spacing:-.3px}
+.card .hd{padding:20px 22px 8px;border-bottom:none}
+.card .bd{padding:10px 22px 22px}
+.grid,.two,.three{gap:16px}
+/* KPI */
+.kpis{gap:14px;margin-bottom:18px}
+.kpi{border:none;border-radius:var(--r);padding:20px 22px;box-shadow:var(--sh);transition:transform .15s,box-shadow .15s}
+.kpi:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,27,55,.08)}
+.kpi .l{font-size:14px;color:var(--ink3);font-weight:600}
+.kpi .v{font-size:30px;font-weight:800;letter-spacing:-1px;margin-top:6px;font-variant-numeric:tabular-nums}
+.kpi .v small{font-size:15px;color:var(--ink3);font-weight:600}
+.kpi .d{font-size:13px;color:var(--ink3);margin-top:2px}
+.kpi .bar{display:block;left:auto;right:22px;top:24px;bottom:auto;width:10px;height:10px;border-radius:50%}
+.qkpis{gap:14px;margin-bottom:14px}
+.qkpi{border:none;border-radius:24px;padding:26px 28px;box-shadow:var(--sh)}
+.qkpi .l{font-size:15px;color:var(--ink2)}
+.qkpi .v{font-size:40px;font-weight:800;letter-spacing:-1.4px;margin-top:8px;font-variant-numeric:tabular-nums}
+.qkpi .v small{font-size:18px}
+.qkpi .d{font-size:13.5px;margin-top:4px}
+.qkpi.hot{background:linear-gradient(135deg,#fff5f5,#ffeaea);box-shadow:var(--sh);border:none}
+.qkpi.hot .l,.qkpi.hot .v{color:var(--red)}
+/* 태그 */
+.pill{padding:3px 10px;border-radius:8px;font-size:12.5px;font-weight:700;line-height:18px}
+.p-dispose{background:#fff6e0;color:#c77700} .p-arrived{background:#e3f7f4;color:#0e9f8a} .p-partial{background:#fff0e6;color:#e5600b}
+.mtag{border-radius:6px;font-size:11px;padding:1px 7px}
+.m-P20BOTA25{background:#e8f3ff;color:#1b64da} .m-P20VA{background:#f1edff;color:#6a4fe0}
+/* 표 */
+table.t{font-size:14px}
+table.t th{background:#fff;color:var(--ink3);font-size:13px;font-weight:600;padding:12px 14px;border-bottom:1px solid var(--line)}
+table.t td{padding:13px 14px;border-bottom:1px solid #f2f4f6}
+table.t tr.click:hover td{background:#f9fafb}
+/* 탭 = 세그먼트 */
+.tabs{background:#e9ecef;border-radius:14px;padding:4px;gap:2px;display:inline-flex;margin-bottom:16px}
+.tool .tabs{margin-bottom:0}
+.tabs button{border:none;background:transparent;border-radius:10px;padding:8px 14px;font-size:14px;font-weight:600;color:var(--ink3)}
+.tabs button:hover{color:var(--ink2)}
+.tabs button.on{background:#fff;color:var(--ink);box-shadow:0 1px 4px rgba(0,27,55,.1)}
+.tabs button .n{font-weight:700;color:var(--brand);opacity:1}
+.tabs button.on .n{color:var(--brand)}
+/* 입력 */
+.inp,select.inp,textarea.inp{border:1px solid transparent;background:#f2f4f6;border-radius:12px;padding:10px 14px;font-size:14px}
+.card .inp{background:#f2f4f6}
+.tool .inp,.tool select.inp{background:#fff;box-shadow:var(--sh)}
+.inp:focus,textarea.inp:focus{outline:none;border-color:var(--brand);background:#fff;box-shadow:0 0 0 3px rgba(49,130,246,.15)}
+/* 목록 */
+.li{padding:14px 18px;border-bottom:1px solid #f2f4f6}
+.li:hover{background:#f9fafb} .li.on{background:var(--brandSoft);box-shadow:inset 3px 0 0 var(--brand)}
+.li .r1 b{font-size:15px}
+.li .r2{font-size:13px}
+/* 기타 */
+.note{background:#f9fafb;border:none;border-radius:14px;padding:14px 16px;font-size:13.5px;color:var(--ink2)}
+.pre{background:#f9fafb;border:none;border-radius:12px}
+.flag{border-radius:10px} .chip{border:none;background:#f2f4f6;border-radius:10px;padding:6px 12px;font-weight:600;color:var(--ink2)}
+.chip.on{background:var(--brand);color:#fff}
+.snchip{border:none;background:#f2f4f6;border-radius:10px}
+.sec{border-top:1px solid #f2f4f6}
+.drawer{border-radius:24px 0 0 24px}
+.drawer .dh{border-bottom:1px solid #f2f4f6;padding:22px 26px}
+.drawer .db{padding:6px 26px 34px}
+.drawer-bg,.modal-bg{background:rgba(0,19,43,.35);backdrop-filter:blur(2px)}
+.modal{border-radius:24px}
+.modal .mh,.modal .mf{border-color:#f2f4f6}
+.toast{background:#191f28;border-radius:14px;padding:12px 20px;font-size:14px;font-weight:600}
+.toast.err{background:var(--red)}
+.bar-r .tr{height:10px;border-radius:999px;background:#f2f4f6}
+.bar-r .tr span{border-radius:999px}
+.bar-r{font-size:13.5px;gap:10px}
+.cols .stk{border-radius:8px 8px 0 0;max-width:34px}
+.cols .num{font-weight:700}
+.legend{font-size:13px} .legend i{border-radius:4px}
+.scanrow.ok{background:#f0faf5}.scanrow.dup{background:#fff8eb}.scanrow.unknown{background:#fff2f3}
+.step.ok:before{background:var(--brand)} .step.ok i{border-color:var(--brand);background:var(--brand)}
+.gal .ph{border-radius:14px;border:none}
+@media (max-width:860px){.side{border-right:none;border-bottom:1px solid var(--line)} .top{padding:14px 16px 8px} #view{padding:10px 16px 60px}}
 </style>
 </head>
 <body>
@@ -450,12 +565,12 @@ function vHome() {
     return '<div class="kpi" data-act="' + act[0] + '" data-v="' + (act[1] || '') + '"><div class="bar" style="background:' + color + '"></div><div class="l">' + label + '</div><div class="v">' + v + '<small>' + unit + '</small></div><div class="d">' + desc + '</div></div>';
   };
   var html = '<div class="kpis">' +
-    kp('신규 인입', k.inboxNew, '건', 'Slack 접수 · 결정 필요', '#e8a33d', ['go', 'inbox']) +
-    kp('출고 대기', k.ship_wait, '건', '교환품 발송 · 송장 입력 전', '#b7791f', ['ship', 'wait']) +
-    kp('회수 필요', k.ret_need, '건', '출고 도착 · 반품 송장 없음', '#c2412d', ['ret', 'need']) +
-    kp('회수 진행중', k.ret_doing, '건', '반품 송장 발행 · 수거 대기', '#2c5d9e', ['ret', 'doing']) +
-    kp('회수 실패', k.ret_fail, '건', (k.ret_fail ? '<b style="color:var(--red)">재접수 필요</b>' : '정상'), '#8f2c1d', ['ret', 'fail']) +
-    kp('판정 대기', k.inspectUnits, '개', (k.shortUnits ? '<b style="color:var(--red)">미회수 ' + k.shortUnits + 'EA</b> · ' : '') + '스캔 완료 · 검사 전', '#6b4fa3', ['go', 'inspect']) + '</div>';
+    kp('신규 인입', k.inboxNew, '건', 'Slack 접수 · 결정 필요', '#ff8a00', ['go', 'inbox']) +
+    kp('출고 대기', k.ship_wait, '건', '교환품 발송 · 송장 입력 전', '#ffa41b', ['ship', 'wait']) +
+    kp('회수 필요', k.ret_need, '건', '출고 도착 · 반품 송장 없음', '#ff7a45', ['ret', 'need']) +
+    kp('회수 진행중', k.ret_doing, '건', '반품 송장 발행 · 수거 대기', '#3182f6', ['ret', 'doing']) +
+    kp('회수 실패', k.ret_fail, '건', (k.ret_fail ? '<b style="color:var(--red)">재접수 필요</b>' : '정상'), '#f04452', ['ret', 'fail']) +
+    kp('판정 대기', k.inspectUnits, '개', (k.shortUnits ? '<b style="color:var(--red)">미회수 ' + k.shortUnits + 'EA</b> · ' : '') + '스캔 완료 · 검사 전', '#7b61ff', ['go', 'inspect']) + '</div>';
   var order = { ret_fail: 0, ret_need: 1, ship_wait: 2, ret_short: 3, judge: 4, dispose: 5, ret_doing: 6, shipping: 7 };
   var act = S.data.cases.filter(function (c) { return order[(IDX.st[c.id] || {}).b] !== undefined; })
     .sort(function (a, b) {
@@ -934,30 +1049,41 @@ function vAnalysis() {
   var reAs = units.filter(function (u) { var o = outMap[u.recvSn || u.origSn]; return o && o.caseId !== u.caseId; });
   var pct = function (a, b) { return b ? Math.round(a / b * 1000) / 10 : 0; };
   var pct2 = function (a, b) { return b ? (Math.round(a / b * 10000) / 100).toFixed(2) : '-'; };
-  // 납품 대비 품질 지표 (누적 · 기간 필터 미적용)
+  // 납품 대비 품질 지표 (모델별 · 누적 · 기간 필터 미적용)
   var ST = S.data.meta.shipTotals || {};
-  var shipModels = A.model === 'all' ? ['P20BOTA25', 'P20VA'] : [A.model];
-  var shipTotal = shipModels.reduce(function (s2, m) { return s2 + (+ST[m] || 0); }, 0);
-  var shipMissing = shipModels.filter(function (m) { return !(+ST[m] > 0); });
-  var casesAll = S.data.cases.filter(function (c) { return mOk(c.model) && c.outDate; });
-  var exAll = casesAll.reduce(function (s2, c) { return s2 + (+c.qty || unitsOf(c).length || 0); }, 0);
-  var testedAll = units.filter(function (u) { return u.verdict; });
-  var badAll = testedAll.filter(function (u) { return u.verdict === '불량'; });
+  var modelOf = function (u) { var c = IDX.caseById[u.caseId] || {}; return String(u.model || c.model || '').split('/')[0]; };
+  var qStat = function (m) {
+    var ex = S.data.cases.filter(function (c) { return String(c.model || '').split('/')[0] === m && c.outDate; })
+      .reduce(function (s2, c) { return s2 + (+c.qty || unitsOf(c).length || 0); }, 0);
+    var tu = S.data.units.filter(function (u) { return u.verdict && modelOf(u) === m; });
+    var bd = tu.filter(function (u) { return u.verdict === '불량'; }).length;
+    var tp = tested.filter(function (u) { return modelOf(u) === m; }), bp = tp.filter(function (u) { return u.verdict === '불량'; }).length;
+    return { m: m, ship: +ST[m] || 0, ex: ex, tested: tu.length, bad: bd, tp: tp.length, bp: bp };
+  };
+  var QM = (A.model === 'all' ? ['P20BOTA25', 'P20VA'] : [A.model]).map(qStat);
   var fmt = function (n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','); };
   var kp = function (l, v, d) { return '<div class="kpi" style="cursor:default"><div class="l">' + l + '</div><div class="v">' + v + '</div><div class="d">' + d + '</div></div>'; };
   var h = '<div class="tool"><div class="tabs" style="margin:0">' + [['all', '전체 모델'], ['P20BOTA25', '기존 P20BOTA25'], ['P20VA', '신형 P20VA']].map(function (m) { return '<button class="' + (A.model === m[0] ? 'on' : '') + '" data-act="anModel" data-v="' + m[0] + '">' + m[1] + '</button>'; }).join('') + '</div>' +
     '<select class="inp" id="anMonths">' + [[3, '최근 3개월'], [6, '최근 6개월'], [12, '최근 12개월'], [0, '전체 기간']].map(function (x) { return '<option value="' + x[0] + '" ' + (A.months === x[0] ? 'selected' : '') + '>' + x[1] + '</option>'; }).join('') + '</select></div>';
-  var noShip = !shipTotal;
-  var shipNote = noShip ? '<a href="#" data-act="go" data-v="settings" style="color:var(--blue)">설정에서 고객사 납품 수량을 입력해 주세요 →</a>'
-    : '납품 ' + fmt(shipTotal) + 'EA 기준 · 누적' + (shipMissing.length ? ' <span style="color:var(--amber)">(' + shipMissing.join(', ') + ' 납품 수량 미입력)</span>' : '');
+  var MN = { P20BOTA25: '기존 P20BOTA25', P20VA: '신형 P20VA' };
+  var setLink = '<a href="#" data-act="go" data-v="settings" style="color:var(--blue)">설정에서 납품 수량 입력 →</a>';
+  var cell = function (q, kind) {
+    var head = QM.length > 1 ? '<div class="small" style="font-weight:700;opacity:.8">' + MN[q.m] + '</div>' : '';
+    if (kind === 'ship') return '<div>' + head + '<div class="v">' + (q.ship ? fmt(q.ship) : '-') + '<small>EA</small></div>' +
+      '<div class="d">' + (q.ship ? 'AS 교환 ' + fmt(q.ex) + 'EA (납품 대비 ' + pct2(q.ex, q.ship) + '%)' : setLink) + '</div></div>';
+    var est = q.ship && q.tested && q.ex > q.tested ? '<br>미검사 교환분 포함 추정 약 <b>' + pct2(q.ex * q.bad / q.tested, q.ship) + '%</b>' : '';
+    return '<div>' + head + '<div class="v">' + (q.ship ? pct2(q.bad, q.ship) : '-') + '<small>%</small></div>' +
+      '<div class="d">확정 불량 ' + fmt(q.bad) + 'EA / 납품 ' + (q.ship ? fmt(q.ship) : '-') + 'EA' + est + '</div></div>';
+  };
+  var split = function (kind) { return '<div style="display:grid;grid-template-columns:repeat(' + QM.length + ',minmax(0,1fr));gap:16px">' + QM.map(function (q) { return cell(q, kind); }).join('') + '</div>'; };
   h += '<div class="qkpis">' +
-    '<div class="qkpi"><div class="l">전체 납품 수량 <span class="muted small" style="font-weight:500">고객사 누적 · ' + (A.model === 'all' ? '전체 모델' : A.model) + '</span></div><div class="v">' + (noShip ? '-' : fmt(shipTotal)) + '<small>EA</small></div>' +
-    '<div class="d">' + (noShip ? shipNote : 'AS 교환 ' + fmt(exAll) + 'EA (납품 대비 ' + pct2(exAll, shipTotal) + '%)' + (shipMissing.length ? ' <span style="color:var(--amber)">· ' + shipMissing.join(', ') + ' 납품 수량 미입력</span>' : '')) + '</div></div>' +
-    '<div class="qkpi hot"><div class="l">실제 불량률 <span class="small" style="font-weight:500;opacity:.8">검사 확정 불량 ÷ 전체 납품</span></div><div class="v">' + (noShip ? '-' : pct2(badAll.length, shipTotal)) + '<small>%</small></div>' +
-    '<div class="d">확정 불량 ' + fmt(badAll.length) + 'EA / 납품 ' + (noShip ? '-' : fmt(shipTotal)) + 'EA · 누적' +
-    (!noShip && testedAll.length && exAll > testedAll.length ? ' · 미검사 교환분 포함 추정 약 <b>' + pct2(exAll * badAll.length / testedAll.length, shipTotal) + '%</b>' : '') + '</div></div></div>';
+    '<div class="qkpi"><div class="l">전체 납품 수량 <span class="muted small" style="font-weight:500">고객사 누적 · 모델별</span></div>' + split('ship') + '</div>' +
+    '<div class="qkpi hot"><div class="l">실제 불량률 <span class="small" style="font-weight:500;opacity:.8">검사 확정 불량 ÷ 납품 · 누적 · 모델별</span></div>' + split('rate') + '</div></div>';
+  var exSub = QM.length > 1
+    ? QM.map(function (q) { return q.m + ' 실제 불량 <b style="color:var(--red)">' + pct(q.bp, q.tp) + '%</b>'; }).join(' · ')
+    : qty + 'EA · 그중 실제 불량 <b style="color:var(--red)">' + pct(bad.length, tested.length) + '%</b>';
   h += '<div class="kpis" style="grid-template-columns:repeat(5,minmax(0,1fr))">' +
-    kp('교환 출고', cases.length + '<small>건</small>', qty + 'EA · 그중 실제 불량 <b style="color:var(--red)">' + pct(bad.length, tested.length) + '%</b>') +
+    kp('교환 출고', cases.length + '<small>건</small>' + (QM.length > 1 ? ' <small>' + qty + 'EA</small>' : ''), exSub) +
     kp('회수 검사', tested.length + '<small>EA</small>', '불량 ' + bad.length + ' · 정상 ' + ok.length) +
     kp('NTF(정상) 비율', pct(ok.length, tested.length) + '<small>%</small>', '교환했지만 재현 안 됨') +
     kp('방어율', pct(defended, inb.length) + '<small>%</small>', 'Slack 인입 ' + inb.length + '건 중 ' + defended) + kp('회수 리드타임', (med === null ? '-' : med) + '<small>일</small>', '출고→회수 입고 중앙값') + '</div>';
@@ -965,32 +1091,41 @@ function vAnalysis() {
   var ms = months || monthsBack(12);
   var byM = function (arr, keyFn, filt) { var o = {}; arr.forEach(function (x) { if (filt && !filt(x)) return; var k = String(keyFn(x) || '').slice(0, 7); o[k] = (o[k] || 0) + 1; }); return o; };
   var allUnits = S.data.units;
-  var exSeries = [['P20BOTA25', '기존 P20BOTA25', '#3a5680'], ['P20VA', '신형 P20VA', '#8a3a78']].filter(function (m) { return A.model === 'all' || A.model === m[0]; }).map(function (m) {
+  var exSeries = [['P20BOTA25', '기존 P20BOTA25', '#3182f6'], ['P20VA', '신형 P20VA', '#8b6cff']].filter(function (m) { return A.model === 'all' || A.model === m[0]; }).map(function (m) {
     return { name: m[1], color: m[2], vals: byM(allUnits, function (u) { return (IDX.caseById[u.caseId] || {}).outDate; }, function (u) { var c = IDX.caseById[u.caseId] || {}; return String(u.model || c.model).split('/')[0] === m[0] && c.outDate; }) };
   });
-  var vSeries = [['불량', '#c2412d'], ['정상', '#2f7a4f'], ['외력/사용자 과실', '#b7791f']].map(function (v) { return { name: v[0], color: v[1], vals: byM(units, function (u) { return u.testDate; }, function (u) { return u.verdict === v[0]; }) }; });
+  var vSeries = [['불량', '#f04452'], ['정상', '#1fb86c'], ['외력/사용자 과실', '#ffa41b']].map(function (v) { return { name: v[0], color: v[1], vals: byM(units, function (u) { return u.testDate; }, function (u) { return u.verdict === v[0]; }) }; });
   h += '<div class="two" style="margin-bottom:14px"><div class="card"><div class="hd"><h3>월별 교환 출고 수량</h3></div><div class="bd">' + vcols(ms, exSeries) + '</div></div>' +
     '<div class="card"><div class="hd"><h3>월별 회수 검사 판정</h3></div><div class="bd">' + vcols(ms, vSeries) + '</div></div></div>';
   // 원인 Pareto
   var cc = {}; bad.forEach(function (u) { var k = u.cause || '미기록'; cc[k] = (cc[k] || 0) + 1; });
   var cItems = Object.keys(cc).map(function (k) { return [k, cc[k]]; }).sort(function (a, b) { return b[1] - a[1]; });
   var cum = 0;
-  var pareto = hbars(cItems, '#c2412d', bad.length, function (x) { cum += x[1]; return x[1] + ' <span class="muted">' + pct(cum, bad.length) + '%</span>'; });
+  var pareto = hbars(cItems, '#f04452', bad.length, function (x) { cum += x[1]; return x[1] + ' <span class="muted">' + pct(cum, bad.length) + '%</span>'; });
   var sc = {}; tested.forEach(function (u) { var k = u.testSymptom || '미기록'; sc[k] = sc[k] || [0, 0]; sc[k][u.verdict === '불량' ? 0 : 1]++; });
   var sItems = Object.keys(sc).map(function (k) { return [k, sc[k][0] + sc[k][1], null, sc[k]]; }).sort(function (a, b) { return b[1] - a[1]; });
   var rc = {}; cases.forEach(function (c) { var k = c.reasonCode || '미분류'; rc[k] = (rc[k] || 0) + 1; });
   h += '<div class="three" style="margin-bottom:14px"><div class="card"><div class="hd"><h3>불량 원인 Pareto</h3><span class="muted small">불량 ' + bad.length + 'EA · 누적%</span></div><div class="bd">' + (cItems.length ? pareto : '<div class="empty">데이터 없음</div>') + '</div></div>' +
-    '<div class="card"><div class="hd"><h3>검사 증상별 불량/정상</h3></div><div class="bd">' + (sItems.length ? hbars(sItems, '#6b4fa3', 0, function (x) { return '<span style="color:var(--red)">' + x[3][0] + '</span>/<span style="color:var(--green)">' + x[3][1] + '</span>'; }) : '<div class="empty">데이터 없음</div>') + '</div></div>' +
-    '<div class="card"><div class="hd"><h3>교체사유(인입 증상)</h3></div><div class="bd">' + hbars(Object.keys(rc).map(function (k) { return [k, rc[k]]; }).sort(function (a, b) { return b[1] - a[1]; }), '#2c5d9e') + '</div></div></div>';
+    '<div class="card"><div class="hd"><h3>검사 증상별 불량/정상</h3></div><div class="bd">' + (sItems.length ? hbars(sItems, '#7b61ff', 0, function (x) { return '<span style="color:var(--red)">' + x[3][0] + '</span>/<span style="color:var(--green)">' + x[3][1] + '</span>'; }) : '<div class="empty">데이터 없음</div>') + '</div></div>' +
+    '<div class="card"><div class="hd"><h3>교체사유(인입 증상)</h3></div><div class="bd">' + hbars(Object.keys(rc).map(function (k) { return [k, rc[k]]; }).sort(function (a, b) { return b[1] - a[1]; }), '#3182f6') + '</div></div></div>';
   // 차수별, 반복 매장, 재AS
   var lc = {}; tested.forEach(function (u) { var k = u.lot || '미기록'; lc[k] = lc[k] || [0, 0]; lc[k][0]++; if (u.verdict === '불량') lc[k][1]++; });
   var st = {}; cases.forEach(function (c) { var k = String(c.store).replace(/\s/g, ''); st[k] = st[k] || { name: c.store, n: 0, q: 0, bad: 0, ok: 0 }; st[k].n++; unitsOf(c).forEach(function (u) { st[k].q++; if (u.verdict === '불량') st[k].bad++; if (u.verdict === '정상') st[k].ok++; }); });
   var rep = Object.keys(st).map(function (k) { return st[k]; }).filter(function (x) { return x.n >= 2; }).sort(function (a, b) { return b.n - a.n || b.q - a.q; }).slice(0, 12);
-  h += '<div class="three"><div class="card"><div class="hd"><h3>양산 차수별 불량률</h3></div><div class="bd">' + hbars(Object.keys(lc).sort().map(function (k) { return [k, lc[k][1], null, lc[k]]; }), '#b7791f', 0, function (x) { return pct(x[3][1], x[3][0]) + '% <span class="muted">(' + x[3][1] + '/' + x[3][0] + ')</span>'; }) + '</div></div>' +
+  h += '<div class="three"><div class="card"><div class="hd"><h3>양산 차수별 불량률</h3></div><div class="bd">' + hbars(Object.keys(lc).sort().map(function (k) { return [k, lc[k][1], null, lc[k]]; }), '#ffa41b', 0, function (x) { return pct(x[3][1], x[3][0]) + '% <span class="muted">(' + x[3][1] + '/' + x[3][0] + ')</span>'; }) + '</div></div>' +
     '<div class="card"><div class="hd"><h3>반복 AS 매장</h3><span class="muted small">2건 이상</span></div>' + (rep.length ? '<div class="tw"><table class="t"><thead><tr><th>매장</th><th>건</th><th>EA</th><th>불량</th><th>정상</th></tr></thead><tbody>' +
       rep.map(function (x) { return '<tr class="click" data-act="searchStore" data-v="' + esc(x.name) + '"><td>' + esc(x.name) + '</td><td>' + x.n + '</td><td>' + x.q + '</td><td style="color:var(--red)">' + x.bad + '</td><td style="color:var(--green)">' + x.ok + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<div class="empty">없음</div>') + '</div>' +
-    '<div class="card"><div class="hd"><h3>재AS — 우리 교환품 재불량</h3><span class="muted small">' + reAs.length + 'EA</span></div>' + (reAs.length ? '<div class="tw"><table class="t"><thead><tr><th>S/N</th><th>출고</th><th>재접수</th><th>판정</th></tr></thead><tbody>' +
-      reAs.slice(0, 30).map(function (u) { var o = outMap[u.recvSn || u.origSn], c0 = IDX.caseById[o.caseId] || {}, c1 = IDX.caseById[u.caseId] || {}; return '<tr class="click" data-act="case" data-id="' + esc(c1.id) + '"><td class="mono small">' + esc(u.recvSn || u.origSn) + '</td><td class="small">' + esc(cid(c0)) + ' ' + md(c0.outDate) + '</td><td class="small">' + esc(cid(c1)) + ' ' + md(c1.outDate || c1.createdAt) + '</td><td>' + esc(u.verdict || '-') + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<div class="empty">없음</div>') + '</div></div>';
+    (function () {
+      var vOrd = { '불량': 0, '외력/사용자 과실': 1, '정상': 2 };
+      var rs = reAs.slice().sort(function (a, b) { return (a.verdict in vOrd ? vOrd[a.verdict] : 3) - (b.verdict in vOrd ? vOrd[b.verdict] : 3); });
+      var nB = reAs.filter(function (u) { return u.verdict === '불량'; }).length, nO = reAs.filter(function (u) { return u.verdict === '정상'; }).length, nW = reAs.filter(function (u) { return !u.verdict; }).length;
+      var vp = function (v) { return !v ? '<span class="pill p-gray">검수 전</span>' : '<span class="pill ' + (v === '불량' ? 'p-red' : v === '정상' ? 'p-green' : 'p-ship') + '">' + esc(v) + '</span>'; };
+      var res = function (u) { var t = u.cause || u.testSymptom || ''; return t ? esc(t) : '<span class="muted">-</span>'; };
+      return '<div class="card"><div class="hd"><h3>재AS 교환품</h3><span class="muted small" style="white-space:nowrap">' + reAs.length + 'EA · <span style="color:var(--red)">불량 ' + nB + '</span> · 정상 ' + nO + ' · 검수 전 ' + nW + '</span></div>' +
+        (reAs.length ? '<div class="tw"><table class="t"><thead><tr><th>S/N</th><th>판정</th><th>검수 결과</th></tr></thead><tbody>' +
+          rs.slice(0, 30).map(function (u) { var c1 = IDX.caseById[u.caseId] || {}; return '<tr class="click" data-act="case" data-id="' + esc(c1.id) + '"><td class="mono small">' + esc(u.recvSn || u.origSn) + '</td><td>' + vp(u.verdict) + '</td><td class="small">' + res(u) + '</td></tr>'; }).join('') +
+          '</tbody></table></div>' : '<div class="empty">없음</div>') + '</div>';
+    })() + '</div>';
   // 엔지니어링 코멘트
   var top = cItems[0];
   var notes = [];
