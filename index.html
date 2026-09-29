@@ -378,6 +378,7 @@ function cjLink(no) { return '<a class="mono" target="_blank" href="https://trac
 var EXT = !(window.google && google.script && google.script.run) && !window.__devApi;
 function call(action, payload) {
   var body = { action: action, payload: payload || {}, actor: me() };
+  if (action !== 'bootstrap') body.rid = Date.now().toString(36) + Math.random().toString(36).slice(2, 10);   // 중복 처리 방지 키
   return new Promise(function (res, rej) {
     var ok = function (s) {
       var r = typeof s === 'string' ? JSON.parse(s) : s;
