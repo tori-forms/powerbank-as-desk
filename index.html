@@ -301,6 +301,66 @@ table.t tr.click:hover td{background:#f9fafb}
 .step.ok:before{background:var(--brand)} .step.ok i{border-color:var(--brand);background:var(--brand)}
 .gal .ph{border-radius:14px;border:none}
 @media (max-width:860px){.side{border-right:none;border-bottom:1px solid var(--line)} .top{padding:14px 16px 8px} #view{padding:10px 16px 60px}}
+/* ===================== 모바일 ===================== */
+@media (max-width:860px){
+  html,body{-webkit-text-size-adjust:100%}
+  #app{display:block}
+  .side{position:sticky;top:0;z-index:15;width:auto;height:auto;flex-direction:row;background:rgba(255,255,255,.96);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);box-shadow:0 1px 0 var(--line);border:none}
+  .side .brand{display:none}
+  .nav{flex-direction:row;gap:4px;padding:8px 12px;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:none;width:100%;-webkit-overflow-scrolling:touch}
+  .nav::-webkit-scrollbar{display:none}
+  .nav button{flex:none;padding:8px 12px;font-size:14px;border-radius:999px;white-space:nowrap;gap:6px}
+  .nav .ic{display:none}
+  .nav .cnt{margin-left:2px;padding:0 6px;font-size:11px;min-width:18px}
+  .top{position:static;padding:14px 16px 6px;background:transparent;backdrop-filter:none;-webkit-backdrop-filter:none}
+  .top h1{font-size:21px}
+  #view{padding:6px 12px 90px}
+  .split,.split.home,.two,.three{grid-template-columns:minmax(0,1fr)!important}
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px}
+  .kpi{padding:14px 16px}
+  .kpi .l{font-size:13px} .kpi .v{font-size:24px} .kpi .d{font-size:12px}
+  .kpi .bar{right:14px;top:18px}
+  .qkpi{padding:18px 18px} .qkpi .v{font-size:32px}
+  .card .hd{padding:16px 16px 6px;flex-wrap:wrap;row-gap:2px}
+  .card .hd h3{white-space:nowrap}
+  .card .bd{padding:8px 16px 16px}
+  .tool{gap:6px}
+  .tool > .inp,.tool > input.inp{flex:1 1 100%;width:auto!important}
+  .tool .tabs,.tabs{display:flex;flex-wrap:nowrap;overflow-x:auto;max-width:100%;scrollbar-width:none}
+  .tabs::-webkit-scrollbar{display:none}
+  .tabs button{flex:none;white-space:nowrap;padding:8px 12px;font-size:13.5px}
+  .row > .inp{flex:1 1 140px}
+  .row > label.nowrap{flex-wrap:wrap}
+  .btn{padding:10px 14px} .btn.sm{padding:7px 11px}
+  .inp,select.inp,textarea.inp{font-size:16px}   /* iOS 확대 방지 */
+  .list{max-height:46vh}
+  .li{padding:12px 14px}
+  .kv{grid-template-columns:84px minmax(0,1fr)}
+  .drawer{width:100%;border-radius:0}
+  .drawer .dh{padding:14px 16px}
+  .drawer .db{padding:4px 16px 40px}
+  .modal-bg{padding:0;place-items:end stretch}
+  .modal{width:100%;max-height:92vh;border-radius:20px 20px 0 0}
+  .gal .ph{width:calc(33.3% - 6px);height:auto;aspect-ratio:1}
+  .bar-r{grid-template-columns:88px minmax(0,1fr) 50px}
+  #staleBadge{right:12px;bottom:12px}
+  #toast{bottom:24px;width:calc(100% - 32px)}
+}
+/* 모바일: 표 → 카드 (라벨은 labelTables_가 th에서 붙임) */
+@media (max-width:640px){
+  table.t:not(.keep),table.t:not(.keep) tbody{display:block;width:100%}
+  table.t:not(.keep) thead{display:none}
+  table.t:not(.keep) tr{display:flex;flex-wrap:wrap;gap:6px 16px;padding:12px 2px;border-bottom:1px solid var(--line)}
+  table.t:not(.keep) tr.click:active{background:#f2f4f6}
+  table.t:not(.keep) td{display:block;border:none!important;padding:0!important;min-width:0;max-width:100%;font-size:14px}
+  table.t:not(.keep) td[data-l]::before{content:attr(data-l);display:block;font-size:11px;font-weight:600;color:var(--ink3);margin-bottom:1px;white-space:nowrap}
+  table.t:not(.keep) td.wide,table.t:not(.keep) td[colspan]{flex:1 1 100%}
+  table.t:not(.keep) td:empty{display:none}
+  table.t:not(.keep) td.lead{flex:1 1 100%;font-size:15px;order:-1}
+  table.t:not(.keep) td.lead::before{display:none!important}
+  .card .tw.cardy{padding:0 16px 6px}
+  table.t.keep th,table.t.keep td{padding:10px 8px}
+}
 </style>
 </head>
 <body>
@@ -346,6 +406,34 @@ var OPINION_TPL = [
 var DEFAULT_DISP = { '불량': '폐기', '정상': '양품화/샘플', '외력/사용자 과실': '폐기' };
 
 function $(s, r) { return (r || document).querySelector(s); }
+/** 모바일 카드형 표: th 제목을 각 td의 data-l로 복사 (새로 그려진 표만) */
+var LEAD_TH_ = { '매장': 1, 'S/N 구간': 1, '구간': 1, '차수': 1 };
+function labelTables_(root) {
+  (root || document).querySelectorAll('table.t:not([data-lb])').forEach(function (t) {
+    t.setAttribute('data-lb', '1');
+    var hs = [], hr = t.querySelector('thead tr');
+    if (hr) Array.prototype.forEach.call(hr.children, function (th) { var n = +th.getAttribute('colspan') || 1, tx = th.textContent.trim(); for (var k = 0; k < n; k++) hs.push(tx); });
+    if (hs.length <= 5) { t.classList.add('keep'); return; }
+    var tw = t.closest('.tw'); if (tw) tw.classList.add('cardy');
+    Array.prototype.forEach.call(t.tBodies, function (tb) {
+      Array.prototype.forEach.call(tb.rows, function (tr) {
+        var ci = 0;
+        Array.prototype.forEach.call(tr.cells, function (td) {
+          var n = td.colSpan || 1;
+          if (n === 1 && hs[ci]) { td.setAttribute('data-l', hs[ci]); if (LEAD_TH_[hs[ci]]) td.classList.add('lead'); }
+          ci += n;
+        });
+      });
+    });
+  });
+}
+if (window.MutationObserver) {
+  var lbPend_ = false;
+  new MutationObserver(function () {
+    if (lbPend_) return; lbPend_ = true;
+    (window.requestAnimationFrame || setTimeout)(function () { lbPend_ = false; labelTables_(); });
+  }).observe(document.documentElement, { childList: true, subtree: true });
+}
 function $$(s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); }
 function esc(v) { return String(v === undefined || v === null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 function ls(k, v) { try { if (v === undefined) return localStorage.getItem('asdesk.' + k); localStorage.setItem('asdesk.' + k, v); } catch (e) { return null; } }
@@ -636,6 +724,7 @@ var VIEWS = [
   ['home', '▦', '대시보드'], ['inbox', '✉', '인입함'], ['ship', '⇢', '출고'], ['ret', '⇠', '회수'], ['inspect', '⚗', '회수분 검사'],
   ['stock', '▣', '교체 재고'], ['analysis', '▤', '불량 분석'], ['settings', '⚙', '설정·동기화']
 ];
+function isMobile_() { return window.matchMedia ? window.matchMedia('(max-width:860px)').matches : window.innerWidth <= 860; }
 function render() {
   if (GATED || !$('#nav')) return;
   var k = counts();
@@ -655,6 +744,11 @@ function render() {
   var fn = { home: vHome, inbox: vInbox, ship: vShip, ret: vReturn, inspect: vInspect, stock: vStock, analysis: vAnalysis, settings: vSettings }[S.view];
   $('#view').innerHTML = fn();
   if (S.view === 'inbox') { loadInboxDetail(); setTimeout(loadSlackImgs, 30); }
+  if (isMobile_()) {
+    var nb = $('#nav button.on'); if (nb && nb.scrollIntoView) nb.scrollIntoView({ block: 'nearest', inline: 'center' });
+    if (S.view === 'inbox' && S.inboxTap) { var dt = $('#inboxDetailAnchor'); if (dt) dt.scrollIntoView({ block: 'start', behavior: 'smooth' }); }
+  }
+  S.inboxTap = false;
   if (S.caseSel) openCase(S.caseSel, true);
 }
 /* ======================= 홈 ======================= */
@@ -791,7 +885,7 @@ function vInbox() {
     '<button class="btn" data-act="syncSlack">⟳ Slack 동기화</button></div>' +
     inboxSummary(all, inGroup) +
     '<div class="split"><div class="card list">' + (list.length ? list.map(inboxLi).join('') : '<div class="empty">' + (S.data.meta.slackReady ? (S.inboxFilter === '오늘 인입' ? '오늘 들어온 AS 접수가 없습니다.' + ['결정 대기', '시트 입력 대기'].map(function (g) { var n = all.filter(function (i) { return inGroup(i, g); }).length; return n ? '<br><button class="btn sm" style="margin-top:8px" data-act="inboxFilter" data-v="' + g + '">' + g + ' ' + n + '건 보기</button>' : ''; }).join('') : '해당 인입이 없습니다.') : 'Slack이 아직 연결되지 않았습니다. [설정·동기화]에서 토큰을 저장해 주세요.') + '</div>') + '</div>' +
-    '<div>' + (sel ? inboxDetail(sel) : '<div class="card"><div class="empty">왼쪽에서 인입 건을 선택해 주세요.</div></div>') + '</div></div>';
+    '<div id="inboxDetailAnchor" style="scroll-margin-top:64px">' + (sel && isMobile_() ? '<button class="btn sm" style="margin-bottom:8px" data-act="toTop">↑ 목록으로</button>' : '') + (sel ? inboxDetail(sel) : '<div class="card"><div class="empty">' + (isMobile_() ? '위 목록에서' : '왼쪽에서') + ' 인입 건을 선택해 주세요.</div></div>') + '</div></div>';
 }
 /** 오늘 접수 요약 + 남은 할 일 한 줄 */
 function inboxSummary(all, inGroup) {
@@ -1612,7 +1706,8 @@ var ACT = {
   },
   linkGo: function (d, el) { run('linkInbox', { id: d.id, caseId: d.cid }, 'AS 건에 연결했습니다.', el).then(function () { closeModal(); }); },
   inboxFilter: function (d) { S.inboxFilter = d.v; S.inboxSel = null; render(); },
-  inboxSel: function (d) { if (S.view !== 'inbox') { S.view = 'inbox'; S.inboxFilter = '전체'; } S.inboxSel = d.id; render(); },
+  toTop: function () { window.scrollTo({ top: 0, behavior: 'smooth' }); },
+  inboxSel: function (d) { if (S.view !== 'inbox') { S.view = 'inbox'; S.inboxFilter = '전체'; } else S.inboxTap = true; S.inboxSel = d.id; render(); },
   case: function (d) { closeModal(); openCase(d.id); },
   closeDrawer: closeDrawer,
   closeModal: closeModal,
