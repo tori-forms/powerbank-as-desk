@@ -143,6 +143,7 @@ textarea.inp{width:100%;resize:vertical}
 .toast{background:#1b2a24;color:#fff;padding:9px 16px;border-radius:9px;font-size:13px;box-shadow:0 8px 20px rgba(0,0,0,.2)}
 .toast.err{background:#8f2c1d}
 .loading{padding:60px;text-align:center;color:var(--ink3)}
+.lotTag{display:inline-block;font-family:inherit;font-size:11px;font-weight:600;padding:0 6px;border-radius:6px;background:var(--amberSoft,#fdf3e1);color:var(--amber,#b7791f);margin-left:4px;vertical-align:1px}
 #staleBadge{position:fixed;right:18px;bottom:16px;z-index:60;background:var(--panel);color:var(--ink3);border:1px solid var(--line);font-size:12px;padding:4px 10px;border-radius:999px;display:flex;align-items:center;gap:6px;white-space:nowrap}
 #staleBadge .spin{width:10px;height:10px;border-width:2px}
 .oldtog{margin:-4px 0 12px;font-size:13px;color:var(--ink3)}.oldtog button{background:none;border:0;color:var(--brand,#2563eb);cursor:pointer;font-size:13px;padding:0 0 0 6px;text-decoration:underline}
@@ -698,11 +699,20 @@ function progTag(st) {
   if (!st.expected) return '-';
   return '<span class="prog ' + (st.scanned >= st.expected ? 'full' : st.scanned ? 'short' : '') + '">' + st.scanned + '/' + st.expected + '</span>';
 }
+/** 양산 차수: S/N → 등록된 차수 */
+function lotOf(sn) {
+  var sp = snSplit(sn); if (!sp) return null;
+  var L2 = S.data.lots || [];
+  for (var i = 0; i < L2.length; i++) { var r = L2[i]; if (r.prefix === sp.prefix && +r.digits === sp.digits && sp.num >= +r.fromNo && sp.num <= +r.toNo) return r; }
+  return null;
+}
+function lotName(u) { var l = lotOf(u.recvSn || u.origSn); return l ? l.name : (u.lot || ''); }
+function lotTag(sn) { var l = lotOf(sn); return l ? ' <span class="lotTag" title="' + esc(stockSn(l, l.fromNo) + ' ~ ' + stockSn(l, l.toNo)) + '">' + esc(l.name) + '</span>' : ''; }
 function snList(us, key, max) {
   var v = us.map(function (u) { return u[key]; }).filter(String);
   if (!v.length) return '<span class="muted">-</span>';
   max = max || 3;
-  return '<span class="mono small">' + v.slice(0, max).map(esc).join('<br>') + (v.length > max ? '<br><span class="muted">외 ' + (v.length - max) + '개</span>' : '') + '</span>';
+  return '<span class="mono small">' + v.slice(0, max).map(function (x) { return esc(x) + lotTag(x); }).join('<br>') + (v.length > max ? '<br><span class="muted">외 ' + (v.length - max) + '개</span>' : '') + '</span>';
 }
 function retSn(st) {
   var has = st.units.some(function (u) { return u.origSn; });
@@ -830,7 +840,7 @@ function inboxDetail(i) {
       return '<div class="m"><b>' + esc(m.who || '') + '</b> <span class="muted small">' + esc(String(m.at).replace('T', ' ').slice(5, 16)) + '</span><div class="t">' + esc(m.text) + '</div></div>';
     }).join('') + '</div>' : '') + '</div>';
   h += '<div class="sec"><h4>S/N ' + sns.length + '개</h4>' + (sns.length ? sns.map(function (s, k) {
-    return '<label class="snchip"><input type="checkbox" class="ibSn" value="' + esc(s) + '" ' + (open ? '' : 'disabled') + ' checked> <span class="mono">' + esc(s) + '</span> ' + mtag(modelOfSn(s)) + '</label>';
+    return '<label class="snchip"><input type="checkbox" class="ibSn" value="' + esc(s) + '" ' + (open ? '' : 'disabled') + ' checked> <span class="mono">' + esc(s) + '</span> ' + mtag(modelOfSn(s)) + lotTag(s) + '</label>';
   }).join('') : '<div class="muted small">S/N이 없습니다. 확정 후 회수 입고 시 실제 S/N을 입력해 주세요.</div>') + '</div>';
   if (open) {
     h += '<div class="sec"><h4>결정</h4><div class="row" style="margin-bottom:10px">' +
@@ -1245,7 +1255,7 @@ function vAnalysis() {
     '<div class="card"><div class="hd"><h3>검사 증상별 불량/정상</h3></div><div class="bd">' + (sItems.length ? hbars(sItems, '#7b61ff', 0, function (x) { return '<span style="color:var(--red)">' + x[3][0] + '</span>/<span style="color:var(--green)">' + x[3][1] + '</span>'; }) : '<div class="empty">데이터 없음</div>') + '</div></div>' +
     '<div class="card"><div class="hd"><h3>교체사유(인입 증상)</h3></div><div class="bd">' + hbars(Object.keys(rc).map(function (k) { return [k, rc[k]]; }).sort(function (a, b) { return b[1] - a[1]; }), '#3182f6') + '</div></div></div>';
   // 차수별, 반복 매장, 재AS
-  var lc = {}; tested.forEach(function (u) { var k = u.lot || '미기록'; lc[k] = lc[k] || [0, 0]; lc[k][0]++; if (u.verdict === '불량') lc[k][1]++; });
+  var lc = {}; tested.forEach(function (u) { var k = lotName(u) || '미기록'; lc[k] = lc[k] || [0, 0]; lc[k][0]++; if (u.verdict === '불량') lc[k][1]++; });
   var st = {}; cases.forEach(function (c) { var k = String(c.store).replace(/\s/g, ''); st[k] = st[k] || { name: c.store, n: 0, q: 0, bad: 0, ok: 0 }; st[k].n++; unitsOf(c).forEach(function (u) { st[k].q++; if (u.verdict === '불량') st[k].bad++; if (u.verdict === '정상') st[k].ok++; }); });
   var rep = Object.keys(st).map(function (k) { return st[k]; }).filter(function (x) { return x.n >= 2; }).sort(function (a, b) { return b.n - a.n || b.q - a.q; }).slice(0, 12);
   h += '<div class="three"><div class="card"><div class="hd"><h3>양산 차수별 불량률</h3></div><div class="bd">' + hbars(Object.keys(lc).sort().map(function (k) { return [k, lc[k][1], null, lc[k]]; }), '#ffa41b', 0, function (x) { return pct(x[3][1], x[3][0]) + '% <span class="muted">(' + x[3][1] + '/' + x[3][0] + ')</span>'; }) + '</div></div>' +
@@ -1262,6 +1272,7 @@ function vAnalysis() {
           rs.slice(0, 30).map(function (u) { var c1 = IDX.caseById[u.caseId] || {}; return '<tr class="click" data-act="case" data-id="' + esc(c1.id) + '"><td class="mono small">' + esc(u.recvSn || u.origSn) + '</td><td>' + vp(u.verdict) + '</td><td class="small">' + res(u) + '</td></tr>'; }).join('') +
           '</tbody></table></div>' : '<div class="empty">없음</div>') + '</div>';
     })() + '</div>';
+  h += lotCard();
   // 엔지니어링 코멘트
   var top = cItems[0];
   var notes = [];
@@ -1272,6 +1283,35 @@ function vAnalysis() {
   return h;
 }
 
+/** 양산 차수 관리 + 차수별 AS 접수 현황 */
+function lotCard() {
+  var lots = (S.data.lots || []).slice().sort(function (a, b) { return String(a.model).localeCompare(String(b.model)) || String(a.prefix).localeCompare(String(b.prefix)) || (+a.fromNo - +b.fromNo); });
+  var seen = {}, st = {}, none = 0;
+  var add = function (sn, u) {
+    if (!sn || seen[sn]) return; seen[sn] = 1;
+    var l = lotOf(sn); if (!l) { none++; return; }
+    var x = st[l.id] = st[l.id] || { n: 0, bad: 0, ok: 0 };
+    x.n++; if (u && u.verdict === '불량') x.bad++; else if (u && u.verdict === '정상') x.ok++;
+  };
+  S.data.units.forEach(function (u) { add(u.recvSn || u.origSn, u); });
+  S.data.inbox.forEach(function (i) { if (i.status === '확정' || i.status === '신규' || i.status === '보류') jparse(i.sns, []).forEach(function (sn) { add(sn, null); }); });
+  var ed = S.lotEdit && lots.filter(function (l) { return l.id === S.lotEdit; })[0];
+  var h = '<div class="card" style="margin-top:14px"><div class="hd"><h3>양산 차수</h3><span class="muted small">차수별 S/N 구간을 등록하면 인입·회수 S/N에 차수가 자동으로 붙고, 차수별 AS 접수율을 계산합니다</span></div><div class="bd">' +
+    '<div class="row"><input class="inp" id="lotName" placeholder="차수 (예: 3차)" value="' + esc(ed ? ed.name : '') + '" style="width:120px"><select class="inp" id="lotModel"><option value="P20BOTA25">기존 P20BOTA25</option><option value="P20VA"' + (ed && ed.model === 'P20VA' ? ' selected' : '') + '>신형 P20VA</option></select>' +
+    '<input class="inp mono" id="lotFrom" placeholder="시작 S/N·번호" value="' + esc(ed ? stockSn(ed, ed.fromNo) : '') + '" style="flex:1;min-width:150px"><span>~</span><input class="inp mono" id="lotTo" placeholder="끝 S/N·번호" value="' + esc(ed ? stockSn(ed, ed.toNo) : '') + '" style="flex:1;min-width:150px">' +
+    '<label class="small nowrap">생산일 <input class="inp" id="lotMade" type="date" value="' + esc(ed ? ed.madeAt : '') + '" style="width:150px"></label><input class="inp" id="lotNote" placeholder="메모 (공장·셀 등)" value="' + esc(ed ? ed.note : '') + '" style="flex:1;min-width:120px">' +
+    '<button class="btn pri" data-act="lotSave" data-id="' + esc(ed ? ed.id : '') + '">' + (ed ? '수정 저장' : '차수 등록') + '</button>' + (ed ? '<button class="btn" data-act="lotEdit" data-id="">취소</button>' : '') + '</div></div>';
+  h += lots.length ? '<div class="tw"><table class="t"><thead><tr><th>차수</th><th>모델</th><th>S/N 구간</th><th>생산일</th><th>생산 수량</th><th>AS 접수 S/N</th><th>접수율</th><th>판정 불량 / 정상</th><th>메모</th><th></th></tr></thead><tbody>' +
+    lots.map(function (l) {
+      var x = st[l.id] || { n: 0, bad: 0, ok: 0 };
+      return '<tr><td><span class="lotTag" style="margin:0">' + esc(l.name) + '</span></td><td>' + mtag(l.model) + '</td><td class="mono small">' + esc(stockSn(l, l.fromNo)) + '<br>~ ' + esc(stockSn(l, l.toNo)) + '</td>' +
+        '<td class="nowrap">' + esc(ymd(l.madeAt) || '-') + '</td><td>' + (+l.qty).toLocaleString() + '</td><td><b>' + x.n.toLocaleString() + '</b></td>' +
+        '<td>' + (+l.qty ? (x.n / +l.qty * 100).toFixed(2) + '%' : '-') + '</td><td><span style="color:var(--red)">' + x.bad + '</span> / <span style="color:var(--green)">' + x.ok + '</span></td>' +
+        '<td class="small">' + esc(l.note || '') + '</td><td class="nowrap"><button class="btn sm" data-act="lotEdit" data-id="' + esc(l.id) + '">수정</button> <button class="btn sm" data-act="lotDel" data-id="' + esc(l.id) + '">삭제</button></td></tr>';
+    }).join('') + '</tbody></table></div>' + (none ? '<div class="small muted" style="padding:10px 14px">등록된 차수에 해당하지 않는 AS S/N ' + none + '개 — 빠진 차수 구간이 있으면 추가해 주세요.</div>' : '')
+    : '<div class="empty">등록된 차수가 없습니다. 차수별 S/N 구간을 등록해 주세요.</div>';
+  return h + '</div>';
+}
 /* ======================= 설정 ======================= */
 /* ======================= 교체 재고 ======================= */
 function snSplit(sn, model) {
@@ -1335,7 +1375,7 @@ function stockCalc() {
   var noSn = [];
   if (since) S.data.cases.forEach(function (c) {
     if (!c.outDate || c.outDate < since || !String(c.outTracking || '').trim()) return;
-    var us = IDX.units[c.id] || [], withSn = us.filter(function (u) { return u.outSn; }).length, q = +c.qty || us.length;   // 출고 수량(시트) 기준 — 중복 유닛은 세지 않음
+    var us = IDX.units[c.id] || [], withSn = us.filter(function (u) { return u.outSn; }).length, q = +c.outQty || +c.qty || us.length;   // 교체 출고 수량(시트 D열) 기준 — 더 많이 회수된 건·중복 유닛은 세지 않음
     if (q > withSn) noSn.push({ c: c, n: q - withSn });
   });
   noSn.sort(function (a, b) { return String(b.c.outDate).localeCompare(String(a.c.outDate)); });
@@ -1636,6 +1676,17 @@ var ACT = {
     run('stockAdd', { model: m, from: a.sn, to: z.sn, receivedAt: $('#stDate').value, whAt: $('#stWh').checked ? $('#stDate').value : '', note: $('#stNote').value }, function (r) { return '재고 ' + (+r.stock.qty).toLocaleString() + '개 등록했습니다.'; }, b);
   },
   stockM: function (d) { S.stockM = d.v; render(); },
+  lotEdit: function (d) { S.lotEdit = d.id || null; render(); },
+  lotSave: function (d, b) {
+    var m = $('#lotModel').value, a = snSplit($('#lotFrom').value, m), z = snSplit($('#lotTo').value || $('#lotFrom').value, m);
+    if (!a || !z) return toast('S/N을 확인해 주세요. P20VA는 전체 S/N으로 입력해 주세요.', true);
+    run('lotSave', { id: d.id || '', name: $('#lotName').value, model: m, from: a.sn, to: z.sn, madeAt: $('#lotMade').value, note: $('#lotNote').value },
+      function (r) { S.lotEdit = null; return r.lot.name + ' 차수를 저장했습니다. (' + (+r.lot.qty).toLocaleString() + '개)'; }, b);
+  },
+  lotDel: function (d, b) {
+    if (!b.dataset.sure) { b.dataset.sure = '1'; b.textContent = '한 번 더 누르면 삭제'; b.classList.add('red'); return; }
+    run('lotDelete', { id: d.id }, '차수를 삭제했습니다.', b);
+  },
   editOpen: function (d) { S.editOpen = d.id || null; S.countOpen = null; render(); },
   stockEdit: function (d, b) {
     run('stockEdit', { id: d.id, from: $('#edFrom').value, to: $('#edTo').value, receivedAt: $('#edRecv').value, whAt: $('#edWh').value, note: $('#edNote').value },
