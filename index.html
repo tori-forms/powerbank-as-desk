@@ -143,6 +143,7 @@ textarea.inp{width:100%;resize:vertical}
 .toast{background:#1b2a24;color:#fff;padding:9px 16px;border-radius:9px;font-size:13px;box-shadow:0 8px 20px rgba(0,0,0,.2)}
 .toast.err{background:#8f2c1d}
 .loading{padding:60px;text-align:center;color:var(--ink3)}
+#staleBadge{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:60;background:#1f2937;color:#fff;font-size:12px;padding:6px 12px;border-radius:999px;box-shadow:0 2px 8px rgba(0,0,0,.2);display:flex;align-items:center;gap:6px;white-space:nowrap;opacity:.92}
 .spin{display:inline-block;width:14px;height:14px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px}
 @keyframes sp{to{transform:rotate(360deg)}}
 .empty{padding:28px;text-align:center;color:var(--ink3);font-size:13px}
@@ -383,12 +384,19 @@ function call(action, payload) {
     if (!url || !body.key) { gate(); return rej(new Error('서버 주소와 접속 키를 먼저 입력해 주세요.')); }
     if (ls('noPost') === '1') return jsonp_(url, body).then(ok, rej);
     var ctl = window.AbortController ? new AbortController() : null;
-    var timer = setTimeout(function () { if (ctl) ctl.abort(); }, 7000);
+    var timedOut = false;
+    var timer = setTimeout(function () { timedOut = true; if (ctl) ctl.abort(); }, 45000);
     var opt = { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'text/plain;charset=utf-8' }, redirect: 'follow' };
     if (ctl) opt.signal = ctl.signal;
     fetch(url, opt)
       .then(function (r) { clearTimeout(timer); return r.text(); }).then(ok)
-      .catch(function () { clearTimeout(timer); ls('noPost', '1'); jsonp_(url, body).then(ok, rej); });
+      .catch(function () {
+        clearTimeout(timer);
+        // 서버가 느려서 끊긴 경우: 쓰기 작업은 다시 보내면 두 번 처리될 수 있으므로 재전송하지 않음
+        if (timedOut && action !== 'bootstrap') return rej(new Error('서버 응답이 늦습니다. 잠시 후 새로고침해서 반영됐는지 확인해 주세요.'));
+        if (!timedOut) ls('noPost', '1');
+        jsonp_(url, body).then(ok, rej);
+      });
   });
 }
 function jsonp_(url, body) {
@@ -430,12 +438,42 @@ function gate(msg) {
     ls('gasUrl', u); ls('appKey', k); location.reload();
   };
 }
+/* ---- 마지막 데이터 캐시 (IndexedDB): 열자마자 직전 화면을 보여주고 최신 데이터는 뒤에서 받아 교체 ---- */
+function idb_() {
+  return new Promise(function (res, rej) {
+    try {
+      var r = indexedDB.open('asdesk', 1);
+      r.onupgradeneeded = function () { r.result.createObjectStore('kv'); };
+      r.onsuccess = function () { res(r.result); }; r.onerror = function () { rej(r.error); };
+    } catch (e) { rej(e); }
+  });
+}
+function cacheKey_() { return 'boot|' + (ls('gasUrl') || '') + '|' + (ls('appKey') || ''); }
+function cacheGet_() {
+  return idb_().then(function (db) {
+    return new Promise(function (res) { var q = db.transaction('kv').objectStore('kv').get(cacheKey_()); q.onsuccess = function () { res(q.result || null); }; q.onerror = function () { res(null); }; });
+  }).catch(function () { return null; });
+}
+function cachePut_(d) { return idb_().then(function (db) { db.transaction('kv', 'readwrite').objectStore('kv').put({ at: Date.now(), d: d }, cacheKey_()); }).catch(function () { }); }
+function cacheClear_() { return idb_().then(function (db) { db.transaction('kv', 'readwrite').objectStore('kv').clear(); }).catch(function () { }); }
+function staleBadge(at) {
+  var el = $('#staleBadge');
+  if (!at) { if (el) el.remove(); return; }
+  if (!el) { el = document.createElement('div'); el.id = 'staleBadge'; document.body.appendChild(el); }
+  var m = Math.max(0, Math.round((Date.now() - at) / 60000));
+  el.innerHTML = '<span class="spin"></span> 최신 데이터 불러오는 중 · 지금 화면은 ' + (m < 1 ? '방금 전' : m < 60 ? m + '분 전' : Math.round(m / 60) + '시간 전') + ' 기준';
+}
+function useData_(d) { S.data = d; L = d.meta.lists; buildIndex(); render(); }
 function load(silent) {
   if (GATED) return Promise.resolve();
+  var first = !S.data;
   if (!silent && $('#view')) $('#view').innerHTML = '<div class="loading"><span class="spin"></span> 불러오는 중…</div>';
-  return call('bootstrap').then(function (d) { S.data = d; L = d.meta.lists; buildIndex(); render(); })
+  if (first) cacheGet_().then(function (c) { if (c && c.d && !S.data && !GATED) { useData_(c.d); S.stale = true; staleBadge(c.at); } });
+  return call('bootstrap').then(function (d) { S.stale = false; staleBadge(null); useData_(d); cachePut_(d); })
     .catch(function (e) {
+      staleBadge(null);
       if (GATED || !$('#view')) return;
+      if (S.data) { toast('최신 데이터를 불러오지 못했습니다: ' + e.message, true); return; }
       $('#view').innerHTML = '<div class="empty">불러오기 실패: ' + esc(e.message) + '<br><br>편집기에서 <b>setup()</b>을 먼저 실행했는지 확인해 주세요.</div>';
     });
 }
@@ -1479,7 +1517,7 @@ var ACT = {
   fillSn: function (d, b) { run('fillSnFromInbox', {}, function (r) { return 'AS 건 ' + r.cases + '건 · S/N ' + r.units + '개 채움'; }, b); },
   repairUnits: function (d, b) { run('repairUnits', {}, function (r) { return '중복 유닛 ' + r.merged + '개 병합 · ' + r.removed + '행 정리'; }, b); },
   rebuildShips: function (d, b) { run('rebuildShips', {}, function (r) { return '송장 ' + r.added + '건 정리 완료. [배송 상태 갱신]을 눌러 주세요.'; }, b); },
-  resetConn: function () { ls('gasUrl', ''); ls('appKey', ''); ls('noPost', ''); location.reload(); },
+  resetConn: function () { ls('gasUrl', ''); ls('appKey', ''); ls('noPost', ''); cacheClear_().then(function () { location.reload(); }); },
   reqDone: function (d, b) { run('requestDone', { id: d.id }, '처리 완료로 표시했습니다.', b).then(function () { if (S.caseSel) openCase(S.caseSel, true); }); },
   saveShip: function (d, b) {
     var a = $('#shipP20BOTA25').value.replace(/[,\s]/g, ''), v = $('#shipP20VA').value.replace(/[,\s]/g, '');
