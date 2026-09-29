@@ -630,7 +630,7 @@ function trkList(ships, fallback, note) {
     var no = stuck ? '<b style="color:var(--red)">' + cjLink(x.no) + '</b>' : cjLink(x.no);
     return '<div>' + no + (lab ? ' <span class="muted small">' + esc(String(lab).slice(0, 18)) + '</span>' : '') +
       (x.reissueOf ? ' <span class="pill p-partial">재발급</span>' : '') +
-      (x.reissueReqAt && !x.doneAt ? ' <span class="pill p-partial">재접수 요청 ' + md(x.reissueReqAt) + '</span>' : '') +
+      (x.reissueReqAt ? ' <span class="pill p-partial">재접수 요청 ' + md(x.reissueReqAt) + '</span>' : '') +
       (stuck ? ' <span class="pill p-red">집화 없음</span>' : (!x.doneAt && x.stage === 'moving' ? ' <span class="pill p-blue">회수 중</span>' : '')) + '</div>';
   }).join('');
 }
@@ -893,11 +893,11 @@ function caseDrawer(c) {
       '<span>' + cjLink(x.no) + ' <span class="pill ' + ((x.type === 'out' ? OUT_LABEL : RET_LABEL)[x.doneAt ? 'done' : x.stage] || ['', 'p-gray'])[1] + '">' +
       ((x.type === 'out' ? OUT_LABEL : RET_LABEL)[x.doneAt ? 'done' : x.stage] || ['-'])[0] + '</span>' +
       (x.failFlag === 'Y' && !x.reissueReqAt ? ' <span class="pill p-red">회수 실패</span>' : '') +
-      (x.reissueReqAt && !x.doneAt ? ' <span class="pill p-partial">재접수 요청 ' + md(x.reissueReqAt) + '</span>' : '') +
+      (x.reissueReqAt ? ' <span class="pill p-partial">재접수 요청 ' + md(x.reissueReqAt) + '</span>' : '') +
       (x.reissueOf ? ' <span class="pill p-partial">재발급</span>' : '') + '</span>' +
       '<span class="muted small">' + esc(x.status || '') + (x.lastAt ? ' · ' + esc(String(x.lastAt).slice(5, 16)) : '') + '</span>' +
       '<span class="row" style="gap:4px">' +
-      (x.type === 'return' && !x.doneAt && x.stage !== 'moving' ? '<button class="btn sm" data-act="reissueReq" data-no="' + esc(x.no) + '"' + (x.reissueReqAt ? ' data-cancel="1">재접수 취소' : '>재접수 요청함') + '</button>' : '') +
+      (x.type === 'return' && ((!x.doneAt && x.stage !== 'moving') || x.reissueReqAt) ? '<button class="btn sm" data-act="reissueReq" data-no="' + esc(x.no) + '"' + (x.reissueReqAt ? ' data-cancel="1">재접수 취소' : '>재접수 요청함') + '</button>' : '') +
       '<button class="btn sm" data-act="rmTrk" data-id="' + esc(c.id) + '" data-no="' + esc(x.no) + '">삭제</button></span></div>';
   };
   h += '<div class="sec"><h4>송장 (여러 개 등록 가능)</h4>' +
