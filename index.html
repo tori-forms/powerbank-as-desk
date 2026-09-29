@@ -630,6 +630,7 @@ function trkList(ships, fallback, note) {
     var no = stuck ? '<b style="color:var(--red)">' + cjLink(x.no) + '</b>' : cjLink(x.no);
     return '<div>' + no + (lab ? ' <span class="muted small">' + esc(String(lab).slice(0, 18)) + '</span>' : '') +
       (x.reissueOf ? ' <span class="pill p-partial">재발급</span>' : '') +
+      (x.reissueReqAt && !x.doneAt ? ' <span class="pill p-partial">재접수 요청 ' + md(x.reissueReqAt) + '</span>' : '') +
       (stuck ? ' <span class="pill p-red">집화 없음</span>' : (!x.doneAt && x.stage === 'moving' ? ' <span class="pill p-blue">회수 중</span>' : '')) + '</div>';
   }).join('');
 }
@@ -891,9 +892,13 @@ function caseDrawer(c) {
     return '<div class="row" style="justify-content:space-between;border-bottom:1px solid var(--line2);padding:5px 0">' +
       '<span>' + cjLink(x.no) + ' <span class="pill ' + ((x.type === 'out' ? OUT_LABEL : RET_LABEL)[x.doneAt ? 'done' : x.stage] || ['', 'p-gray'])[1] + '">' +
       ((x.type === 'out' ? OUT_LABEL : RET_LABEL)[x.doneAt ? 'done' : x.stage] || ['-'])[0] + '</span>' +
-      (x.failFlag === 'Y' ? ' <span class="pill p-red">회수 실패</span>' : '') + '</span>' +
+      (x.failFlag === 'Y' && !x.reissueReqAt ? ' <span class="pill p-red">회수 실패</span>' : '') +
+      (x.reissueReqAt && !x.doneAt ? ' <span class="pill p-partial">재접수 요청 ' + md(x.reissueReqAt) + '</span>' : '') +
+      (x.reissueOf ? ' <span class="pill p-partial">재발급</span>' : '') + '</span>' +
       '<span class="muted small">' + esc(x.status || '') + (x.lastAt ? ' · ' + esc(String(x.lastAt).slice(5, 16)) : '') + '</span>' +
-      '<button class="btn sm" data-act="rmTrk" data-id="' + esc(c.id) + '" data-no="' + esc(x.no) + '">삭제</button></div>';
+      '<span class="row" style="gap:4px">' +
+      (x.type === 'return' && !x.doneAt && x.stage !== 'moving' ? '<button class="btn sm" data-act="reissueReq" data-no="' + esc(x.no) + '"' + (x.reissueReqAt ? ' data-cancel="1">재접수 취소' : '>재접수 요청함') + '</button>' : '') +
+      '<button class="btn sm" data-act="rmTrk" data-id="' + esc(c.id) + '" data-no="' + esc(x.no) + '">삭제</button></span></div>';
   };
   h += '<div class="sec"><h4>송장 (여러 개 등록 가능)</h4>' +
     '<div class="two"><div><div class="small muted" style="margin-bottom:4px">출고 송장 ' + st.outs.length + '개</div>' +
@@ -1261,6 +1266,10 @@ var ACT = {
   addTrk: function (d, b) {
     var el = $(d.type === 'out' ? '#addOut' : '#addRet'); if (!el || !el.value.trim()) return toast('송장번호를 입력해 주세요.', true);
     run('addTracking', { caseId: d.id, type: d.type, text: el.value }, '송장을 추가했습니다.', b);
+  },
+  reissueReq: function (d, b) {
+    if (d.cancel && !confirm(d.no + ' 재접수 요청 기록을 취소할까요?')) return;
+    run('reissueRequest', { no: d.no, cancel: !!d.cancel }, d.cancel ? '재접수 요청을 취소했습니다.' : '재접수 요청으로 기록했습니다. 새 번호가 잡히면 자동 연결·Slack 알림합니다.', b);
   },
   rmTrk: function (d, b) { if (!confirm(d.no + ' 송장을 이 건에서 삭제할까요?')) return; run('removeTracking', { caseId: d.id, no: d.no }, '삭제했습니다.', b); },
   closeQuick: function (d, b) { run('closeCase', { caseId: d.id, reason: '회수·처리 완료' }, '종결했습니다.', b); },
