@@ -1555,7 +1555,7 @@ function vStock() {
       var row = gh + '<tr><td class="mono small">' + esc(stockSn(r, r.fromNo)) + '<br>~ ' + esc(stockSn(r, r.toNo)) + '</td><td class="nowrap">' + esc(ymd(r.receivedAt)) + '</td><td>' + stockStageCell(x) + (stockQcBtns(x) ? '<div class="row" style="gap:4px;margin-top:6px">' + stockQcBtns(x) + '</div>' : '') + '</td>' +
         '<td>' + (+r.qty).toLocaleString() + '</td><td>' + x.used.toLocaleString() + '</td>' +
         '<td><b>' + x.left.toLocaleString() + '</b>' + (x.counted ? '<div class="small muted">실사 ' + esc(md(r.countedAt)) + ' 기준</div>' : '<div class="small muted">기록 기준</div>') + '</td>' +
-        '<td class="mono small">' + (!x.wh ? '<span class="small" style="font-family:inherit;color:' + STAGE_[x.stage].c + '">' + { qc: '검사 합격(또는 생략) 후 외주창고 입고해야 출고 가능', ready: '외주창고 입고 후 출고 가능', fail: '불합격 — 출고 불가', pre: '외주창고 입고 후 출고 가능' }[x.stage] + '</span>' : x.next.map(esc).join('<br>') || '<span class="muted">소진</span>') + '</td>' +
+        '<td class="' + (x.wh ? 'mono ' : '') + 'small">' + (!x.wh ? '<span class="small" style="color:' + STAGE_[x.stage].c + '">' + { qc: '검사 합격(또는 생략) 후 외주창고 입고해야 출고 가능', ready: '외주창고 입고 후 출고 가능', fail: '불합격 — 출고 불가', pre: '외주창고 입고 후 출고 가능' }[x.stage] + '</span>' : x.next.map(esc).join('<br>') || '<span class="muted">소진</span>') + '</td>' +
         '<td class="small">' + esc(r.note || '') + '</td><td class="nowrap"><button class="btn sm' + (x.counted ? '' : ' pri') + '" data-act="countOpen" data-id="' + esc(r.id) + '">실사 반영</button> ' +
         '<button class="btn sm" data-act="editOpen" data-id="' + esc(r.id) + '">수정</button> ' +
         '<button class="btn sm" data-act="logOpen" data-id="' + esc(r.id) + '">이력</button> ' +
