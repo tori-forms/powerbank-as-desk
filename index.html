@@ -463,13 +463,34 @@ function staleBadge(at) {
   var m = Math.max(0, Math.round((Date.now() - at) / 60000));
   el.innerHTML = '<span class="spin"></span> 최신 데이터 불러오는 중 · 지금 화면은 ' + (m < 1 ? '방금 전' : m < 60 ? m + '분 전' : Math.round(m / 60) + '시간 전') + ' 기준';
 }
+/**
+ * Apps Script 웹앱은 요청마다 응답 시간이 1~20초로 들쭉날쭉함(서버 실행은 1~4초).
+ * 읽기 전용 요청은 4초 안에 안 오면 같은 요청을 하나 더 보내 먼저 온 응답을 쓴다 (최대 3개).
+ */
+function callHedged_(action, gapMs, max) {
+  return new Promise(function (res, rej) {
+    var done = false, sent = 0, fails = 0, timers = [];
+    function fire() {
+      if (done || sent >= max) return;
+      sent++;
+      call(action).then(function (d) {
+        if (done) return; done = true; timers.forEach(clearTimeout); res(d);
+      }, function (e) {
+        fails++; if (done) return;
+        if (fails >= sent) { if (sent >= max) { done = true; timers.forEach(clearTimeout); rej(e); } else fire(); }
+      });
+    }
+    fire();
+    for (var i = 1; i < max; i++) timers.push(setTimeout(fire, gapMs * i));
+  });
+}
 function useData_(d) { S.data = d; L = d.meta.lists; buildIndex(); render(); }
 function load(silent) {
   if (GATED) return Promise.resolve();
   var first = !S.data;
   if (!silent && $('#view')) $('#view').innerHTML = '<div class="loading"><span class="spin"></span> 불러오는 중…</div>';
   if (first) cacheGet_().then(function (c) { if (c && c.d && !S.data && !GATED) { useData_(c.d); S.stale = true; staleBadge(c.at); } });
-  return call('bootstrap').then(function (d) { S.stale = false; staleBadge(null); useData_(d); cachePut_(d); })
+  return callHedged_('bootstrap', 4000, 3).then(function (d) { S.stale = false; staleBadge(null); useData_(d); cachePut_(d); })
     .catch(function (e) {
       staleBadge(null);
       if (GATED || !$('#view')) return;
