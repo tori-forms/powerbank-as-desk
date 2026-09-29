@@ -595,7 +595,13 @@ function bizDays(from, to) {
   while (cur < b) { cur = new Date(cur.getTime() + 86400000); var w = cur.getUTCDay(), iso = cur.toISOString().slice(0, 10); if (w && w !== 6 && hol.indexOf(iso) < 0) n++; }
   return n;
 }
-function caseModel(c) { return String(c.model || '').split('/')[0]; }
+function caseModel(c) {
+  var m = String(c.model || '').split('/')[0];
+  if (m) return m;
+  var us = IDX.units && IDX.units[c.id] || [];   // 모델 칸이 비어 있으면 S/N으로 판단
+  for (var i = 0; i < us.length; i++) { m = modelOfSn(us[i].outSn) || modelOfSn(us[i].origSn) || modelOfSn(us[i].recvSn); if (m) return m; }
+  return '';
+}
 function inspectQueue() {
   return S.data.units.filter(function (u) {
     var c = IDX.caseById[u.caseId]; if (!c || c.closed === 'Y') return false;
@@ -1254,51 +1260,116 @@ function snSplit(sn, model) {
   return m ? { sn: v, prefix: m[1], num: +m[2], digits: m[2].length } : null;
 }
 function stockSn(r, n) { return r.prefix + ('0000000000000' + n).slice(-(+r.digits)); }
+function snRangesTxt(text, model) {   // '30900~30910, 30915' → [{prefix,digits,lo,hi}] / 오류 시 문자열
+  var out = [], err = '';
+  String(text || '').split(/[,\n;]+/).forEach(function (tok) {
+    tok = tok.trim(); if (!tok || err) return;
+    var parts = tok.split(/\s*[~～]\s*/);
+    if (parts.length === 1 && /^[^-]+-[^-]+$/.test(tok.replace(/\s/g, ''))) parts = tok.replace(/\s/g, '').split('-');
+    var a = snSplit(parts[0], model), b = snSplit(parts[1] || parts[0], model);
+    if (!a || !b || a.prefix !== b.prefix || a.digits !== b.digits) { err = tok + ' — S/N을 확인해 주세요'; return; }
+    out.push({ prefix: a.prefix, digits: a.digits, lo: Math.min(a.num, b.num), hi: Math.max(a.num, b.num) });
+  });
+  return err || out;
+}
+function packRanges(nums) {   // [1,2,3,7] → '1~3, 7' (짧게)
+  var r = [], i = 0;
+  while (i < nums.length) { var j = i; while (j + 1 < nums.length && nums[j + 1] === nums[j] + 1) j++; r.push(j > i ? [nums[i], nums[j]] : [nums[i]]); i = j + 1; }
+  return r;
+}
 function stockCalc() {
   var rows = (S.data.stock || []).slice().sort(function (a, b) { return String(a.receivedAt).localeCompare(String(b.receivedAt)) || (+a.fromNo - +b.fromNo); });
-  var used = {};   // S/N → [유닛]
-  S.data.units.forEach(function (u) { if (u.outSn) { var k = String(u.outSn).toUpperCase(); (used[k] = used[k] || []).push(u); } });
+  var used = {};   // S/N → [{date, c}] (AS 출고 + 별도 출고)
+  S.data.units.forEach(function (u) { if (u.outSn) { var k = String(u.outSn).toUpperCase(), c = IDX.caseById[u.caseId]; (used[k] = used[k] || []).push({ d: d10(c && (c.outDate || c.createdAt)), c: c }); } });
+  (S.data.stockout || []).forEach(function (o) {
+    String(o.ranges || '').split(',').forEach(function (x) {
+      var a = x.split('|'); if (a.length < 4) return;
+      for (var k = +a[2]; k <= +a[3]; k++) { var sn = a[0] + ('0000000000000' + k).slice(-(+a[1])); (used[sn] = used[sn] || []).push({ d: d10(o.outAt), o: o }); }
+    });
+  });
   var inRange = function (sp) { return rows.filter(function (r) { return sp && r.prefix === sp.prefix && +r.digits === sp.digits && sp.num >= +r.fromNo && sp.num <= +r.toNo; })[0]; };
   var list = rows.map(function (r) {
-    var n = 0, next = [];
-    for (var k = +r.fromNo; k <= +r.toNo; k++) { var sn = stockSn(r, k); if (used[sn]) n++; else if (next.length < 3) next.push(sn); }
-    return { r: r, used: n, left: +r.qty - n, next: next };
+    var hand = null;
+    if (r.onHand) { var rg = snRangesTxt(r.onHand, r.model); if (typeof rg !== 'string') { hand = {}; rg.forEach(function (x) { for (var k = x.lo; k <= x.hi; k++) hand[k] = 1; }); } }
+    var left = 0, useN = 0, gap = [], next = [];
+    for (var k = +r.fromNo; k <= +r.toNo; k++) {
+      var sn = stockSn(r, k), u = used[sn];
+      if (hand) {
+        if (hand[k]) { if (u && u.some(function (x) { return x.d >= r.countedAt; })) useN++; else { left++; if (next.length < 3) next.push(sn); } }
+        else if (u) useN++; else gap.push(k);
+      } else if (u) useN++; else { left++; if (next.length < 3) next.push(sn); }
+    }
+    return { r: r, used: useN, left: left, next: next, gap: gap, counted: !!hand };
   });
   var since = rows.length ? rows.map(function (r) { return r.receivedAt; }).sort()[0] : '';
   var dup = [], unreg = [];
   Object.keys(used).forEach(function (sn) {
-    var us = used[sn];
-    var cs = us.map(function (u) { return IDX.caseById[u.caseId]; }).filter(Boolean);
-    if (cs.length > 1) dup.push({ sn: sn, cases: cs });
-    if (rows.length && !inRange(snSplit(sn))) {
-      var c = cs[0]; if (c && c.outDate && c.outDate >= since) unreg.push({ sn: sn, c: c });
-    }
+    var cs = used[sn].filter(function (x) { return x.c; }).map(function (x) { return x.c; });
+    if (used[sn].length > 1) dup.push({ sn: sn, items: used[sn] });
+    if (rows.length && cs.length && !inRange(snSplit(sn))) { var c = cs[0]; if (c.outDate && c.outDate >= since) unreg.push({ sn: sn, c: c }); }
   });
   unreg.sort(function (a, b) { return String(b.c.outDate).localeCompare(String(a.c.outDate)); });
-  return { list: list, dup: dup, unreg: unreg };
+  // 출고했는데 교체 S/N을 안 적은 수량 (첫 입고 이후) — 실사와 차이 나는 주된 원인
+  var noSn = [];
+  if (since) S.data.cases.forEach(function (c) {
+    if (!c.outDate || c.outDate < since || !String(c.outTracking || '').trim()) return;
+    var us = IDX.units[c.id] || [], withSn = us.filter(function (u) { return u.outSn; }).length, q = Math.max(+c.qty || 0, us.length);
+    if (q > withSn) noSn.push({ c: c, n: q - withSn });
+  });
+  noSn.sort(function (a, b) { return String(b.c.outDate).localeCompare(String(a.c.outDate)); });
+  return { list: list, dup: dup, unreg: unreg, noSn: noSn };
 }
 function vStock() {
-  var X = stockCalc(), tot = 0, usedN = 0, left = 0;
-  X.list.forEach(function (x) { tot += +x.r.qty; usedN += x.used; left += x.left; });
-  var h = '<div class="card"><div class="hd"><h3>재고 S/N 구간 등록</h3><span class="muted small">연번이면 시작·끝만 넣으면 됩니다 · 번호만 입력해도 돼요 (예: 30001 ~ 31000 → P20BOTA250030001 ~ P20BOTA250031000)</span></div><div class="bd">' +
+  var X = stockCalc(), tot = 0, usedN = 0, left = 0, gapN = 0;
+  X.list.forEach(function (x) { tot += +x.r.qty; usedN += x.used; left += x.left; gapN += x.gap.length; });
+  var h = '<div class="two"><div class="card"><div class="hd"><h3>재고 입고 등록</h3><span class="muted small">연번이면 시작·끝만 · 번호만 입력해도 돼요 (30001 → P20BOTA250030001)</span></div><div class="bd">' +
     '<div class="row"><select class="inp" id="stModel"><option value="P20BOTA25">기존 P20BOTA25</option><option value="P20VA">신형 P20VA</option></select>' +
-    '<input class="inp mono" id="stFrom" placeholder="시작 S/N 또는 번호" style="width:210px"><span>~</span><input class="inp mono" id="stTo" placeholder="끝 S/N 또는 번호" style="width:210px">' +
-    '<input class="inp" id="stDate" type="date" value="' + esc(today()) + '" style="width:150px"><input class="inp" id="stNote" placeholder="메모 (입고처·PO 등)" style="flex:1;min-width:160px">' +
-    '<button class="btn pri" data-act="stockAdd">등록</button></div><div class="small muted" id="stPrev" style="margin-top:8px"></div></div></div>';
-  h += '<div class="kpis" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-top:14px">' +
-    '<div class="kpi"><div class="l">등록 수량</div><div class="v">' + tot.toLocaleString() + '<small>개</small></div></div>' +
-    '<div class="kpi"><div class="l">출고에 사용</div><div class="v">' + usedN.toLocaleString() + '<small>개</small></div></div>' +
+    '<input class="inp mono" id="stFrom" placeholder="시작 S/N·번호" style="flex:1;min-width:120px"><span>~</span><input class="inp mono" id="stTo" placeholder="끝 S/N·번호" style="flex:1;min-width:120px"></div>' +
+    '<div class="row" style="margin-top:8px"><input class="inp" id="stDate" type="date" value="' + esc(today()) + '" style="width:150px"><input class="inp" id="stNote" placeholder="메모 (입고처·PO 등)" style="flex:1;min-width:140px">' +
+    '<button class="btn pri" data-act="stockAdd">입고 등록</button></div><div class="small muted" id="stPrev" style="margin-top:8px"></div></div></div>' +
+    '<div class="card"><div class="hd"><h3>별도 출고 기록</h3><span class="muted small">AS 채널 외로 나간 재고 (추가 교환·샘플·테스트·폐기 등)</span></div><div class="bd">' +
+    '<div class="row"><input class="inp mono" id="soSns" placeholder="S/N · 구간 (예: 30900~30910, 30915)" style="flex:1;min-width:220px">' +
+    '<select class="inp" id="soPurpose">' + ['별도 교환', '샘플', '테스트·분석', '불량 폐기', '반품·회수', '기타'].map(function (x) { return '<option>' + x + '</option>'; }).join('') + '</select></div>' +
+    '<div class="row" style="margin-top:8px"><input class="inp" id="soDate" type="date" value="' + esc(today()) + '" style="width:150px"><input class="inp" id="soDest" placeholder="받는 곳·메모" style="flex:1;min-width:140px">' +
+    '<button class="btn pri" data-act="stockOut">출고 기록</button></div><div class="small muted" id="soPrev" style="margin-top:8px"></div></div></div></div>';
+  h += '<div class="kpis" style="grid-template-columns:repeat(4,minmax(0,1fr));margin-top:14px">' +
+    '<div class="kpi"><div class="l">입고 수량</div><div class="v">' + tot.toLocaleString() + '<small>개</small></div></div>' +
+    '<div class="kpi"><div class="l">출고 기록 (AS + 별도)</div><div class="v">' + usedN.toLocaleString() + '<small>개</small></div></div>' +
+    '<div class="kpi"><div class="l">기록 없이 빠짐</div><div class="v" style="color:' + (gapN ? 'var(--red)' : 'inherit') + '">' + gapN.toLocaleString() + '<small>개</small></div><div class="d small muted">실사 입력한 구간만 계산</div></div>' +
     '<div class="kpi"><div class="l">남은 재고</div><div class="v" style="color:' + (tot && left / tot < 0.1 ? 'var(--red)' : 'inherit') + '">' + left.toLocaleString() + '<small>개</small></div></div></div>';
-  h += '<div class="card"><div class="tw"><table class="t"><thead><tr><th>구간</th><th>입고일</th><th>등록</th><th>사용</th><th>남음</th><th>다음 출고할 S/N</th><th>메모</th><th></th></tr></thead><tbody>' +
+  h += '<div class="card"><div class="tw"><table class="t"><thead><tr><th>구간</th><th>입고일</th><th>입고</th><th>출고 기록</th><th>남음</th><th>다음 출고할 S/N</th><th>메모</th><th></th></tr></thead><tbody>' +
     (X.list.length ? X.list.map(function (x) {
-      var pct = x.r.qty ? Math.round(x.used / +x.r.qty * 100) : 0;
-      return '<tr><td class="mono small">' + esc(stockSn(x.r, x.r.fromNo)) + '<br>~ ' + esc(stockSn(x.r, x.r.toNo)) + '</td><td class="nowrap">' + esc(ymd(x.r.receivedAt)) + '</td>' +
-        '<td>' + (+x.r.qty).toLocaleString() + '</td><td>' + x.used.toLocaleString() + ' <span class="muted small">(' + pct + '%)</span></td>' +
-        '<td><b>' + x.left.toLocaleString() + '</b></td><td class="mono small">' + (x.next.map(esc).join('<br>') || '<span class="muted">소진</span>') + '</td>' +
-        '<td class="small">' + esc(x.r.note || '') + '</td><td><button class="btn sm" data-act="stockDel" data-id="' + esc(x.r.id) + '">삭제</button></td></tr>';
+      var r = x.r, open = S.countOpen === r.id;
+      var row = '<tr><td class="mono small">' + esc(stockSn(r, r.fromNo)) + '<br>~ ' + esc(stockSn(r, r.toNo)) + '</td><td class="nowrap">' + esc(ymd(r.receivedAt)) + '</td>' +
+        '<td>' + (+r.qty).toLocaleString() + '</td><td>' + x.used.toLocaleString() + '</td>' +
+        '<td><b>' + x.left.toLocaleString() + '</b>' + (x.counted ? '<div class="small muted">실사 ' + esc(md(r.countedAt)) + ' 기준</div>' : '<div class="small muted">기록 기준</div>') + '</td>' +
+        '<td class="mono small">' + (x.next.map(esc).join('<br>') || '<span class="muted">소진</span>') + '</td>' +
+        '<td class="small">' + esc(r.note || '') + '</td><td class="nowrap"><button class="btn sm' + (x.counted ? '' : ' pri') + '" data-act="countOpen" data-id="' + esc(r.id) + '">실사 반영</button> ' +
+        '<button class="btn sm" data-act="stockDel" data-id="' + esc(r.id) + '">삭제</button></td></tr>';
+      if (open) row += '<tr><td colspan="8" style="background:var(--line2)"><div class="small" style="margin-bottom:6px">지금 <b>실제로 창고에 있는</b> S/N 구간을 적어 주세요. 여러 구간은 쉼표로 (예: <span class="mono">30835~30970</span>). 비워서 저장하면 실사 기준을 해제합니다.</div>' +
+        '<div class="row"><input class="inp mono" id="cntTxt" value="' + esc(r.onHand || '') + '" placeholder="30835~30970" style="flex:1;min-width:220px"><input class="inp" id="cntDate" type="date" value="' + esc(r.countedAt || today()) + '" style="width:150px">' +
+        '<button class="btn pri" data-act="stockCount" data-id="' + esc(r.id) + '">저장</button><button class="btn" data-act="countOpen" data-id="">닫기</button></div><div class="small muted" id="cntPrev" style="margin-top:6px"></div></td></tr>';
+      if (x.gap.length) {
+        var pk = packRanges(x.gap);
+        row += '<tr><td colspan="8" class="small" style="background:var(--redSoft,#fff1f1)"><b style="color:var(--red)">출고 기록 없이 빠진 S/N ' + x.gap.length.toLocaleString() + '개</b> — 티오더 시트에 교체 S/N을 안 적은 출고이거나 별도 출고일 수 있어요. 별도 출고였으면 위 [별도 출고 기록]에 넣어 주세요.<div class="mono" style="margin-top:4px">' +
+          pk.slice(0, 40).map(function (g) { return esc(String(g[0]).slice(-5)) + (g[1] ? '~' + esc(String(g[1]).slice(-5)) : ''); }).join(', ') + (pk.length > 40 ? ' … 외 ' + (pk.length - 40) + '구간' : '') + '</div></td></tr>';
+      }
+      return row;
     }).join('') : '<tr><td colspan="8"><div class="empty">등록된 재고 구간이 없습니다. 위에서 S/N 구간을 등록해 주세요.</div></td></tr>') + '</tbody></table></div></div>';
+  if (X.noSn.length) {
+    var nsum = 0; X.noSn.forEach(function (x) { nsum += x.n; });
+    h += '<div class="card" style="margin-top:14px"><div class="hd"><h3>교체 S/N 없이 출고된 AS ' + nsum + '개 (' + X.noSn.length + '건)</h3><span class="muted small">티오더 시트 교체 S/N 칸이 비어 있는 출고 · 기록 없이 빠진 재고의 주된 원인</span></div><div class="bd small">' +
+      X.noSn.slice(0, 40).map(function (d) { return '<div><span class="click" data-act="case" data-id="' + esc(d.c.id) + '">' + esc(cid(d.c)) + ' ' + esc(d.c.store) + '</span> · ' + esc(md(d.c.outDate)) + ' · S/N 빠짐 ' + d.n + '개</div>'; }).join('') + (X.noSn.length > 40 ? '<div class="muted">외 ' + (X.noSn.length - 40) + '건</div>' : '') + '</div></div>';
+  }
+  var outs = (S.data.stockout || []).slice().sort(function (a, b) { return String(b.outAt).localeCompare(String(a.outAt)); });
+  if (outs.length) h += '<div class="card" style="margin-top:14px"><div class="hd"><h3>별도 출고 기록 ' + outs.length + '건</h3></div><div class="tw"><table class="t"><thead><tr><th>출고일</th><th>사유</th><th>수량</th><th>S/N</th><th>받는 곳·메모</th><th></th></tr></thead><tbody>' +
+    outs.map(function (o) {
+      var txt = String(o.ranges || '').split(',').map(function (x) { var a = x.split('|'); return a.length < 4 ? '' : String(a[2]).slice(-5) + (a[3] !== a[2] ? '~' + String(a[3]).slice(-5) : ''); }).filter(String).join(', ');
+      return '<tr><td class="nowrap">' + esc(ymd(o.outAt)) + '</td><td>' + esc(o.purpose) + '</td><td>' + esc(o.qty) + '</td><td class="mono small">' + esc(txt) + '</td><td class="small">' + esc([o.dest, o.note].filter(String).join(' · ')) + '</td>' +
+        '<td><button class="btn sm" data-act="stockOutDel" data-id="' + esc(o.id) + '">삭제</button></td></tr>';
+    }).join('') + '</tbody></table></div></div>';
   if (X.dup.length) h += '<div class="card" style="margin-top:14px"><div class="hd"><h3 style="color:var(--red)">⚠️ 같은 S/N이 두 번 출고됨 ' + X.dup.length + '건</h3><span class="muted small">입력 실수이거나 재AS로 다시 나간 제품입니다</span></div><div class="bd small">' +
-    X.dup.slice(0, 50).map(function (d) { return '<div><span class="mono">' + esc(d.sn) + '</span> — ' + d.cases.map(function (c) { return '<span class="click" data-act="case" data-id="' + esc(c.id) + '">' + esc(cid(c)) + ' ' + esc(c.store) + ' ' + esc(md(c.outDate)) + '</span>'; }).join(' · ') + '</div>'; }).join('') + '</div></div>';
+    X.dup.slice(0, 50).map(function (d) { return '<div><span class="mono">' + esc(d.sn) + '</span> — ' + d.items.map(function (it) { return it.c ? '<span class="click" data-act="case" data-id="' + esc(it.c.id) + '">' + esc(cid(it.c)) + ' ' + esc(it.c.store) + ' ' + esc(md(it.d)) + '</span>' : '별도 출고(' + esc(it.o.purpose) + ') ' + esc(md(it.d)); }).join(' · ') + '</div>'; }).join('') + '</div></div>';
   if (X.unreg.length) h += '<div class="card" style="margin-top:14px"><div class="hd"><h3>등록 구간 밖의 S/N으로 출고 ' + X.unreg.length + '건</h3><span class="muted small">첫 입고일 이후 출고분 중 · 재고 구간 등록이 빠졌거나 S/N 오타일 수 있어요</span></div><div class="bd small">' +
     X.unreg.slice(0, 50).map(function (d) { return '<div><span class="mono">' + esc(d.sn) + '</span> — <span class="click" data-act="case" data-id="' + esc(d.c.id) + '">' + esc(cid(d.c)) + ' ' + esc(d.c.store) + ' ' + esc(md(d.c.outDate)) + '</span></div>'; }).join('') + (X.unreg.length > 50 ? '<div class="muted">외 ' + (X.unreg.length - 50) + '건</div>' : '') + '</div></div>';
   return h;
@@ -1510,6 +1581,17 @@ var ACT = {
     if (!a || !z) return toast('S/N을 확인해 주세요. P20VA는 전체 S/N으로 입력해 주세요.', true);
     run('stockAdd', { model: m, from: a.sn, to: z.sn, receivedAt: $('#stDate').value, note: $('#stNote').value }, function (r) { return '재고 ' + (+r.stock.qty).toLocaleString() + '개 등록했습니다.'; }, b);
   },
+  countOpen: function (d) { S.countOpen = d.id || null; render(); var t = $('#cntTxt'); if (t) t.focus(); },
+  stockCount: function (d, b) { run('stockCount', { id: d.id, onHand: $('#cntTxt').value, countedAt: $('#cntDate').value }, function (r) { S.countOpen = null; return r.onHand ? '실사 반영: 남은 재고 ' + r.onHand + '개 기준으로 계산합니다.' : '실사 기준을 해제했습니다.'; }, b); },
+  stockOut: function (d, b) {
+    var rg = snRangesTxt($('#soSns').value, 'P20BOTA25');
+    if (typeof rg === 'string' || !rg.length) return toast(typeof rg === 'string' ? rg : 'S/N을 입력해 주세요.', true);
+    run('stockOut', { sns: $('#soSns').value, model: 'P20BOTA25', outAt: $('#soDate').value, purpose: $('#soPurpose').value, dest: $('#soDest').value }, function (r) { return '별도 출고 ' + r.stockout.qty + '개 기록했습니다.'; }, b);
+  },
+  stockOutDel: function (d, b) {
+    if (!b.dataset.sure) { b.dataset.sure = '1'; b.textContent = '한 번 더 누르면 삭제'; b.classList.add('red'); return; }
+    run('stockOutDelete', { id: d.id }, '별도 출고 기록을 삭제했습니다.', b);
+  },
   stockDel: function (d, b) {
     if (!b.dataset.sure) { b.dataset.sure = '1'; b.textContent = '한 번 더 누르면 삭제'; b.classList.add('red'); return; }
     run('stockDelete', { id: d.id }, '재고 구간을 삭제했습니다.', b);
@@ -1698,6 +1780,10 @@ document.addEventListener('input', function (e) {
     var m = $('#stModel').value, a = snSplit($('#stFrom').value, m), z = snSplit($('#stTo').value || $('#stFrom').value, m), pv = $('#stPrev');
     if (pv) pv.innerHTML = !a ? '' : (!z || a.prefix !== z.prefix || a.digits !== z.digits) ? '<span style="color:var(--red)">시작·끝 S/N의 앞부분이 달라요</span>'
       : '<span class="mono">' + esc(a.sn) + ' ~ ' + esc(z.sn) + '</span> · <b>' + (Math.abs(z.num - a.num) + 1).toLocaleString() + '개</b>';
+  }
+  if (e.target.id === 'soSns' || e.target.id === 'cntTxt') {
+    var rg = snRangesTxt(e.target.value, 'P20BOTA25'), pv2 = $(e.target.id === 'soSns' ? '#soPrev' : '#cntPrev'), n = 0;
+    if (pv2) { if (typeof rg === 'string') pv2.innerHTML = '<span style="color:var(--red)">' + esc(rg) + '</span>'; else { rg.forEach(function (x) { n += x.hi - x.lo + 1; }); pv2.innerHTML = n ? '<b>' + n.toLocaleString() + '개</b>' : ''; } }
   }
   if (e.target.id === 'q') { clearTimeout(qTimer); var v = e.target.value; qTimer = setTimeout(function () { S.q = v; render(); var q = $('#q'); if (q) { q.focus(); q.setSelectionRange(v.length, v.length); } }, 250); }
 });
