@@ -1433,6 +1433,39 @@ function packRanges(nums) {   // [1,2,3,7] → '1~3, 7' (짧게)
   while (i < nums.length) { var j = i; while (j + 1 < nums.length && nums[j + 1] === nums[j] + 1) j++; r.push(j > i ? [nums[i], nums[j]] : [nums[i]]); i = j + 1; }
   return r;
 }
+/** 교체 재고 단계 (서버 stockStage_와 같은 규칙) */
+function stockStage(r) {
+  if (r.whAt && r.whAt <= today()) return 'wh';
+  if (r.qcStatus === '검사중') return 'qc';
+  if (r.qcStatus === '불합격') return 'fail';
+  if (r.qcStatus === '합격' || r.qcStatus === '생략') return 'ready';
+  return 'pre';
+}
+var STAGE_ = {
+  wh: { t: '외주창고 · 출고 가능', c: 'var(--green)', p: 'p-green' },
+  ready: { t: '검사 완료 · 외주창고 입고 대기', c: 'var(--blue)', p: 'p-blue' },
+  qc: { t: '수입검사 중 · 출고 불가', c: 'var(--amber)', p: 'p-new' },
+  fail: { t: '검사 불합격 · 출고 불가', c: 'var(--red)', p: 'p-red' },
+  pre: { t: '창고 입고 전', c: 'var(--amber)', p: 'p-gray' }
+};
+var QC_STEP_ = {
+  inspect: ['수입검사 시작', '우리 창고에서 수입검사 중으로 표시합니다. 검사 중에는 외주창고 입고·출고가 안 돼요.'],
+  pass: ['검사 합격', '수입검사 합격을 기록합니다.'],
+  skip: ['검사 생략(패스)', '수입검사 없이 통과(패스)시킨 것으로 기록합니다.'],
+  fail: ['불합격', '수입검사 불합격을 기록합니다. 불량 S/N은 [별도 출고 기록]에서 사유 “수입검사 불량”으로 빼 주세요.'],
+  wh: ['외주창고 입고', '외주창고에 입고됐음을 기록합니다. 이때부터 출고 가능 재고로 계산해요.'],
+  unwh: ['외주창고 입고 취소', '외주창고 입고 기록을 지웁니다.']
+};
+function stockStageCell(x) {
+  var r = x.r, g = STAGE_[x.stage];
+  var qc = r.qcStatus && r.qcStatus !== '검사중' ? '수입검사 ' + r.qcStatus + (r.qcAt ? ' ' + md(r.qcAt) : '') : '';
+  return '<span class="pill ' + g.p + '">' + g.t + '</span>' +
+    '<div class="small muted" style="margin-top:3px">' + [qc, r.whAt ? '외주창고 입고 ' + md(r.whAt) : ''].filter(String).map(esc).join(' · ') + (r.qcNote ? '<div>' + esc(r.qcNote) + '</div>' : '') + '</div>';
+}
+function stockQcBtns(x) {
+  var b = function (step, pri) { return '<button class="btn sm' + (pri ? ' pri' : '') + '" data-act="qcOpen" data-id="' + esc(x.r.id) + '" data-v="' + step + '">' + QC_STEP_[step][0] + '</button> '; };
+  return { pre: b('inspect') + b('pass', 1) + b('skip'), qc: b('pass', 1) + b('skip') + b('fail'), fail: b('inspect') + b('pass'), ready: b('wh', 1) + b('inspect'), wh: '' }[x.stage] || '';
+}
 function stockCalc() {
   var rows = (S.data.stock || []).slice().sort(function (a, b) { return String(a.receivedAt).localeCompare(String(b.receivedAt)) || (+a.fromNo - +b.fromNo); });
   var used = {};   // S/N → [{date, c}] (AS 출고 + 별도 출고)
@@ -1455,7 +1488,8 @@ function stockCalc() {
         else if (u) useN++; else gap.push(k);
       } else if (u) useN++; else { left++; if (next.length < 3) next.push(sn); }
     }
-    return { r: r, used: useN, left: left, next: next, gap: gap, counted: !!hand, wh: !!r.whAt && r.whAt <= today() };
+    var stg = stockStage(r);
+    return { r: r, used: useN, left: left, next: next, gap: gap, counted: !!hand, wh: stg === 'wh', stage: stg };
   });
   var since = rows.length ? rows.map(function (r) { return r.receivedAt; }).sort()[0] : '';
   var dup = [], unreg = [];
@@ -1480,7 +1514,8 @@ function vStock() {
   var mOf = function (r) { return r.model || modelOfSn(stockSn(r, r.fromNo)) || '기타'; };
   var MN = { P20BOTA25: '기존 P20BOTA25', P20VA: '신형 P20VA' };
   var models = [], byM = {};
-  X.list.forEach(function (x) { var m = mOf(x.r); if (!byM[m]) { byM[m] = { qty: 0, left: 0, wh: 0 }; models.push(m); } byM[m].qty += +x.r.qty; byM[m].left += x.left; if (x.wh) byM[m].wh += x.left; });
+  X.list.forEach(function (x) { var m = mOf(x.r); if (!byM[m]) { byM[m] = { qty: 0, left: 0, wh: 0, st: {} }; models.push(m); } byM[m].qty += +x.r.qty; byM[m].left += x.left; if (x.wh) byM[m].wh += x.left; byM[m].st[x.stage] = (byM[m].st[x.stage] || 0) + x.left; });
+  var stTxt = function (st) { return ['qc', 'ready', 'fail', 'pre'].filter(function (k) { return st[k]; }).map(function (k) { return ' · <b style="color:' + STAGE_[k].c + '">' + { qc: '검사 중', ready: '입고 대기', fail: '불합격', pre: '창고 입고 전' }[k] + ' ' + st[k].toLocaleString() + '</b>'; }).join(''); };
   models.sort(function (a, b) { return (a === 'P20BOTA25' ? 0 : a === 'P20VA' ? 1 : 2) - (b === 'P20BOTA25' ? 0 : b === 'P20VA' ? 1 : 2); });
   var sm = models.indexOf(S.stockM) >= 0 ? S.stockM : 'all';
   var view = X.list.filter(function (x) { return sm === 'all' || mOf(x.r) === sm; })
@@ -1490,11 +1525,11 @@ function vStock() {
   var h = '<div class="two"><div class="card"><div class="hd"><h3>재고 입고 등록</h3><span class="muted small">연번이면 시작·끝만 · 번호만 입력해도 돼요 (30001 → P20BOTA250030001)</span></div><div class="bd">' +
     '<div class="row"><select class="inp" id="stModel"><option value="P20BOTA25">기존 P20BOTA25</option><option value="P20VA"' + (sm === 'P20VA' ? ' selected' : '') + '>신형 P20VA</option></select>' +
     '<input class="inp mono" id="stFrom" placeholder="시작 S/N·번호" style="flex:1;min-width:120px"><span>~</span><input class="inp mono" id="stTo" placeholder="끝 S/N·번호" style="flex:1;min-width:120px"></div>' +
-    '<div class="row" style="margin-top:8px"><input class="inp" id="stDate" type="date" value="' + esc(today()) + '" style="width:150px" title="입고일"><label class="small nowrap" style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="stWh" checked> 외주창고 입고 완료</label><input class="inp" id="stNote" placeholder="메모 (입고처·PO 등)" style="flex:1;min-width:120px">' +
+    '<div class="row" style="margin-top:8px"><input class="inp" id="stDate" type="date" value="' + esc(today()) + '" style="width:150px" title="입고일"><select class="inp" id="stQc" title="입고 상태"><option value="inspect">수입검사 중 (우리 창고)</option><option value="pass">검사 합격 · 외주창고 입고 대기</option><option value="passWh">검사 합격 · 외주창고 입고 완료</option><option value="skipWh">검사 생략(패스) · 외주창고 입고 완료</option></select><input class="inp" id="stNote" placeholder="메모 (입고처·PO 등)" style="flex:1;min-width:120px">' +
     '<button class="btn pri" data-act="stockAdd">입고 등록</button></div><div class="small muted" id="stPrev" style="margin-top:8px"></div></div></div>' +
     '<div class="card"><div class="hd"><h3>별도 출고 기록</h3><span class="muted small">AS 채널 외로 나간 재고 (추가 교환·샘플·테스트·폐기 등)</span></div><div class="bd">' +
     '<div class="row"><select class="inp" id="soModel"><option value="P20BOTA25">기존 P20BOTA25</option><option value="P20VA"' + (sm === 'P20VA' ? ' selected' : '') + '>신형 P20VA</option></select><input class="inp mono" id="soSns" placeholder="S/N · 구간 (예: 30900~30910, 30915)" style="flex:1;min-width:200px">' +
-    '<select class="inp" id="soPurpose">' + ['별도 교환', '샘플', '테스트·분석', '불량 폐기', '반품·회수', '기타'].map(function (x) { return '<option>' + x + '</option>'; }).join('') + '</select></div>' +
+    '<select class="inp" id="soPurpose">' + ['별도 교환', '샘플', '테스트·분석', '수입검사 불량', '불량 폐기', '반품·회수', '기타'].map(function (x) { return '<option>' + x + '</option>'; }).join('') + '</select></div>' +
     '<div class="row" style="margin-top:8px"><input class="inp" id="soDate" type="date" value="' + esc(today()) + '" style="width:150px"><input class="inp" id="soDest" placeholder="받는 곳·메모" style="flex:1;min-width:140px">' +
     '<button class="btn pri" data-act="stockOut">출고 기록</button></div><div class="small muted" id="soPrev" style="margin-top:8px"></div></div></div></div>';
   if (models.length > 1) h += '<div class="tabs" style="margin-top:14px">' + [['all', '전체']].concat(models.map(function (m) { return [m, MN[m] || m]; })).map(function (t) {
@@ -1504,7 +1539,7 @@ function vStock() {
     h += '<div class="kpis" style="grid-template-columns:repeat(' + models.length + ',minmax(0,1fr));margin-top:14px">' + models.map(function (m) {
       var u = 0, g = 0; X.list.forEach(function (x) { if (mOf(x.r) === m) { u += x.used; g += x.gap.length; } });
       return '<div class="kpi" data-act="stockM" data-v="' + m + '"><div class="l">' + mtag(m) + ' 남은 재고</div><div class="v"' + (byM[m].qty && byM[m].left / byM[m].qty < 0.1 ? ' style="color:var(--red)"' : '') + '>' + byM[m].left.toLocaleString() + '<small>개</small></div>' +
-        '<div class="d small">외주창고 보유(출고 가능) <b>' + byM[m].wh.toLocaleString() + '</b>' + (byM[m].left - byM[m].wh ? ' · <b style="color:var(--amber)">창고 입고 전 ' + (byM[m].left - byM[m].wh).toLocaleString() + '</b>' : '') + '</div>' +
+        '<div class="d small">출고 가능(외주창고) <b style="color:var(--green)">' + byM[m].wh.toLocaleString() + '</b>' + stTxt(byM[m].st) + '</div>' +
         '<div class="d small muted">입고 ' + byM[m].qty.toLocaleString() + ' · 출고 기록 ' + u.toLocaleString() + (g ? ' · <b style="color:var(--red)">기록 없이 빠짐 ' + g.toLocaleString() + '</b>' : '') + '</div></div>';
     }).join('') + '</div>';
   } else h += '<div class="kpis" style="grid-template-columns:repeat(4,minmax(0,1fr));margin-top:14px">' +
@@ -1512,34 +1547,48 @@ function vStock() {
     '<div class="kpi"><div class="l">출고 기록 (AS + 별도)</div><div class="v">' + usedN.toLocaleString() + '<small>개</small></div></div>' +
     '<div class="kpi"><div class="l">기록 없이 빠짐</div><div class="v" style="color:' + (gapN ? 'var(--red)' : 'inherit') + '">' + gapN.toLocaleString() + '<small>개</small></div><div class="d small muted">실사 입력한 구간만 계산</div></div>' +
     '<div class="kpi"><div class="l">남은 재고</div><div class="v" style="color:' + (tot && left / tot < 0.1 ? 'var(--red)' : 'inherit') + '">' + left.toLocaleString() + '<small>개</small></div>' +
-    '<div class="d small">외주창고 보유 <b>' + view.reduce(function (a, x) { return a + (x.wh ? x.left : 0); }, 0).toLocaleString() + '</b>' + (view.some(function (x) { return !x.wh && x.left; }) ? ' · <b style="color:var(--amber)">창고 입고 전 ' + view.reduce(function (a, x) { return a + (x.wh ? 0 : x.left); }, 0).toLocaleString() + '</b>' : '') + '</div></div></div>';
-  h += '<div class="card"><div class="tw"><table class="t"><thead><tr><th>구간</th><th>입고일</th><th>입고</th><th>출고 기록</th><th>남음</th><th>다음 출고할 S/N</th><th>메모</th><th></th></tr></thead><tbody>' +
+    '<div class="d small">출고 가능(외주창고) <b style="color:var(--green)">' + view.reduce(function (a, x) { return a + (x.wh ? x.left : 0); }, 0).toLocaleString() + '</b>' + stTxt(view.reduce(function (o, x) { o[x.stage] = (o[x.stage] || 0) + x.left; return o; }, {})) + '</div></div></div>';
+  h += '<div class="card"><div class="tw"><table class="t"><thead><tr><th>구간</th><th>입고일</th><th>상태 (수입검사 · 외주창고)</th><th>입고</th><th>출고 기록</th><th>남음</th><th>다음 출고할 S/N</th><th>메모</th><th></th></tr></thead><tbody>' +
     (view.length ? view.map(function (x, i) {
       var r = x.r, open = S.countOpen === r.id, m = mOf(r);
-      var gh = (i === 0 || mOf(view[i - 1].r) !== m) ? '<tr><td colspan="8" style="background:var(--line2);padding:8px 14px">' + mtag(m) + ' <span class="small muted" style="margin-left:6px">입고 ' + byM[m].qty.toLocaleString() + '개 · 남음 <b style="color:var(--ink)">' + byM[m].left.toLocaleString() + '개</b></span></td></tr>' : '';
-      var row = gh + '<tr><td class="mono small">' + esc(stockSn(r, r.fromNo)) + '<br>~ ' + esc(stockSn(r, r.toNo)) + '</td><td class="nowrap">' + esc(ymd(r.receivedAt)) + (x.wh ? '<div class="small" style="color:var(--green)">창고 입고 ' + esc(md(r.whAt)) + '</div>' : '<div class="small" style="color:var(--amber);font-weight:600">창고 입고 전</div>') + '</td>' +
+      var gh = (i === 0 || mOf(view[i - 1].r) !== m) ? '<tr><td colspan="9" style="background:var(--line2);padding:8px 14px">' + mtag(m) + ' <span class="small muted" style="margin-left:6px">입고 ' + byM[m].qty.toLocaleString() + '개 · 남음 <b style="color:var(--ink)">' + byM[m].left.toLocaleString() + '개</b></span></td></tr>' : '';
+      var row = gh + '<tr><td class="mono small">' + esc(stockSn(r, r.fromNo)) + '<br>~ ' + esc(stockSn(r, r.toNo)) + '</td><td class="nowrap">' + esc(ymd(r.receivedAt)) + '</td><td>' + stockStageCell(x) + (stockQcBtns(x) ? '<div class="row" style="gap:4px;margin-top:6px">' + stockQcBtns(x) + '</div>' : '') + '</td>' +
         '<td>' + (+r.qty).toLocaleString() + '</td><td>' + x.used.toLocaleString() + '</td>' +
         '<td><b>' + x.left.toLocaleString() + '</b>' + (x.counted ? '<div class="small muted">실사 ' + esc(md(r.countedAt)) + ' 기준</div>' : '<div class="small muted">기록 기준</div>') + '</td>' +
-        '<td class="mono small">' + (!x.wh ? '<span class="small" style="color:var(--amber)">창고 입고 후 출고 가능</span>' : x.next.map(esc).join('<br>') || '<span class="muted">소진</span>') + '</td>' +
+        '<td class="mono small">' + (!x.wh ? '<span class="small" style="font-family:inherit;color:' + STAGE_[x.stage].c + '">' + { qc: '검사 합격(또는 생략) 후 외주창고 입고해야 출고 가능', ready: '외주창고 입고 후 출고 가능', fail: '불합격 — 출고 불가', pre: '외주창고 입고 후 출고 가능' }[x.stage] + '</span>' : x.next.map(esc).join('<br>') || '<span class="muted">소진</span>') + '</td>' +
         '<td class="small">' + esc(r.note || '') + '</td><td class="nowrap"><button class="btn sm' + (x.counted ? '' : ' pri') + '" data-act="countOpen" data-id="' + esc(r.id) + '">실사 반영</button> ' +
         '<button class="btn sm" data-act="editOpen" data-id="' + esc(r.id) + '">수정</button> ' +
+        '<button class="btn sm" data-act="logOpen" data-id="' + esc(r.id) + '">이력</button> ' +
         '<button class="btn sm" data-act="stockDel" data-id="' + esc(r.id) + '">삭제</button></td></tr>';
-      if (S.editOpen === r.id) row += '<tr><td colspan="8" style="background:var(--line2)"><div class="small" style="margin-bottom:6px"><b>구간 수정</b> — 시작·끝 S/N, 입고일, 외주창고 입고일(비우면 <b>창고 입고 전</b>), 메모</div>' +
+      if (S.editOpen === r.id) row += '<tr><td colspan="9" style="background:var(--line2)"><div class="small" style="margin-bottom:6px"><b>구간 수정</b> — 시작·끝 S/N, 입고일, 외주창고 입고일(비우면 <b>창고 입고 전</b>), 메모</div>' +
         '<div class="row"><input class="inp mono" id="edFrom" value="' + esc(stockSn(r, r.fromNo)) + '" style="width:190px"><span>~</span><input class="inp mono" id="edTo" value="' + esc(stockSn(r, r.toNo)) + '" style="width:190px">' +
         '<label class="small nowrap">입고일 <input class="inp" id="edRecv" type="date" value="' + esc(r.receivedAt || '') + '" style="width:150px"></label>' +
         '<label class="small nowrap">창고 입고일 <input class="inp" id="edWh" type="date" value="' + esc(r.whAt || '') + '" style="width:150px"></label>' +
         '<input class="inp" id="edNote" value="' + esc(r.note || '') + '" placeholder="메모" style="flex:1;min-width:120px">' +
         '<button class="btn pri" data-act="stockEdit" data-id="' + esc(r.id) + '">저장</button><button class="btn" data-act="editOpen" data-id="">닫기</button></div></td></tr>';
-      if (open) row += '<tr><td colspan="8" style="background:var(--line2)"><div class="small" style="margin-bottom:6px">지금 <b>실제로 창고에 있는</b> S/N 구간을 적어 주세요. 여러 구간은 쉼표로 (예: <span class="mono">30835~30970</span>). 비워서 저장하면 실사 기준을 해제합니다.</div>' +
+      if (S.qcOpen && S.qcOpen.id === r.id) {
+        var qs = S.qcOpen.step, q = QC_STEP_[qs];
+        row += '<tr><td colspan="9" style="background:var(--line2)"><div class="small" style="margin-bottom:6px"><b>' + q[0] + '</b> — ' + q[1] + '</div>' +
+          '<div class="row"><label class="small nowrap">날짜 <input class="inp" id="qcAt" type="date" value="' + esc(today()) + '" style="width:150px"></label>' +
+          '<input class="inp" id="qcNote" placeholder="' + (qs === 'fail' ? '불량 내용·수량 (예: 용량 미달 3개)' : '메모 (검사자·샘플 수·특이사항)') + '" style="flex:1;min-width:160px">' +
+          (qs === 'pass' || qs === 'skip' ? '<label class="small nowrap" style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="qcWh"' + (qs === 'skip' ? ' checked' : '') + '> 외주창고 입고까지 같이 처리</label>' : '') +
+          '<button class="btn pri" data-act="stockQc" data-id="' + esc(r.id) + '" data-v="' + qs + '">기록</button><button class="btn" data-act="qcOpen" data-id="">닫기</button></div></td></tr>';
+      }
+      if (S.logOpen === r.id) {
+        var LG = []; try { LG = JSON.parse(r.log || '[]'); } catch (e) { }
+        row += '<tr><td colspan="9" style="background:var(--line2)"><div class="small"><b>이력</b>' + (r.whAt ? ' <button class="btn sm" style="margin-left:8px" data-act="qcOpen" data-id="' + esc(r.id) + '" data-v="unwh">외주창고 입고 취소</button>' : '') + ' <button class="btn sm" data-act="logOpen" data-id="">닫기</button>' +
+          (LG.length ? LG.slice().reverse().map(function (e) { return '<div style="margin-top:4px"><span class="mono">' + esc(ymd(e.at)) + '</span> · <b>' + esc(e.w) + '</b>' + (e.n ? ' · ' + esc(e.n) : '') + ' <span class="muted">(' + esc(e.by || '-') + ' ' + esc(md(e.t)) + ' ' + esc(String(e.t || '').slice(11, 16)) + ')</span></div>'; }).join('') : '<div class="muted" style="margin-top:4px">기록된 이력이 없습니다. (이번 업데이트 이전 등록분)</div>') + '</div></td></tr>';
+      }
+      if (open) row += '<tr><td colspan="9" style="background:var(--line2)"><div class="small" style="margin-bottom:6px">지금 <b>실제로 창고에 있는</b> S/N 구간을 적어 주세요. 여러 구간은 쉼표로 (예: <span class="mono">30835~30970</span>). 비워서 저장하면 실사 기준을 해제합니다.</div>' +
         '<div class="row"><input class="inp mono" id="cntTxt" value="' + esc(r.onHand || '') + '" placeholder="30835~30970" style="flex:1;min-width:220px"><input class="inp" id="cntDate" type="date" value="' + esc(r.countedAt || today()) + '" style="width:150px">' +
         '<button class="btn pri" data-act="stockCount" data-id="' + esc(r.id) + '">저장</button><button class="btn" data-act="countOpen" data-id="">닫기</button></div><div class="small muted" id="cntPrev" style="margin-top:6px"></div></td></tr>';
       if (x.gap.length) {
         var pk = packRanges(x.gap);
-        row += '<tr><td colspan="8" class="small" style="background:var(--redSoft,#fff1f1)"><b style="color:var(--red)">출고 기록 없이 빠진 S/N ' + x.gap.length.toLocaleString() + '개</b> — 티오더 시트에 교체 S/N을 안 적은 출고이거나 별도 출고일 수 있어요. 별도 출고였으면 위 [별도 출고 기록]에 넣어 주세요.<div class="mono" style="margin-top:4px">' +
+        row += '<tr><td colspan="9" class="small" style="background:var(--redSoft,#fff1f1)"><b style="color:var(--red)">출고 기록 없이 빠진 S/N ' + x.gap.length.toLocaleString() + '개</b> — 티오더 시트에 교체 S/N을 안 적은 출고이거나 별도 출고일 수 있어요. 별도 출고였으면 위 [별도 출고 기록]에 넣어 주세요.<div class="mono" style="margin-top:4px">' +
           pk.slice(0, 40).map(function (g) { return esc(String(g[0]).slice(-5)) + (g[1] ? '~' + esc(String(g[1]).slice(-5)) : ''); }).join(', ') + (pk.length > 40 ? ' … 외 ' + (pk.length - 40) + '구간' : '') + '</div></td></tr>';
       }
       return row;
-    }).join('') : '<tr><td colspan="8"><div class="empty">등록된 재고 구간이 없습니다. 위에서 S/N 구간을 등록해 주세요.</div></td></tr>') + '</tbody></table></div></div>';
+    }).join('') : '<tr><td colspan="9"><div class="empty">등록된 재고 구간이 없습니다. 위에서 S/N 구간을 등록해 주세요.</div></td></tr>') + '</tbody></table></div></div>';
   if (X.noSn.length) {
     var nsum = 0; X.noSn.forEach(function (x) { nsum += x.n; });
     h += '<div class="card" style="margin-top:14px"><div class="hd"><h3>교체 S/N 없이 출고된 AS ' + nsum + '개 (' + X.noSn.length + '건)</h3><span class="muted small">티오더 시트 교체 S/N 칸이 비어 있는 출고 · 기록 없이 빠진 재고의 주된 원인</span></div><div class="bd small">' +
@@ -1768,7 +1817,7 @@ var ACT = {
   stockAdd: function (d, b) {
     var m = $('#stModel').value, a = snSplit($('#stFrom').value, m), z = snSplit($('#stTo').value || $('#stFrom').value, m);
     if (!a || !z) return toast('S/N을 확인해 주세요. P20VA는 전체 S/N으로 입력해 주세요.', true);
-    run('stockAdd', { model: m, from: a.sn, to: z.sn, receivedAt: $('#stDate').value, whAt: $('#stWh').checked ? $('#stDate').value : '', note: $('#stNote').value }, function (r) { return '재고 ' + (+r.stock.qty).toLocaleString() + '개 등록했습니다.'; }, b);
+    run('stockAdd', { model: m, from: a.sn, to: z.sn, receivedAt: $('#stDate').value, qc: $('#stQc').value, note: $('#stNote').value }, function (r) { return '재고 ' + (+r.stock.qty).toLocaleString() + '개 등록했습니다. (' + STAGE_[stockStage(r.stock)].t + ')'; }, b);
   },
   stockM: function (d) { S.stockM = d.v; render(); },
   lotEdit: function (d) { S.lotEdit = d.id || null; render(); },
@@ -1782,7 +1831,14 @@ var ACT = {
     if (!b.dataset.sure) { b.dataset.sure = '1'; b.textContent = '한 번 더 누르면 삭제'; b.classList.add('red'); return; }
     run('lotDelete', { id: d.id }, '차수를 삭제했습니다.', b);
   },
-  editOpen: function (d) { S.editOpen = d.id || null; S.countOpen = null; render(); },
+  editOpen: function (d) { S.editOpen = d.id || null; S.countOpen = null; S.qcOpen = null; render(); },
+  qcOpen: function (d) { S.qcOpen = d.id ? { id: d.id, step: d.v } : null; S.editOpen = null; S.countOpen = null; if (d.v === 'unwh') S.logOpen = null; render(); var n = $('#qcNote'); if (n) n.focus(); },
+  logOpen: function (d) { S.logOpen = S.logOpen === d.id ? null : (d.id || null); render(); },
+  stockQc: function (d, b) {
+    var step = d.v, wh = $('#qcWh') && $('#qcWh').checked;
+    if (wh) step = step === 'pass' ? 'passWh' : 'skipWh';
+    run('stockQc', { id: d.id, step: step, at: $('#qcAt').value, note: $('#qcNote').value }, function (r) { S.qcOpen = null; return '기록했습니다 — ' + STAGE_[stockStage(r.stock)].t; }, b);
+  },
   stockEdit: function (d, b) {
     run('stockEdit', { id: d.id, from: $('#edFrom').value, to: $('#edTo').value, receivedAt: $('#edRecv').value, whAt: $('#edWh').value, note: $('#edNote').value },
       function (r) { S.editOpen = null; return r.changed ? '재고 구간을 수정했습니다.' : '바뀐 내용이 없습니다.'; }, b);
