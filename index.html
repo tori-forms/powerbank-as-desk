@@ -143,7 +143,9 @@ textarea.inp{width:100%;resize:vertical}
 .toast{background:#1b2a24;color:#fff;padding:9px 16px;border-radius:9px;font-size:13px;box-shadow:0 8px 20px rgba(0,0,0,.2)}
 .toast.err{background:#8f2c1d}
 .loading{padding:60px;text-align:center;color:var(--ink3)}
-#staleBadge{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:60;background:#1f2937;color:#fff;font-size:12px;padding:6px 12px;border-radius:999px;box-shadow:0 2px 8px rgba(0,0,0,.2);display:flex;align-items:center;gap:6px;white-space:nowrap;opacity:.92}
+#staleBadge{position:fixed;right:18px;bottom:16px;z-index:60;background:var(--panel);color:var(--ink3);border:1px solid var(--line);font-size:12px;padding:4px 10px;border-radius:999px;display:flex;align-items:center;gap:6px;white-space:nowrap}
+#staleBadge .spin{width:10px;height:10px;border-width:2px}
+.oldtog{margin:-4px 0 12px;font-size:13px;color:var(--ink3)}.oldtog button{background:none;border:0;color:var(--brand,#2563eb);cursor:pointer;font-size:13px;padding:0 0 0 6px;text-decoration:underline}
 .spin{display:inline-block;width:14px;height:14px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px}
 @keyframes sp{to{transform:rotate(360deg)}}
 .empty{padding:28px;text-align:center;color:var(--ink3);font-size:13px}
@@ -460,8 +462,7 @@ function staleBadge(at) {
   var el = $('#staleBadge');
   if (!at) { if (el) el.remove(); return; }
   if (!el) { el = document.createElement('div'); el.id = 'staleBadge'; document.body.appendChild(el); }
-  var m = Math.max(0, Math.round((Date.now() - at) / 60000));
-  el.innerHTML = '<span class="spin"></span> 최신 데이터 불러오는 중 · 지금 화면은 ' + (m < 1 ? '방금 전' : m < 60 ? m + '분 전' : Math.round(m / 60) + '시간 전') + ' 기준';
+  el.innerHTML = '<span class="spin"></span> 최신 정보 확인 중';
 }
 /**
  * Apps Script 웹앱은 요청마다 응답 시간이 1~20초로 들쭉날쭉함(서버 실행은 1~4초).
@@ -489,8 +490,12 @@ function load(silent) {
   if (GATED) return Promise.resolve();
   var first = !S.data;
   if (!silent && $('#view')) $('#view').innerHTML = '<div class="loading"><span class="spin"></span> 불러오는 중…</div>';
-  if (first) cacheGet_().then(function (c) { if (c && c.d && !S.data && !GATED) { useData_(c.d); S.stale = true; staleBadge(c.at); } });
-  return callHedged_('bootstrap', 4000, 3).then(function (d) { S.stale = false; staleBadge(null); useData_(d); cachePut_(d); })
+  // 최신 데이터가 2.5초 안에 오면 그걸 바로 보여주고, 늦어질 때만 직전 화면을 먼저 띄움
+  if (first) cacheGet_().then(function (c) {
+    if (!c || !c.d) return;
+    setTimeout(function () { if (!S.data && !GATED) { useData_(c.d); S.stale = true; staleBadge(c.at); } }, 2500);
+  });
+  return callHedged_('bootstrap', 2500, 3).then(function (d) { S.stale = false; staleBadge(null); useData_(d); cachePut_(d); })
     .catch(function (e) {
       staleBadge(null);
       if (GATED || !$('#view')) return;
@@ -916,8 +921,10 @@ function vReturn() {
     fail: '반품 송장 등록 후 ' + (S.data.meta.returnFailBizDays || 2) + '영업일(주말·공휴일 제외)이 지나도 <b>조회내역이 없는</b> 건과, <b>Slack으로 재회수 요청이 들어온</b> 건입니다. 굵게 표시된 송장이 집화가 안 된 송장입니다. 매장에 확인 후 <b>재접수</b>해 주세요.',
     short: '회수 스캔 결과 수량이 모자란 건입니다. 미회수로 확정하면 완료 처리됩니다.',
     done: '회수가 끝난 건입니다. 더 추적할 필요가 없으면 종결하세요.' }[f];
-  var oldBtn = oldOnes.length ? '<button class="' + (S.showOld ? 'on' : '') + '" data-act="toggleOld">' + (S.showOld ? '오래된 건 포함' : '오래된 건 숨김') + '<span class="n">' + oldOnes.length + '</span></button>' : '';
-  return '<div class="tabs">' + tabs + oldBtn + '</div>' + toolbar('회수') +
+  var oldBtn = oldOnes.length ? '<div class="oldtog">' + (S.showOld
+    ? '출고 후 ' + OLD + '일 지난 ' + oldOnes.length + '건 포함해서 보는 중<button data-act="toggleOld">다시 숨기기</button>'
+    : '출고 후 ' + OLD + '일 지난 ' + oldOnes.length + '건은 목록에서 숨겨져 있어요<button data-act="toggleOld">보기</button>') + '</div>' : '';
+  return '<div class="tabs">' + tabs + '</div>' + oldBtn + toolbar('회수') +
     '<div class="card"><div class="tw"><table class="t"><thead>' + head + '</thead><tbody>' +
     (rows || '<tr><td colspan="8"><div class="empty">해당 건이 없습니다.</div></td></tr>') + '</tbody></table></div></div>' +
     '<div class="note" style="margin-top:12px">' + note + (oldOnes.length && !S.showOld ? ' <b>출고 후 ' + OLD + '일이 지난 ' + oldOnes.length + '건은 숨겨져 있습니다.</b> 대부분 회수를 포기했거나 기록이 끝난 건이니, 확인 후 [손망실]로 정리하시면 목록이 깔끔해집니다.' : '') + '</div>';
