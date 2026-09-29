@@ -323,7 +323,7 @@ table.t tr.click:hover td{background:#f9fafb}
 <script>
 /* ======================= 기본 ======================= */
 var S = {
-  data: null, view: 'home', inboxFilter: '대기', inboxSel: null, shipF: 'active', retF: 'need', model: 'all', q: '',
+  data: null, view: 'home', inboxFilter: '오늘 인입', inboxSel: null, shipF: 'active', retF: 'need', model: 'all', q: '',
   caseSel: null, inspSel: null, insp: 'scan', scan: [], an: { model: 'all', months: 6 }, busy: false, preview: null
 };
 var L = {};         // 목록 상수 (서버 meta.lists)
@@ -350,7 +350,13 @@ function esc(v) { return String(v === undefined || v === null ? '' : v).replace(
 function ls(k, v) { try { if (v === undefined) return localStorage.getItem('asdesk.' + k); localStorage.setItem('asdesk.' + k, v); } catch (e) { return null; } }
 function me() { return (ls('me') || '').trim() || 'AS Desk'; }
 function today() { return S.data ? S.data.meta.today : new Date().toISOString().slice(0, 10); }
-function d10(s) { return String(s || '').slice(0, 10); }
+function d10(s) {
+  s = String(s || '');
+  if (!s || /^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  var d = new Date(s); if (isNaN(d.getTime())) return s.slice(0, 10);   // 'Sun Sep 27 2026 …' 같은 형식 보정
+  return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+}
+function hm(s) { s = String(s || ''); if (/^\d{4}-\d{2}-\d{2}T/.test(s)) return s.slice(11, 16); var d = new Date(s); return isNaN(d.getTime()) ? '' : ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); }
 function md(s) { s = d10(s); return s ? s.slice(5).replace('-', '.') : ''; }
 function ymd(s) { s = d10(s); return s ? s.slice(2).replace(/-/g, '.') : ''; }
 function days(a, b) { if (!a) return null; var x = new Date(d10(a) + 'T00:00:00'), y = new Date(d10(b || today()) + 'T00:00:00'); return Math.round((y - x) / 86400000); }
@@ -601,6 +607,11 @@ function counts() {
   var k = { ship_wait: 0, shipping: 0, ret_need: 0, ret_doing: 0, ret_fail: 0, ret_short: 0, judge: 0, dispose: 0, done: 0, closed: 0 };
   S.data.cases.forEach(function (c) { var b = (IDX.st[c.id] || {}).b; if (k[b] !== undefined) k[b]++; });
   k.inboxNew = S.data.inbox.filter(function (i) { return i.status === '신규' || i.status === '방어 추정'; }).length;
+  k.inboxTodo = S.data.inbox.filter(function (i) {
+    if (['신규', '방어 추정', '보류'].indexOf(i.status) >= 0) return true;
+    if (i.status !== '확정') return false;
+    var c = i.caseId && IDX.caseById[i.caseId]; return !c || !String(c.outTracking || '').trim();
+  }).length;
   k.inspectUnits = inspectQueue().length;
   k.disposeUnits = S.data.units.filter(function (u) { var c = IDX.caseById[u.caseId]; return c && c.closed !== 'Y' && u.verdict && !u.disposition; }).length;
   k.shortUnits = S.data.units.filter(function (u) { var c = IDX.caseById[u.caseId]; var st = c && IDX.st[c.id]; return st && ['ret_short', 'judge', 'dispose'].indexOf(st.b) >= 0 && !u.recvSn && !u.disposition; }).length;
@@ -611,12 +622,12 @@ function counts() {
 /* ======================= 레이아웃 ======================= */
 var VIEWS = [
   ['home', '▦', '대시보드'], ['inbox', '✉', '인입함'], ['ship', '⇢', '출고'], ['ret', '⇠', '회수'], ['inspect', '⚗', '회수분 검사'],
-  ['analysis', '▤', '불량 분석'], ['settings', '⚙', '설정·동기화']
+  ['stock', '▣', '교체 재고'], ['analysis', '▤', '불량 분석'], ['settings', '⚙', '설정·동기화']
 ];
 function render() {
   if (GATED || !$('#nav')) return;
   var k = counts();
-  var badge = { inbox: k.inboxNew, ship: k.ship_wait, ret: k.retAll, inspect: k.inspectUnits };
+  var badge = { inbox: k.inboxTodo, ship: k.ship_wait, ret: k.retAll, inspect: k.inspectUnits };
   $('#nav').innerHTML = VIEWS.map(function (v) {
     var n = badge[v[0]];
     return '<button data-act="go" data-v="' + v[0] + '" class="' + (S.view === v[0] ? 'on' : '') + '"><span class="ic">' + v[1] + '</span>' + v[2] +
@@ -627,9 +638,9 @@ function render() {
     '<div><span>CJ 조회</span><span>' + (m.lastCj ? md(m.lastCj) + ' ' + m.lastCj.slice(11, 16) : '-') + '</span></div><div><span>v' + esc(m.version) + '</span><span></span></div>';
   var t = VIEWS.filter(function (v) { return v[0] === S.view; })[0];
   $('#title').textContent = t[2];
-  var sub = { home: '', inbox: 'Slack #ext-볼타레스-티오더 접수 양식 자동 수집', cases: '교환 출고 → 반품 신청 → 회수 입고', inspect: '바코드 스캔으로 회수 매칭 → 판정 · 원인 · 처분', analysis: '모델별 불량 데이터', settings: '연동 상태와 티오더 시트 동기화' }[S.view] || '';
+  var sub = { home: '', inbox: 'Slack #ext-볼타레스-티오더 접수 양식 자동 수집', cases: '교환 출고 → 반품 신청 → 회수 입고', inspect: '바코드 스캔으로 회수 매칭 → 판정 · 원인 · 처분', analysis: '모델별 불량 데이터', stock: '교체용 재고 S/N 구간 · 출고 S/N으로 사용량 자동 계산', settings: '연동 상태와 티오더 시트 동기화' }[S.view] || '';
   $('#subtitle').textContent = sub; $('#subtitle').style.display = sub ? '' : 'none';
-  var fn = { home: vHome, inbox: vInbox, ship: vShip, ret: vReturn, inspect: vInspect, analysis: vAnalysis, settings: vSettings }[S.view];
+  var fn = { home: vHome, inbox: vInbox, ship: vShip, ret: vReturn, inspect: vInspect, stock: vStock, analysis: vAnalysis, settings: vSettings }[S.view];
   $('#view').innerHTML = fn();
   if (S.view === 'inbox') { loadInboxDetail(); setTimeout(loadSlackImgs, 30); }
   if (S.caseSel) openCase(S.caseSel, true);
@@ -714,14 +725,14 @@ function trkList(ships, fallback, note) {
 function inboxStatus(i) {
   if (i.status !== '확정') return [i.status, INBOX_ST[i.status] || 'p-gray'];
   var c = i.caseId && IDX.caseById[i.caseId];
-  if (c && !String(c.outTracking || '').trim()) return ['확정 · 출고 전', 'p-ship'];
+  if (!c || !String(c.outTracking || '').trim()) return ['확정 · 시트 입력 대기', 'p-ship'];
   return ['확정', 'p-green'];
 }
 function inboxLi(i) {
   var sns = jparse(i.sns, []), flags = jparse(i.flags, []), stt = inboxStatus(i);
   return '<div class="li ' + (S.inboxSel === i.id && S.view === 'inbox' ? 'on' : '') + '" data-act="inboxSel" data-id="' + esc(i.id) + '">' +
     '<div class="r1"><span class="pill ' + stt[1] + '">' + esc(stt[0]) + '</span><b>' + esc(i.store || '(매장 미기재)') + '</b></div>' +
-    '<div class="r2"><span>' + md(i.postedAt) + ' ' + esc(String(i.postedAt).slice(11, 16)) + '</span><span>' + esc(i.reasonCode || '') + '</span><span>S/N ' + sns.length + '개</span>' +
+    '<div class="r2"><span>' + md(i.postedAt) + ' ' + esc(hm(i.postedAt)) + '</span><span>' + esc(i.reasonCode || '') + '</span><span>S/N ' + sns.length + '개</span>' +
     (flags.length ? '<span style="color:var(--amber)">⚑ ' + flags.length + '</span>' : '') + (i.caseId ? '<span>→ ' + esc(cid(IDX.caseById[i.caseId] || { id: i.caseId })) + '</span>' : '') + '</div></div>';
 }
 function vInbox() {
@@ -733,11 +744,14 @@ function vInbox() {
     return !String(c.outTracking || '').trim();
   };
   var inGroup = function (i, g) {
-    if (g === '대기') return ['신규', '방어 추정', '보류'].indexOf(i.status) >= 0 || preShip(i);
-    if (g === '확정') return i.status === '확정' && !preShip(i);
+    if (g === '오늘 인입') return d10(i.postedAt) === today();
+    if (g === '결정 대기') return ['신규', '방어 추정', '보류'].indexOf(i.status) >= 0;
+    if (g === '시트 입력 대기') return preShip(i);   // 확정했는데 티오더 시트에 출고 송장이 아직 없음
+    if (g === '출고됨') return i.status === '확정' && !preShip(i);
     return !groups[g] || groups[g].indexOf(i.status) >= 0;
   };
-  var groups = { '대기': ['신규', '방어 추정', '보류'], '확정': ['확정'], '방어': ['방어'], '제외': ['제외'], '전체': null };
+  var groups = { '오늘 인입': 1, '결정 대기': 1, '시트 입력 대기': 1, '출고됨': 1, '방어': ['방어'], '제외': ['제외'], '전체': null };
+  if (!groups[S.inboxFilter] && S.inboxFilter !== '전체') S.inboxFilter = '오늘 인입';
   var list = all.filter(function (i) { return inGroup(i, S.inboxFilter); });
   if (S.q) list = list.filter(function (i) { return (i.store + ' ' + i.inquiryNo + ' ' + i.sns + ' ' + i.symptom).toLowerCase().indexOf(S.q.toLowerCase()) >= 0; });
   var tabs = Object.keys(groups).map(function (g) {
@@ -754,7 +768,7 @@ function vInbox() {
     '<button class="btn" data-act="manualInbox">＋ 수기 등록</button>' +
     '<button class="btn" data-act="relink">↺ 출고 이력과 자동 재연결</button>' +
     '<button class="btn" data-act="syncSlack">⟳ Slack 동기화</button></div>' +
-    '<div class="split"><div class="card list">' + (list.length ? list.map(inboxLi).join('') : '<div class="empty">' + (S.data.meta.slackReady ? '해당 인입이 없습니다.' : 'Slack이 아직 연결되지 않았습니다. [설정·동기화]에서 토큰을 저장해 주세요.') + '</div>') + '</div>' +
+    '<div class="split"><div class="card list">' + (list.length ? list.map(inboxLi).join('') : '<div class="empty">' + (S.data.meta.slackReady ? (S.inboxFilter === '오늘 인입' ? '오늘 들어온 AS 접수가 없습니다.' + ['결정 대기', '시트 입력 대기'].map(function (g) { var n = all.filter(function (i) { return inGroup(i, g); }).length; return n ? '<br><button class="btn sm" style="margin-top:8px" data-act="inboxFilter" data-v="' + g + '">' + g + ' ' + n + '건 보기</button>' : ''; }).join('') : '해당 인입이 없습니다.') : 'Slack이 아직 연결되지 않았습니다. [설정·동기화]에서 토큰을 저장해 주세요.') + '</div>') + '</div>' +
     '<div>' + (sel ? inboxDetail(sel) : '<div class="card"><div class="empty">왼쪽에서 인입 건을 선택해 주세요.</div></div>') + '</div></div>';
 }
 function inboxDetail(i) {
@@ -767,7 +781,7 @@ function inboxDetail(i) {
     (i.inquiryUrl ? '<a class="btn sm" target="_blank" href="' + esc(i.inquiryUrl) + '">문의 ↗</a>' : '') + '</div><div class="bd">';
   if (i.editNote) h += '<div class="flag" style="background:var(--blueSoft);color:var(--blue)">✎ Slack에서 수정된 접수입니다 — ' + esc(i.editNote) + '</div>';
   if (flags.length) h += '<div class="flags">' + flags.map(function (f) { return '<div class="flag ' + (/재AS|안전|스웰링/.test(f) ? 'r' : '') + '">⚑ ' + esc(f) + '</div>'; }).join('') + '</div>';
-  h += '<dl class="kv"><dt>접수</dt><dd>' + esc(String(i.postedAt).replace('T', ' ').slice(0, 16)) + ' · ' + esc(i.author || '') + '</dd>' +
+  h += '<dl class="kv"><dt>접수</dt><dd>' + esc(d10(i.postedAt) + ' ' + hm(i.postedAt)) + ' · ' + esc(i.author || '') + '</dd>' +
     '<dt>문의번호</dt><dd>' + esc(i.inquiryNo || '-') + '</dd><dt>요청자</dt><dd>' + esc(i.requester || '-') + '</dd>' +
     '<dt>거래처 ID</dt><dd class="mono">' + esc(i.accountId || '-') + '</dd><dt>설치일자</dt><dd>' + esc(i.installDate || '-') + '</dd>' +
     '<dt>기종</dt><dd>' + esc(i.modelText || '-') + (i.reqQty ? ' · 요청 ' + esc(i.reqQty) + 'EA' : '') + '</dd>' +
@@ -820,22 +834,20 @@ function matchQ(c) {
 }
 function modelOk(c) { return S.model === 'all' || caseModel(c) === S.model; }
 function vShip() {
-  var f = S.shipF || 'active';
+  var f = ({ active: 'moving', before: 'moving' })[S.shipF] || S.shipF || 'moving';
   var all = S.data.cases.filter(function (c) { return modelOk(c) && matchQ(c); });
   var pick = function (fn) { return all.filter(fn); };
   var sets = {
-    active: pick(function (c) { return IDX.st[c.id].b === 'shipping'; }),
+    moving: pick(function (c) { return IDX.st[c.id].b === 'shipping'; }),   // 송장 있음 · 도착 전 (집화 전 포함)
     wait: pick(function (c) { return IDX.st[c.id].b === 'ship_wait'; }),
-    before: pick(function (c) { return IDX.st[c.id].out === 'before' && IDX.st[c.id].b !== 'ship_wait'; }),
-    moving: pick(function (c) { return IDX.st[c.id].out === 'moving'; }),
     done: pick(function (c) { return IDX.st[c.id].out === 'done' && IDX.st[c.id].b !== 'closed'; }),
     all: all
   };
-  var list = (sets[f] || sets.active).slice().sort(function (a, b) { return String(b.outDate || b.createdAt).localeCompare(String(a.outDate || a.createdAt)); });
-  var tabs = [['active', '배송 중인 출고'], ['wait', '출고 대기(송장 없음)'], ['before', '배송 전'], ['moving', '배송 중'], ['done', '도착 완료'], ['all', '전체']]
+  var list = (sets[f] || sets.moving).slice().sort(function (a, b) { return String(b.outDate || b.createdAt).localeCompare(String(a.outDate || a.createdAt)); });
+  var tabs = [['wait', '출고 대기(송장 없음)'], ['moving', '배송 중'], ['done', '도착 완료'], ['all', '전체']]
     .map(function (t) { return '<button class="' + (f === t[0] ? 'on' : '') + '" data-act="ship" data-v="' + t[0] + '">' + t[1] + '<span class="n">' + (sets[t[0]] || []).length + '</span></button>'; }).join('');
   return '<div class="tabs">' + tabs + '</div>' + toolbar('출고') +
-    (f === 'active' ? '<div class="note" style="margin-bottom:10px">송장이 찍혀 실제로 배송 중인 건만 보여줍니다. 아직 송장이 없는 건은 <b>[출고 대기(송장 없음)]</b> 탭에 있습니다. 도착 완료된 건은 <b>회수</b> 탭으로 넘어갑니다.</div>' : '') +
+    (f === 'moving' ? '<div class="note" style="margin-bottom:10px">출고 송장이 입력됐고 아직 도착 전인 건입니다. CJ에 아직 안 찍힌 건은 상태에 <b>집화 전</b>으로 표시됩니다. 도착하면 <b>회수</b> 탭으로 넘어갑니다.</div>' : '') +
     '<div class="card"><div class="tw"><table class="t"><thead><tr><th>번호</th><th>매장</th><th>모델</th><th>수량</th><th>교체 출고 S/N</th><th>교체사유</th><th>출고일</th><th>출고 송장</th><th>상태</th></tr></thead><tbody>' +
     (list.length ? list.slice(0, 300).map(function (c) {
       var st = IDX.st[c.id], us = st.units;
@@ -1233,6 +1245,64 @@ function vAnalysis() {
 }
 
 /* ======================= 설정 ======================= */
+/* ======================= 교체 재고 ======================= */
+function snSplit(sn, model) {
+  var v = String(sn || '').toUpperCase().replace(/[\s\-_]/g, '').replace(/^P20BPTA/, 'P20BOTA');
+  if (!v) return null;
+  if (/^\d+$/.test(v)) { if (model === 'P20VA') return null; v = 'P20BOTA25' + ('0000000' + v).slice(-7); }
+  var m = v.match(/^(.*\D)(\d+)$/);
+  return m ? { sn: v, prefix: m[1], num: +m[2], digits: m[2].length } : null;
+}
+function stockSn(r, n) { return r.prefix + ('0000000000000' + n).slice(-(+r.digits)); }
+function stockCalc() {
+  var rows = (S.data.stock || []).slice().sort(function (a, b) { return String(a.receivedAt).localeCompare(String(b.receivedAt)) || (+a.fromNo - +b.fromNo); });
+  var used = {};   // S/N → [유닛]
+  S.data.units.forEach(function (u) { if (u.outSn) { var k = String(u.outSn).toUpperCase(); (used[k] = used[k] || []).push(u); } });
+  var inRange = function (sp) { return rows.filter(function (r) { return sp && r.prefix === sp.prefix && +r.digits === sp.digits && sp.num >= +r.fromNo && sp.num <= +r.toNo; })[0]; };
+  var list = rows.map(function (r) {
+    var n = 0, next = [];
+    for (var k = +r.fromNo; k <= +r.toNo; k++) { var sn = stockSn(r, k); if (used[sn]) n++; else if (next.length < 3) next.push(sn); }
+    return { r: r, used: n, left: +r.qty - n, next: next };
+  });
+  var since = rows.length ? rows.map(function (r) { return r.receivedAt; }).sort()[0] : '';
+  var dup = [], unreg = [];
+  Object.keys(used).forEach(function (sn) {
+    var us = used[sn];
+    var cs = us.map(function (u) { return IDX.caseById[u.caseId]; }).filter(Boolean);
+    if (cs.length > 1) dup.push({ sn: sn, cases: cs });
+    if (rows.length && !inRange(snSplit(sn))) {
+      var c = cs[0]; if (c && c.outDate && c.outDate >= since) unreg.push({ sn: sn, c: c });
+    }
+  });
+  unreg.sort(function (a, b) { return String(b.c.outDate).localeCompare(String(a.c.outDate)); });
+  return { list: list, dup: dup, unreg: unreg };
+}
+function vStock() {
+  var X = stockCalc(), tot = 0, usedN = 0, left = 0;
+  X.list.forEach(function (x) { tot += +x.r.qty; usedN += x.used; left += x.left; });
+  var h = '<div class="card"><div class="hd"><h3>재고 S/N 구간 등록</h3><span class="muted small">연번이면 시작·끝만 넣으면 됩니다 · 번호만 입력해도 돼요 (예: 30001 ~ 31000 → P20BOTA250030001 ~ P20BOTA250031000)</span></div><div class="bd">' +
+    '<div class="row"><select class="inp" id="stModel"><option value="P20BOTA25">기존 P20BOTA25</option><option value="P20VA">신형 P20VA</option></select>' +
+    '<input class="inp mono" id="stFrom" placeholder="시작 S/N 또는 번호" style="width:210px"><span>~</span><input class="inp mono" id="stTo" placeholder="끝 S/N 또는 번호" style="width:210px">' +
+    '<input class="inp" id="stDate" type="date" value="' + esc(today()) + '" style="width:150px"><input class="inp" id="stNote" placeholder="메모 (입고처·PO 등)" style="flex:1;min-width:160px">' +
+    '<button class="btn pri" data-act="stockAdd">등록</button></div><div class="small muted" id="stPrev" style="margin-top:8px"></div></div></div>';
+  h += '<div class="kpis" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-top:14px">' +
+    '<div class="kpi"><div class="l">등록 수량</div><div class="v">' + tot.toLocaleString() + '<small>개</small></div></div>' +
+    '<div class="kpi"><div class="l">출고에 사용</div><div class="v">' + usedN.toLocaleString() + '<small>개</small></div></div>' +
+    '<div class="kpi"><div class="l">남은 재고</div><div class="v" style="color:' + (tot && left / tot < 0.1 ? 'var(--red)' : 'inherit') + '">' + left.toLocaleString() + '<small>개</small></div></div></div>';
+  h += '<div class="card"><div class="tw"><table class="t"><thead><tr><th>구간</th><th>입고일</th><th>등록</th><th>사용</th><th>남음</th><th>다음 출고할 S/N</th><th>메모</th><th></th></tr></thead><tbody>' +
+    (X.list.length ? X.list.map(function (x) {
+      var pct = x.r.qty ? Math.round(x.used / +x.r.qty * 100) : 0;
+      return '<tr><td class="mono small">' + esc(stockSn(x.r, x.r.fromNo)) + '<br>~ ' + esc(stockSn(x.r, x.r.toNo)) + '</td><td class="nowrap">' + esc(ymd(x.r.receivedAt)) + '</td>' +
+        '<td>' + (+x.r.qty).toLocaleString() + '</td><td>' + x.used.toLocaleString() + ' <span class="muted small">(' + pct + '%)</span></td>' +
+        '<td><b>' + x.left.toLocaleString() + '</b></td><td class="mono small">' + (x.next.map(esc).join('<br>') || '<span class="muted">소진</span>') + '</td>' +
+        '<td class="small">' + esc(x.r.note || '') + '</td><td><button class="btn sm" data-act="stockDel" data-id="' + esc(x.r.id) + '">삭제</button></td></tr>';
+    }).join('') : '<tr><td colspan="8"><div class="empty">등록된 재고 구간이 없습니다. 위에서 S/N 구간을 등록해 주세요.</div></td></tr>') + '</tbody></table></div></div>';
+  if (X.dup.length) h += '<div class="card" style="margin-top:14px"><div class="hd"><h3 style="color:var(--red)">⚠️ 같은 S/N이 두 번 출고됨 ' + X.dup.length + '건</h3><span class="muted small">입력 실수이거나 재AS로 다시 나간 제품입니다</span></div><div class="bd small">' +
+    X.dup.slice(0, 50).map(function (d) { return '<div><span class="mono">' + esc(d.sn) + '</span> — ' + d.cases.map(function (c) { return '<span class="click" data-act="case" data-id="' + esc(c.id) + '">' + esc(cid(c)) + ' ' + esc(c.store) + ' ' + esc(md(c.outDate)) + '</span>'; }).join(' · ') + '</div>'; }).join('') + '</div></div>';
+  if (X.unreg.length) h += '<div class="card" style="margin-top:14px"><div class="hd"><h3>등록 구간 밖의 S/N으로 출고 ' + X.unreg.length + '건</h3><span class="muted small">첫 입고일 이후 출고분 중 · 재고 구간 등록이 빠졌거나 S/N 오타일 수 있어요</span></div><div class="bd small">' +
+    X.unreg.slice(0, 50).map(function (d) { return '<div><span class="mono">' + esc(d.sn) + '</span> — <span class="click" data-act="case" data-id="' + esc(d.c.id) + '">' + esc(cid(d.c)) + ' ' + esc(d.c.store) + ' ' + esc(md(d.c.outDate)) + '</span></div>'; }).join('') + (X.unreg.length > 50 ? '<div class="muted">외 ' + (X.unreg.length - 50) + '건</div>' : '') + '</div></div>';
+  return h;
+}
 function vSettings() {
   var m = S.data.meta;
   var t = function (s) { return s ? esc(String(s).replace('T', ' ').slice(0, 16)) : '-'; };
@@ -1435,6 +1505,15 @@ var ACT = {
     var c = IDX.caseById[d.id];
     run('caseUpdate', { id: d.id, rev: c.rev || '0', fields: { inquiryNo: $('#cf_inquiryNo').value, store: $('#cf_store').value, reasonCode: $('#cf_reasonCode').value, model: $('#cf_model').value, symptom: $('#cf_symptom').value, note: $('#cf_note').value } }, '저장했습니다.', b);
   },
+  stockAdd: function (d, b) {
+    var m = $('#stModel').value, a = snSplit($('#stFrom').value, m), z = snSplit($('#stTo').value || $('#stFrom').value, m);
+    if (!a || !z) return toast('S/N을 확인해 주세요. P20VA는 전체 S/N으로 입력해 주세요.', true);
+    run('stockAdd', { model: m, from: a.sn, to: z.sn, receivedAt: $('#stDate').value, note: $('#stNote').value }, function (r) { return '재고 ' + (+r.stock.qty).toLocaleString() + '개 등록했습니다.'; }, b);
+  },
+  stockDel: function (d, b) {
+    if (!b.dataset.sure) { b.dataset.sure = '1'; b.textContent = '한 번 더 누르면 삭제'; b.classList.add('red'); return; }
+    run('stockDelete', { id: d.id }, '재고 구간을 삭제했습니다.', b);
+  },
   shipOut: function (d, b) { run('shipOut', { caseId: d.id, outDate: $('#so_date').value, outTracking: $('#so_trk').value, outSns: $('#so_sns').value.split(/\n/) }, '출고 정보를 저장했습니다.', b); },
   setReturn: function (d, b) { var v = $('#sr_trk').value.trim(); if (!v) return toast('반품 송장번호를 입력해 주세요.', true); run('setReturn', { caseId: d.id, returnTracking: v }, '반품 송장을 등록했습니다.', b); },
   receive: function (d, b) {
@@ -1614,6 +1693,11 @@ document.addEventListener('input', function (e) {
   if (e.target.id === 'asgQ') {
     var v = e.target.value.toLowerCase();
     $$('#asgList .li').forEach(function (li) { li.style.display = li.textContent.toLowerCase().indexOf(v) >= 0 ? '' : 'none'; });
+  }
+  if (e.target.id === 'stFrom' || e.target.id === 'stTo') {
+    var m = $('#stModel').value, a = snSplit($('#stFrom').value, m), z = snSplit($('#stTo').value || $('#stFrom').value, m), pv = $('#stPrev');
+    if (pv) pv.innerHTML = !a ? '' : (!z || a.prefix !== z.prefix || a.digits !== z.digits) ? '<span style="color:var(--red)">시작·끝 S/N의 앞부분이 달라요</span>'
+      : '<span class="mono">' + esc(a.sn) + ' ~ ' + esc(z.sn) + '</span> · <b>' + (Math.abs(z.num - a.num) + 1).toLocaleString() + '개</b>';
   }
   if (e.target.id === 'q') { clearTimeout(qTimer); var v = e.target.value; qTimer = setTimeout(function () { S.q = v; render(); var q = $('#q'); if (q) { q.focus(); q.setSelectionRange(v.length, v.length); } }, 250); }
 });
