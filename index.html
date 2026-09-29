@@ -308,7 +308,7 @@ table.t tr.click:hover td{background:#f9fafb}
   </aside>
   <main>
     <header class="top">
-      <div><h1 id="title">오늘 할 일</h1><div class="sub" id="subtitle"></div></div>
+      <div><h1 id="title">대시보드</h1><div class="sub" id="subtitle"></div></div>
       <div class="sp"></div>
       <button class="btn sm" data-act="reload" title="새로고침">↻ 새로고침</button>
     </header>
@@ -546,7 +546,7 @@ function counts() {
 
 /* ======================= 레이아웃 ======================= */
 var VIEWS = [
-  ['home', '▦', '오늘 할 일'], ['inbox', '✉', '인입함'], ['ship', '⇢', '출고'], ['ret', '⇠', '회수'], ['inspect', '⚗', '회수분 검사'],
+  ['home', '▦', '대시보드'], ['inbox', '✉', '인입함'], ['ship', '⇢', '출고'], ['ret', '⇠', '회수'], ['inspect', '⚗', '회수분 검사'],
   ['analysis', '▤', '불량 분석'], ['settings', '⚙', '설정·동기화']
 ];
 function render() {
@@ -563,7 +563,8 @@ function render() {
     '<div><span>CJ 조회</span><span>' + (m.lastCj ? md(m.lastCj) + ' ' + m.lastCj.slice(11, 16) : '-') + '</span></div><div><span>v' + esc(m.version) + '</span><span></span></div>';
   var t = VIEWS.filter(function (v) { return v[0] === S.view; })[0];
   $('#title').textContent = t[2];
-  $('#subtitle').textContent = { home: '끝나지 않은 AS를 여기서 이어서 처리합니다', inbox: 'Slack #ext-볼타레스-티오더 접수 양식 자동 수집', cases: '교환 출고 → 반품 신청 → 회수 입고', inspect: '바코드 스캔으로 회수 매칭 → 판정 · 원인 · 처분', analysis: '모델별 불량 데이터', settings: '연동 상태와 티오더 시트 동기화' }[S.view];
+  var sub = { home: '', inbox: 'Slack #ext-볼타레스-티오더 접수 양식 자동 수집', cases: '교환 출고 → 반품 신청 → 회수 입고', inspect: '바코드 스캔으로 회수 매칭 → 판정 · 원인 · 처분', analysis: '모델별 불량 데이터', settings: '연동 상태와 티오더 시트 동기화' }[S.view] || '';
+  $('#subtitle').textContent = sub; $('#subtitle').style.display = sub ? '' : 'none';
   var fn = { home: vHome, inbox: vInbox, ship: vShip, ret: vReturn, inspect: vInspect, analysis: vAnalysis, settings: vSettings }[S.view];
   $('#view').innerHTML = fn();
   if (S.view === 'inbox') { loadInboxDetail(); setTimeout(loadSlackImgs, 30); }
