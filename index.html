@@ -403,6 +403,16 @@ function jsonp_(url, body) {
     document.body.appendChild(sc);
   });
 }
+/** 기본 서버 주소 — 새 브라우저에서는 접속 키만 넣으면 됨 */
+var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMyeFkL41zG9ZjxB7TIN9EH9cyAdGBUiYdulCEtWYOk-kui_BJB3nt/exec';
+/** 초대 링크(…/#k=접속키)로 열면 키를 저장하고 주소창에서 지움 */
+(function () {
+  try {
+    var m = String(location.hash || '').match(/[#&]k=([A-Za-z0-9]+)/);
+    if (m) { ls('appKey', m[1]); if (!ls('gasUrl')) ls('gasUrl', DEFAULT_GAS_URL); history.replaceState(null, '', location.pathname + location.search); }
+    if (!ls('gasUrl') && ls('appKey')) ls('gasUrl', DEFAULT_GAS_URL);
+  } catch (e) { }
+})();
 /** 외부 호스팅(GitHub Pages 등)에서 처음 열었을 때 서버 주소·접속 키 입력 화면 */
 var GATED = false;
 function gate(msg) {
@@ -410,8 +420,8 @@ function gate(msg) {
   document.body.innerHTML = '<div style="max-width:460px;margin:12vh auto;padding:0 18px">' +
     '<div class="card"><div class="hd"><h3>볼타레스 AS Desk 연결</h3></div><div class="bd">' +
     (msg ? '<div class="flag r" style="margin-bottom:10px">' + esc(msg) + '</div>' : '<div class="small muted" style="margin-bottom:10px">처음 한 번만 입력하면 이 브라우저에 저장됩니다.</div>') +
-    '<label class="fld" style="margin-bottom:10px"><span>Apps Script 웹앱 URL (…/exec)</span><input class="inp mono" id="gUrl" value="' + esc(ls('gasUrl') || '') + '" placeholder="https://script.google.com/macros/s/…/exec"></label>' +
-    '<label class="fld"><span>접속 키</span><input class="inp mono" id="gKey" value="' + esc(ls('appKey') || '') + '" placeholder="setup() 실행 로그 또는 스크립트 속성 APP_KEY"></label>' +
+    '<label class="fld" style="margin-bottom:10px"><span>Apps Script 웹앱 URL (…/exec)</span><input class="inp mono" id="gUrl" value="' + esc(ls('gasUrl') || DEFAULT_GAS_URL) + '" placeholder="https://script.google.com/macros/s/…/exec"></label>' +
+    '<label class="fld"><span>접속 키</span><input class="inp mono" id="gKey" value="' + esc(ls('appKey') || '') + '" placeholder="관리자에게 받은 접속 키 (설정·동기화 › 접속 정보)"></label>' +
     '<div class="row" style="margin-top:14px"><button class="btn pri" id="gSave">연결</button></div></div></div></div>';
   document.getElementById('gSave').onclick = function () {
     var u = document.getElementById('gUrl').value.trim(), k = document.getElementById('gKey').value.trim();
@@ -727,7 +737,7 @@ function inboxDetail(i) {
       '<button class="btn sm" data-act="ibDismiss" data-id="' + esc(i.id) + '" title="양식 오인식·중복">제외</button></div>' +
       '<div class="row" style="margin-top:8px"><button class="btn" data-act="linkOpen" data-id="' + esc(i.id) + '">이미 출고한 건과 연결</button>' +
       '<span class="muted small">티오더 시트에 이미 출고 기록이 있는데 여기 남아 있으면 이 버튼으로 묶어 주세요.</span></div>' +
-      '<div class="note" style="margin-top:10px">Slack 스레드에 대표님이 "교환출고 진행하겠습니다" 답글을 달면 10분 안에 자동으로 확정됩니다. 방어한 건은 AS 건을 만들지 않고 방어율 통계에만 반영됩니다.</div></div>';
+      '<div class="note" style="margin-top:10px">Slack 스레드에 승인 담당자가 "교환출고 진행하겠습니다" 답글을 달면 10분 안에 자동으로 확정됩니다. 방어한 건은 AS 건을 만들지 않고 방어율 통계에만 반영됩니다.</div></div>';
   } else {
     h += '<div class="sec"><div class="row">' + (i.caseId ? '<button class="btn pri" data-act="case" data-id="' + esc(i.caseId) + '">AS 건 열기 ' + esc(cid(IDX.caseById[i.caseId] || { id: i.caseId })) + '</button>' : '') +
       (stt[0] === '확정 · 출고 전' ? '<span class="muted small">출고 송장이 기록되면 이 목록에서 자동으로 빠집니다.</span>' : '') +
@@ -1164,7 +1174,7 @@ function vSettings() {
     '<div class="small muted" style="margin-bottom:8px">채널 #ext-볼타레스-티오더 · 10분마다 자동 수집 · 마지막 ' + t(m.lastSlack) + '</div>' +
     '<div class="row"><input class="inp mono" id="slackTok" type="password" placeholder="xoxp-… (이미 저장되어 있으면 비워 두세요)" style="flex:1;min-width:220px"><button class="btn" data-act="saveTok">토큰 저장</button><button class="btn pri" data-act="syncSlack">지금 동기화</button>' +
     '<button class="btn" data-act="backfill">과거 첨부·답글 불러오기</button></div>' +
-    '<div class="note" style="margin-top:10px">볼타레스 워크스페이스에서 만든 Slack 앱의 <b>User OAuth Token</b>을 대표님이 직접 붙여넣어 주세요. 필요한 권한은 groups:history, channels:history, users:read 입니다. 토큰은 스크립트 속성에만 저장됩니다.</div></div></div>' +
+    '<div class="note" style="margin-top:10px">볼타레스 워크스페이스에서 만든 Slack 앱의 <b>User OAuth Token</b>을 관리자가 직접 붙여넣어 주세요. 필요한 권한은 groups:history, channels:history, users:read 입니다. 토큰은 스크립트 속성에만 저장됩니다.</div></div></div>' +
     '<div class="card"><div class="hd"><h3>CJ대한통운 배송조회</h3></div><div class="bd"><div class="small muted" style="margin-bottom:8px">1시간마다 출고·반품 송장 상태를 갱신합니다. 반품이 배송완료되면 회수 입고일이 자동 기록됩니다. 마지막 ' + t(m.lastCj) + '</div>' +
     '<div class="row"><button class="btn pri" data-act="syncCj">지금 조회</button><input class="inp mono" id="trkTest" placeholder="송장번호 단건 조회" style="width:180px"><button class="btn" data-act="trackTest">조회</button></div><div id="trkOut" class="small" style="margin-top:8px"></div></div></div></div>';
   var STs = m.shipTotals || {};
@@ -1174,14 +1184,25 @@ function vSettings() {
     '<button class="btn pri" data-act="saveShip">저장</button></div>' +
     '<div class="note" style="margin-top:8px">티오더에 지금까지 납품한 누적 수량입니다. 추가 납품이 있을 때마다 숫자만 올려 주세요.</div></div></div>';
   h += '<div class="card" style="margin-top:14px"><div class="hd"><h3>Slack 회수 알림 (DM)</h3>' + (m.botReady ? '<span class="pill p-green">켜짐</span>' : '<span class="pill p-red">Bot 토큰 필요</span>') + '</div><div class="bd">' +
-    '<div class="small muted" style="margin-bottom:8px">평일 오전 9시, 대표님 DM으로 회수 실패 · 반품 재접수 현황 · 출고 배송완료 · 회수 완료를 요약해 보냅니다. 외주센터 카톡에 붙여넣을 재접수 요청 문구도 같이 옵니다. 마지막 발송 ' + t(m.lastDigest) + '</div>' +
+    '<div class="small muted" style="margin-bottom:8px">평일 오전 9시, 알림 받는 담당자 DM으로 회수 실패 · 반품 재접수 현황 · 출고 배송완료 · 회수 완료를 요약해 보냅니다. 외주센터 카톡에 붙여넣을 재접수 요청 문구도 같이 옵니다. 마지막 발송 ' + t(m.lastDigest) + '</div>' +
     '<div class="row"><input class="inp mono" id="botTok" type="password" placeholder="xoxb-… (Bot User OAuth Token)" style="flex:1;min-width:220px"><button class="btn" data-act="saveBot">토큰 저장</button>' +
     '<button class="btn" data-act="digestPreview">미리보기</button><button class="btn pri" data-act="digestSend"' + (m.botReady ? '' : ' disabled') + '>지금 보내기</button></div>' +
     '<div id="digestOut" style="margin-top:10px"></div>' +
     '<div class="note" style="margin-top:10px"><b>Bot 토큰 만드는 법</b> (한 번만) — api.slack.com/apps › 기존 AS Desk 앱 › <b>OAuth &amp; Permissions</b> › Bot Token Scopes에 <span class="mono">chat:write</span> 추가 › 상단 <b>Reinstall to Workspace</b> › <b>Bot User OAuth Token</b>(xoxb-) 복사해서 위에 저장. ' +
     '<b>App Home</b> › Show Tabs › <b>Messages Tab</b> 켜기까지 하면 앱 DM으로 알림이 옵니다.<br>재접수 인식: 회수 실패 건의 티오더 시트 <b>회수송장 칸에 재발급 번호를 추가</b>하면(기존 번호 옆에 줄바꿈) 1시간 안에 자동으로 재접수로 잡힙니다. CJ 출고송장 조회에 재발급 번호가 먼저 뜨면 그걸로도 잡힙니다.</div></div></div>';
+  h += '<div class="card" style="margin-top:14px"><div class="hd"><h3>Slack 봇 대화 · 배송 현황 리포트</h3>' + (m.aiReady ? '<span class="pill p-green">AI 대화 켜짐</span>' : '<span class="pill p-gray">기본 모드</span>') + '</div><div class="bd">' +
+    '<div class="small muted" style="margin-bottom:8px">AS Desk 앱 DM으로 편하게 물어보면 답합니다. Claude API 키를 넣으면 자연스럽게 대화하며 송장 조회·재접수 기록·현황 정리를 해 줍니다(메시지당 약 10~30원). 키가 없으면 정해진 명령어로만 답합니다. 마지막 봇 요청 ' + t(m.botEvt) + '</div>' +
+    '<div class="row"><input class="inp mono" id="aiKey" type="password" placeholder="' + (m.aiReady ? '저장됨 — 바꿀 때만 입력' : 'sk-ant-… (Claude API 키)') + '" style="flex:1;min-width:220px"><button class="btn" data-act="saveAi">키 저장</button>' +
+    '<select class="inp" id="aiModel" style="width:auto"><option value="claude-sonnet-5-5"' + (m.aiModel === 'claude-sonnet-5-5' ? ' selected' : '') + '>Sonnet 5.5 (추천)</option><option value="claude-haiku-4-5-20251001"' + (m.aiModel === 'claude-haiku-4-5-20251001' ? ' selected' : '') + '>Haiku 4.5 (저렴)</option></select><button class="btn" data-act="saveAiModel">모델 저장</button></div>' +
+    '<div class="row" style="margin-top:8px"><input class="inp" id="aiQ" placeholder="여기서 봇에게 물어보기 (예: 오늘 회수 어떻게 돼?)" style="flex:1;min-width:220px"><button class="btn" data-act="aiAsk">물어보기</button></div>' +
+    '<div id="aiOut" style="margin-top:8px"></div>' +
+    '<div class="row" style="margin-top:14px;border-top:1px solid var(--line2);padding-top:12px"><b class="small">평일 오후 3시 배송 현황 → #볼타-티오더cs</b>' + (m.reportOn ? ' <span class="pill p-green">켜짐</span>' : ' <span class="pill p-gray">꺼짐</span>') +
+    '<span class="small muted">마지막 ' + t(m.lastReport) + '</span><button class="btn sm" data-act="reportToggle">' + (m.reportOn ? '끄기' : '켜기') + '</button><button class="btn sm" data-act="shipPreview">미리보기</button><button class="btn sm pri" data-act="shipSend">지금 채널에 올리기</button></div>' +
+    '<div id="shipOut" style="margin-top:8px"></div>' +
+    '<div class="note" style="margin-top:8px">Claude API 키: console.anthropic.com › API Keys › Create Key 로 만들어 위에 붙여넣기. 채널에 안 올라가면 #볼타-티오더cs 에서 <span class="mono">/invite @AS Desk</span> 로 봇을 초대해 주세요.</div></div></div>';
   h += '<div class="card" style="margin-top:14px"><div class="hd"><h3>접속 정보</h3></div><div class="bd"><div class="row">' +
     '<span class="small">웹앱 URL <span class="mono">' + esc(m.webAppUrl || '-') + '</span></span><span class="small">접속 키 <span class="mono">' + esc(m.appKey || '-') + '</span></span>' +
+    '<span class="small">직원 초대 링크 <span class="mono">' + esc('https://tori-forms.github.io/powerbank-as-desk/#k=' + (m.appKey || '')) + '</span> <span class="muted">(이 링크로 열면 바로 연결됩니다. 내부 직원에게만 전달하세요)</span></span>' +
     (EXT ? '<span class="small muted">통신 방식 ' + (ls('noPost') === '1' ? 'JSONP(GET)' : 'POST') + '</span><button class="btn sm" data-act="resetConn">이 브라우저 연결 정보 지우기</button>' : '') + '</div>' +
     '<div class="row" style="margin-top:8px"><button class="btn sm" data-act="rebuildShips">송장 다시 정리</button>' +
     '<button class="btn sm" data-act="fillSn">접수 S/N 채우기</button>' +
@@ -1464,6 +1485,21 @@ var ACT = {
     if ((a && !/^\d+$/.test(a)) || (v && !/^\d+$/.test(v))) return toast('숫자만 입력해 주세요.', true);
     call('saveSetting', { key: 'SHIP_TOTAL_P20BOTA25', value: a }).then(function () { return run('saveSetting', { key: 'SHIP_TOTAL_P20VA', value: v }, '납품 수량을 저장했습니다.', b); }).catch(function (e) { toast(e.message, true); });
   },
+  saveAi: function (d, b) { var v = $('#aiKey').value.trim(); if (!/^sk-ant-/.test(v)) return toast('sk-ant- 로 시작하는 Claude API 키를 입력해 주세요.', true); run('saveSetting', { key: 'ANTHROPIC_API_KEY', value: v }, 'Claude API 키를 저장했습니다. 이제 봇이 AI로 대화합니다.', b); },
+  saveAiModel: function (d, b) { run('saveSetting', { key: 'CLAUDE_MODEL', value: $('#aiModel').value }, '모델을 저장했습니다.', b); },
+  reportToggle: function (d, b) { run('saveSetting', { key: 'REPORT_ON', value: (S.data.meta.reportOn ? 'N' : 'Y') }, S.data.meta.reportOn ? '오후 3시 리포트를 껐습니다.' : '오후 3시 리포트를 켰습니다.', b); },
+  aiAsk: function (d, b) {
+    var q = $('#aiQ').value.trim(); if (!q) return;
+    b.disabled = true; $('#aiOut').innerHTML = '<div class="muted small">답변 기다리는 중…</div>';
+    call('botAsk', { text: q }).then(function (r) { b.disabled = false; $('#aiOut').innerHTML = '<div class="pre" style="white-space:pre-wrap">' + esc(r.text) + '</div>'; })
+      .catch(function (e) { b.disabled = false; $('#aiOut').innerHTML = ''; toast(e.message, true); });
+  },
+  shipPreview: function (d, b) {
+    b.disabled = true;
+    call('shipReportPreview', {}).then(function (r) { b.disabled = false; $('#shipOut').innerHTML = '<div class="pre" style="white-space:pre-wrap;max-height:360px;overflow:auto">' + esc(r.text) + '</div>'; })
+      .catch(function (e) { b.disabled = false; toast(e.message, true); });
+  },
+  shipSend: function (d, b) { if (!confirm('#볼타-티오더cs 채널에 지금 배송 현황을 올릴까요?')) return; run('shipReportSend', {}, '채널에 배송 현황을 올렸습니다.', b); },
   saveBot: function (d, b) { var v = $('#botTok').value.trim(); if (!/^xoxb-/.test(v)) return toast('xoxb- 로 시작하는 Bot 토큰을 입력해 주세요.', true); run('saveSetting', { key: 'SLACK_BOT_TOKEN', value: v }, 'Bot 토큰을 저장했습니다.', b); },
   digestPreview: function (d, b) {
     call('digestPreview', {}).then(function (r) {
