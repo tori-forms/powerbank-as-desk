@@ -391,7 +391,7 @@ function call(action, payload) {
     var url = ls('gasUrl') || '';
     body.key = ls('appKey') || '';
     if (!url || !body.key) { gate(); return rej(new Error('서버 주소와 접속 키를 먼저 입력해 주세요.')); }
-    if (ls('noPost') === '1') return jsonp_(url, body).then(ok, rej);
+    if (ls('noPost') === '1') return jsonpRetry_(url, body).then(ok, rej);
     var ctl = window.AbortController ? new AbortController() : null;
     var timedOut = false;
     var timer = setTimeout(function () { timedOut = true; if (ctl) ctl.abort(); }, 45000);
@@ -404,9 +404,13 @@ function call(action, payload) {
         // 서버가 느려서 끊긴 경우: 쓰기 작업은 다시 보내면 두 번 처리될 수 있으므로 재전송하지 않음
         if (timedOut && action !== 'bootstrap') return rej(new Error('서버 응답이 늦습니다. 잠시 후 새로고침해서 반영됐는지 확인해 주세요.'));
         if (!timedOut) ls('noPost', '1');
-        jsonp_(url, body).then(ok, rej);
+        jsonpRetry_(url, body).then(ok, rej);
       });
   });
+}
+/** 응답을 못 받으면(배포 교체 중·일시 장애) 1.5초 뒤 한 번 더. 쓰기 요청은 rid로 서버가 중복 처리를 막음 */
+function jsonpRetry_(url, body) {
+  return jsonp_(url, body).catch(function () { return new Promise(function (r) { setTimeout(r, 1500); }).then(function () { return jsonp_(url, body); }); });
 }
 function jsonp_(url, body) {
   return new Promise(function (res, rej) {
@@ -415,7 +419,7 @@ function jsonp_(url, body) {
     var to = setTimeout(function () { cleanup(); rej(new Error('서버 응답이 없습니다. 작업이 오래 걸리면 잠시 후 새로고침해 주세요.')); }, 300000);
     function cleanup() { clearTimeout(to); try { delete window[cb]; } catch (e) { window[cb] = undefined; } if (sc.parentNode) sc.remove(); }
     window[cb] = function (d) { cleanup(); res(d); };
-    sc.onerror = function () { cleanup(); rej(new Error('서버에 연결하지 못했습니다. 웹앱 URL을 확인해 주세요.')); };
+    sc.onerror = function () { cleanup(); rej(new Error('서버 응답을 받지 못했습니다. 새로고침해서 반영됐는지 확인해 주세요.')); };
     sc.src = url + (url.indexOf('?') < 0 ? '?' : '&') + 'req=' + encodeURIComponent(JSON.stringify(body)) + '&callback=' + cb;
     document.body.appendChild(sc);
   });
@@ -1322,26 +1326,45 @@ function stockCalc() {
 }
 function vStock() {
   var X = stockCalc(), tot = 0, usedN = 0, left = 0, gapN = 0;
-  X.list.forEach(function (x) { tot += +x.r.qty; usedN += x.used; left += x.left; gapN += x.gap.length; });
+  var mOf = function (r) { return r.model || modelOfSn(stockSn(r, r.fromNo)) || '기타'; };
+  var MN = { P20BOTA25: '기존 P20BOTA25', P20VA: '신형 P20VA' };
+  var models = [], byM = {};
+  X.list.forEach(function (x) { var m = mOf(x.r); if (!byM[m]) { byM[m] = { qty: 0, left: 0 }; models.push(m); } byM[m].qty += +x.r.qty; byM[m].left += x.left; });
+  models.sort(function (a, b) { return (a === 'P20BOTA25' ? 0 : a === 'P20VA' ? 1 : 2) - (b === 'P20BOTA25' ? 0 : b === 'P20VA' ? 1 : 2); });
+  var sm = models.indexOf(S.stockM) >= 0 ? S.stockM : 'all';
+  var view = X.list.filter(function (x) { return sm === 'all' || mOf(x.r) === sm; })
+    .sort(function (a, b) { return models.indexOf(mOf(a.r)) - models.indexOf(mOf(b.r)) || String(a.r.receivedAt).localeCompare(String(b.r.receivedAt)); });
+  if (sm !== 'all') X.noSn = X.noSn.filter(function (d) { return caseModel(d.c) === sm; });
+  view.forEach(function (x) { tot += +x.r.qty; usedN += x.used; left += x.left; gapN += x.gap.length; });
   var h = '<div class="two"><div class="card"><div class="hd"><h3>재고 입고 등록</h3><span class="muted small">연번이면 시작·끝만 · 번호만 입력해도 돼요 (30001 → P20BOTA250030001)</span></div><div class="bd">' +
-    '<div class="row"><select class="inp" id="stModel"><option value="P20BOTA25">기존 P20BOTA25</option><option value="P20VA">신형 P20VA</option></select>' +
+    '<div class="row"><select class="inp" id="stModel"><option value="P20BOTA25">기존 P20BOTA25</option><option value="P20VA"' + (sm === 'P20VA' ? ' selected' : '') + '>신형 P20VA</option></select>' +
     '<input class="inp mono" id="stFrom" placeholder="시작 S/N·번호" style="flex:1;min-width:120px"><span>~</span><input class="inp mono" id="stTo" placeholder="끝 S/N·번호" style="flex:1;min-width:120px"></div>' +
     '<div class="row" style="margin-top:8px"><input class="inp" id="stDate" type="date" value="' + esc(today()) + '" style="width:150px"><input class="inp" id="stNote" placeholder="메모 (입고처·PO 등)" style="flex:1;min-width:140px">' +
     '<button class="btn pri" data-act="stockAdd">입고 등록</button></div><div class="small muted" id="stPrev" style="margin-top:8px"></div></div></div>' +
     '<div class="card"><div class="hd"><h3>별도 출고 기록</h3><span class="muted small">AS 채널 외로 나간 재고 (추가 교환·샘플·테스트·폐기 등)</span></div><div class="bd">' +
-    '<div class="row"><input class="inp mono" id="soSns" placeholder="S/N · 구간 (예: 30900~30910, 30915)" style="flex:1;min-width:220px">' +
+    '<div class="row"><select class="inp" id="soModel"><option value="P20BOTA25">기존 P20BOTA25</option><option value="P20VA"' + (sm === 'P20VA' ? ' selected' : '') + '>신형 P20VA</option></select><input class="inp mono" id="soSns" placeholder="S/N · 구간 (예: 30900~30910, 30915)" style="flex:1;min-width:200px">' +
     '<select class="inp" id="soPurpose">' + ['별도 교환', '샘플', '테스트·분석', '불량 폐기', '반품·회수', '기타'].map(function (x) { return '<option>' + x + '</option>'; }).join('') + '</select></div>' +
     '<div class="row" style="margin-top:8px"><input class="inp" id="soDate" type="date" value="' + esc(today()) + '" style="width:150px"><input class="inp" id="soDest" placeholder="받는 곳·메모" style="flex:1;min-width:140px">' +
     '<button class="btn pri" data-act="stockOut">출고 기록</button></div><div class="small muted" id="soPrev" style="margin-top:8px"></div></div></div></div>';
-  h += '<div class="kpis" style="grid-template-columns:repeat(4,minmax(0,1fr));margin-top:14px">' +
+  if (models.length > 1) h += '<div class="tabs" style="margin-top:14px">' + [['all', '전체']].concat(models.map(function (m) { return [m, MN[m] || m]; })).map(function (t) {
+    return '<button class="' + (sm === t[0] ? 'on' : '') + '" data-act="stockM" data-v="' + t[0] + '">' + t[1] + (t[0] === 'all' ? '' : '<span class="n">남음 ' + byM[t[0]].left.toLocaleString() + '</span>') + '</button>';
+  }).join('') + '</div>';
+  if (sm === 'all' && models.length > 1) {   // 전체 보기: 기종을 섞어 더하지 않고 기종별 카드로
+    h += '<div class="kpis" style="grid-template-columns:repeat(' + models.length + ',minmax(0,1fr));margin-top:14px">' + models.map(function (m) {
+      var u = 0, g = 0; X.list.forEach(function (x) { if (mOf(x.r) === m) { u += x.used; g += x.gap.length; } });
+      return '<div class="kpi" data-act="stockM" data-v="' + m + '"><div class="l">' + mtag(m) + ' 남은 재고</div><div class="v"' + (byM[m].qty && byM[m].left / byM[m].qty < 0.1 ? ' style="color:var(--red)"' : '') + '>' + byM[m].left.toLocaleString() + '<small>개</small></div>' +
+        '<div class="d small muted">입고 ' + byM[m].qty.toLocaleString() + ' · 출고 기록 ' + u.toLocaleString() + (g ? ' · <b style="color:var(--red)">기록 없이 빠짐 ' + g.toLocaleString() + '</b>' : '') + '</div></div>';
+    }).join('') + '</div>';
+  } else h += '<div class="kpis" style="grid-template-columns:repeat(4,minmax(0,1fr));margin-top:14px">' +
     '<div class="kpi"><div class="l">입고 수량</div><div class="v">' + tot.toLocaleString() + '<small>개</small></div></div>' +
     '<div class="kpi"><div class="l">출고 기록 (AS + 별도)</div><div class="v">' + usedN.toLocaleString() + '<small>개</small></div></div>' +
     '<div class="kpi"><div class="l">기록 없이 빠짐</div><div class="v" style="color:' + (gapN ? 'var(--red)' : 'inherit') + '">' + gapN.toLocaleString() + '<small>개</small></div><div class="d small muted">실사 입력한 구간만 계산</div></div>' +
     '<div class="kpi"><div class="l">남은 재고</div><div class="v" style="color:' + (tot && left / tot < 0.1 ? 'var(--red)' : 'inherit') + '">' + left.toLocaleString() + '<small>개</small></div></div></div>';
   h += '<div class="card"><div class="tw"><table class="t"><thead><tr><th>구간</th><th>입고일</th><th>입고</th><th>출고 기록</th><th>남음</th><th>다음 출고할 S/N</th><th>메모</th><th></th></tr></thead><tbody>' +
-    (X.list.length ? X.list.map(function (x) {
-      var r = x.r, open = S.countOpen === r.id;
-      var row = '<tr><td class="mono small">' + esc(stockSn(r, r.fromNo)) + '<br>~ ' + esc(stockSn(r, r.toNo)) + '</td><td class="nowrap">' + esc(ymd(r.receivedAt)) + '</td>' +
+    (view.length ? view.map(function (x, i) {
+      var r = x.r, open = S.countOpen === r.id, m = mOf(r);
+      var gh = (i === 0 || mOf(view[i - 1].r) !== m) ? '<tr><td colspan="8" style="background:var(--line2);padding:8px 14px">' + mtag(m) + ' <span class="small muted" style="margin-left:6px">입고 ' + byM[m].qty.toLocaleString() + '개 · 남음 <b style="color:var(--ink)">' + byM[m].left.toLocaleString() + '개</b></span></td></tr>' : '';
+      var row = gh + '<tr><td class="mono small">' + esc(stockSn(r, r.fromNo)) + '<br>~ ' + esc(stockSn(r, r.toNo)) + '</td><td class="nowrap">' + esc(ymd(r.receivedAt)) + '</td>' +
         '<td>' + (+r.qty).toLocaleString() + '</td><td>' + x.used.toLocaleString() + '</td>' +
         '<td><b>' + x.left.toLocaleString() + '</b>' + (x.counted ? '<div class="small muted">실사 ' + esc(md(r.countedAt)) + ' 기준</div>' : '<div class="small muted">기록 기준</div>') + '</td>' +
         '<td class="mono small">' + (x.next.map(esc).join('<br>') || '<span class="muted">소진</span>') + '</td>' +
@@ -1362,11 +1385,15 @@ function vStock() {
     h += '<div class="card" style="margin-top:14px"><div class="hd"><h3>교체 S/N 없이 출고된 AS ' + nsum + '개 (' + X.noSn.length + '건)</h3><span class="muted small">티오더 시트 교체 S/N 칸이 비어 있는 출고 · 기록 없이 빠진 재고의 주된 원인</span></div><div class="bd small">' +
       X.noSn.slice(0, 40).map(function (d) { return '<div><span class="click" data-act="case" data-id="' + esc(d.c.id) + '">' + esc(cid(d.c)) + ' ' + esc(d.c.store) + '</span> · ' + esc(md(d.c.outDate)) + ' · S/N 빠짐 ' + d.n + '개</div>'; }).join('') + (X.noSn.length > 40 ? '<div class="muted">외 ' + (X.noSn.length - 40) + '건</div>' : '') + '</div></div>';
   }
-  var outs = (S.data.stockout || []).slice().sort(function (a, b) { return String(b.outAt).localeCompare(String(a.outAt)); });
-  if (outs.length) h += '<div class="card" style="margin-top:14px"><div class="hd"><h3>별도 출고 기록 ' + outs.length + '건</h3></div><div class="tw"><table class="t"><thead><tr><th>출고일</th><th>사유</th><th>수량</th><th>S/N</th><th>받는 곳·메모</th><th></th></tr></thead><tbody>' +
+  var oM = function (o) { var a = String(o.ranges || '').split(',')[0].split('|'); return o.model || (a.length > 3 ? modelOfSn(a[0] + ('0000000000000' + a[2]).slice(-(+a[1]))) : '') || '기타'; };
+  var outs = (S.data.stockout || []).filter(function (o) { return sm === 'all' || oM(o) === sm; }).slice()
+    .sort(function (a, b) { return models.indexOf(oM(a)) - models.indexOf(oM(b)) || String(b.outAt).localeCompare(String(a.outAt)); });
+  if (outs.length) h += '<div class="card" style="margin-top:14px"><div class="hd"><h3>별도 출고 기록 ' + outs.length + '건</h3>' +
+    (sm === 'all' ? '<span class="muted small">' + models.map(function (m) { var q = 0; outs.forEach(function (o) { if (oM(o) === m) q += +o.qty; }); return q ? (MN[m] || m) + ' ' + q.toLocaleString() + '개' : ''; }).filter(String).join(' · ') + '</span>' : '') +
+    '</div><div class="tw"><table class="t"><thead><tr><th>기종</th><th>출고일</th><th>사유</th><th>수량</th><th>S/N</th><th>받는 곳·메모</th><th></th></tr></thead><tbody>' +
     outs.map(function (o) {
-      var txt = String(o.ranges || '').split(',').map(function (x) { var a = x.split('|'); return a.length < 4 ? '' : String(a[2]).slice(-5) + (a[3] !== a[2] ? '~' + String(a[3]).slice(-5) : ''); }).filter(String).join(', ');
-      return '<tr><td class="nowrap">' + esc(ymd(o.outAt)) + '</td><td>' + esc(o.purpose) + '</td><td>' + esc(o.qty) + '</td><td class="mono small">' + esc(txt) + '</td><td class="small">' + esc([o.dest, o.note].filter(String).join(' · ')) + '</td>' +
+      var txt = String(o.ranges || '').split(',').map(function (x) { var a = x.split('|'); return a.length < 4 ? '' : a[0] + ('0000000000000' + a[2]).slice(-(+a[1])) + (a[3] !== a[2] ? '~' + String(a[3]).slice(-5) : ''); }).filter(String).join(', ');
+      return '<tr><td>' + mtag(oM(o)) + '</td><td class="nowrap">' + esc(ymd(o.outAt)) + '</td><td>' + esc(o.purpose) + '</td><td>' + esc(o.qty) + '</td><td class="mono small">' + esc(txt) + '</td><td class="small">' + esc([o.dest, o.note].filter(String).join(' · ')) + '</td>' +
         '<td><button class="btn sm" data-act="stockOutDel" data-id="' + esc(o.id) + '">삭제</button></td></tr>';
     }).join('') + '</tbody></table></div></div>';
   if (X.dup.length) h += '<div class="card" style="margin-top:14px"><div class="hd"><h3 style="color:var(--red)">⚠️ 같은 S/N이 두 번 출고됨 ' + X.dup.length + '건</h3><span class="muted small">입력 실수이거나 재AS로 다시 나간 제품입니다</span></div><div class="bd small">' +
@@ -1582,12 +1609,13 @@ var ACT = {
     if (!a || !z) return toast('S/N을 확인해 주세요. P20VA는 전체 S/N으로 입력해 주세요.', true);
     run('stockAdd', { model: m, from: a.sn, to: z.sn, receivedAt: $('#stDate').value, note: $('#stNote').value }, function (r) { return '재고 ' + (+r.stock.qty).toLocaleString() + '개 등록했습니다.'; }, b);
   },
+  stockM: function (d) { S.stockM = d.v; render(); },
   countOpen: function (d) { S.countOpen = d.id || null; render(); var t = $('#cntTxt'); if (t) t.focus(); },
   stockCount: function (d, b) { run('stockCount', { id: d.id, onHand: $('#cntTxt').value, countedAt: $('#cntDate').value }, function (r) { S.countOpen = null; return r.onHand ? '실사 반영: 남은 재고 ' + r.onHand + '개 기준으로 계산합니다.' : '실사 기준을 해제했습니다.'; }, b); },
   stockOut: function (d, b) {
-    var rg = snRangesTxt($('#soSns').value, 'P20BOTA25');
-    if (typeof rg === 'string' || !rg.length) return toast(typeof rg === 'string' ? rg : 'S/N을 입력해 주세요.', true);
-    run('stockOut', { sns: $('#soSns').value, model: 'P20BOTA25', outAt: $('#soDate').value, purpose: $('#soPurpose').value, dest: $('#soDest').value }, function (r) { return '별도 출고 ' + r.stockout.qty + '개 기록했습니다.'; }, b);
+    var som = $('#soModel').value, rg = snRangesTxt($('#soSns').value, som);
+    if (typeof rg === 'string' || !rg.length) return toast(typeof rg === 'string' ? rg + (som === 'P20VA' ? ' (P20VA는 전체 S/N으로)' : '') : 'S/N을 입력해 주세요.', true);
+    run('stockOut', { sns: $('#soSns').value, model: som, outAt: $('#soDate').value, purpose: $('#soPurpose').value, dest: $('#soDest').value }, function (r) { return '별도 출고 ' + r.stockout.qty + '개 기록했습니다.'; }, b);
   },
   stockOutDel: function (d, b) {
     if (!b.dataset.sure) { b.dataset.sure = '1'; b.textContent = '한 번 더 누르면 삭제'; b.classList.add('red'); return; }
@@ -1769,8 +1797,10 @@ document.addEventListener('click', function (e) {
   var el = e.target.closest('[data-act]'); if (!el) return;
   var f = ACT[el.getAttribute('data-act')]; if (!f) return;
   if (el.tagName !== 'INPUT') e.preventDefault();
-  f(el.dataset, el);
+  var ret = f(el.dataset, el);
+  if (ret && ret.catch) ret.catch(function () { });   // 오류는 run()에서 이미 안내함
 });
+window.addEventListener('unhandledrejection', function (e) { e.preventDefault(); });   // run()이 토스트로 안내한 오류는 콘솔에 다시 띄우지 않음
 var qTimer;
 document.addEventListener('input', function (e) {
   if (e.target.id === 'asgQ') {
@@ -1783,7 +1813,7 @@ document.addEventListener('input', function (e) {
       : '<span class="mono">' + esc(a.sn) + ' ~ ' + esc(z.sn) + '</span> · <b>' + (Math.abs(z.num - a.num) + 1).toLocaleString() + '개</b>';
   }
   if (e.target.id === 'soSns' || e.target.id === 'cntTxt') {
-    var rg = snRangesTxt(e.target.value, 'P20BOTA25'), pv2 = $(e.target.id === 'soSns' ? '#soPrev' : '#cntPrev'), n = 0;
+    var rg = snRangesTxt(e.target.value, e.target.id === 'soSns' ? ($('#soModel') || {}).value : 'P20BOTA25'), pv2 = $(e.target.id === 'soSns' ? '#soPrev' : '#cntPrev'), n = 0;
     if (pv2) { if (typeof rg === 'string') pv2.innerHTML = '<span style="color:var(--red)">' + esc(rg) + '</span>'; else { rg.forEach(function (x) { n += x.hi - x.lo + 1; }); pv2.innerHTML = n ? '<b>' + n.toLocaleString() + '개</b>' : ''; } }
   }
   if (e.target.id === 'q') { clearTimeout(qTimer); var v = e.target.value; qTimer = setTimeout(function () { S.q = v; render(); var q = $('#q'); if (q) { q.focus(); q.setSelectionRange(v.length, v.length); } }, 250); }
