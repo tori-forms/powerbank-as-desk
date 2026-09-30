@@ -651,6 +651,7 @@ function cstate(c) {
         : st.stuck.length ? 'fail'
           : rets.every(function (x) { return x.stage === 'expired'; }) ? 'expired' : 'before';
   if (st.ret === 'none' && (c.returnTracking || c.returnStatus)) st.ret = (c.returnDoneAt || c.recvDate) ? 'done' : 'before';
+  if (st.ret === 'none' && c.retReqAt && !c.recvDate) st.ret = 'req';   // 외주센터에 회수 접수함 — 반품 번호 대기 (회수 진행중으로 봄)
   if (st.ret !== 'done' && (c.recvDate || c.returnDoneAt)) st.ret = 'done';
   st.retBase = st.reissued.length ? d10(st.reissued.map(function (x) { return x.createdAt; }).sort().slice(-1)[0])   // 재접수 송장은 재발급일 기준
     : (c.outDoneAt || c.outDate || (rets.length ? d10(rets[0].createdAt) : ''));
@@ -676,7 +677,7 @@ var BUCKET = {
   judge: ['판정 대기', 'p-inspect'], dispose: ['처분 대기', 'p-dispose'], done: ['완료', 'p-done'], closed: ['종결', 'p-closed']
 };
 var OUT_LABEL = { none: ['송장 없음', 'p-gray'], before: ['배송 전', 'p-gray'], moving: ['배송 중', 'p-blue'], done: ['도착 완료', 'p-green'], expired: ['조회 기간 만료', 'p-gray'] };
-var RET_LABEL = { none: ['-', 'p-gray'], before: ['회수 전', 'p-gray'], moving: ['회수 중', 'p-blue'], done: ['회수 완료', 'p-green'], fail: ['회수 실패', 'p-red'], expired: ['조회 기간 만료', 'p-gray'], replaced: ['재접수로 대체', 'p-gray'] };
+var RET_LABEL = { req: ['접수함 · 번호 대기', 'p-blue'], none: ['-', 'p-gray'], before: ['회수 전', 'p-gray'], moving: ['회수 중', 'p-blue'], done: ['회수 완료', 'p-green'], fail: ['회수 실패', 'p-red'], expired: ['조회 기간 만료', 'p-gray'], replaced: ['재접수로 대체', 'p-gray'] };
 function bpill(c) { var b = (IDX.st[c.id] || {}).b, x = BUCKET[b] || ['-', 'p-gray']; return '<span class="pill ' + x[1] + '">' + x[0] + '</span>'; }
 function tagOf(map, k) { var x = map[k] || ['-', 'p-gray']; return '<span class="pill ' + x[1] + '">' + x[0] + '</span>'; }
 /** 영업일 경과 (주말·공휴일 제외) */
@@ -1149,7 +1150,9 @@ function caseDrawer(c) {
     (st.outs.map(shipRow).join('') || '<div class="muted small">없음</div>') +
     '<div class="row" style="margin-top:6px"><input class="inp mono" id="addOut" placeholder="출고 송장 추가" style="flex:1"><button class="btn sm" data-act="addTrk" data-id="' + esc(c.id) + '" data-type="out">추가</button></div></div>' +
     '<div><div class="small muted" style="margin-bottom:4px">반품 송장 ' + st.rets.length + '개' + (st.retDays !== null ? ' · 접수 후 ' + st.retDays + '영업일' : '') + '</div>' +
-    (st.rets.map(shipRow).join('') || '<div class="muted small">없음</div>') +
+    (st.rets.map(shipRow).join('') || (c.recvDate ? '<div class="muted small">없음</div>' : c.retReqAt
+      ? '<div class="small"><span class="pill p-blue">📝 회수 접수함 ' + esc(md(c.retReqAt)) + '</span> 반품 송장 번호 대기 <button class="btn sm" data-act="retReq" data-id="' + esc(c.id) + '" data-v="cancel">접수 기록 취소</button></div>'
+      : '<div class="small"><span class="muted">없음</span> <button class="btn sm" data-act="retReq" data-id="' + esc(c.id) + '">외주센터에 회수 접수함</button></div>')) +
     '<div class="row" style="margin-top:6px"><input class="inp mono" id="addRet" placeholder="반품 송장 추가" style="flex:1"><button class="btn sm" data-act="addTrk" data-id="' + esc(c.id) + '" data-type="return">추가</button></div></div></div>' +
     '<div class="note" style="margin-top:8px">출고 송장을 조회하면 CJ가 알려주는 반품 송장번호를 1시간마다 자동으로 등록합니다. 10대·20대처럼 송장이 여러 개인 건도 각각 따로 추적합니다.</div></div>';
   // 회수 입고
@@ -1778,6 +1781,7 @@ var ACT = {
   },
   linkGo: function (d, el) { run('linkInbox', { id: d.id, caseId: d.cid }, 'AS 건에 연결했습니다.', el).then(function () { closeModal(); }); },
   inboxFilter: function (d) { S.inboxFilter = d.v; S.inboxSel = null; render(); },
+  retReq: function (d, b) { run('retRequest', { caseId: d.id, cancel: d.v === 'cancel' }, function (r) { return d.v === 'cancel' ? '회수 접수 기록을 취소했습니다.' : (r.changed ? '회수 접수로 기록했습니다. 반품 송장 번호가 나오면 자동 연결됩니다.' : (r.lines[0] || '').replace(/^• /, '')); }, b); },
   todoAdd: function (d, b) { var v = $('#tdText').value.trim(); if (!v) return toast('할 일을 적어 주세요.', true); run('todoAdd', { text: v }, function (r) { return '할 일 #' + r.todo.no + ' 추가했습니다.' + (r.todo.store ? ' (' + r.todo.store + ')' : ''); }, b); },
   todoDone: function (d, b) { run('todoDone', { id: d.id }, function (r) { return '할 일 #' + r.todo.no + ' 완료' + (r.closed && r.closed.length ? ' · AS 건 종결: ' + r.closed.join(', ') : ''); }, b); },
   todoDel: function (d, b) {
