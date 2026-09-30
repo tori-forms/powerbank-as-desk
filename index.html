@@ -772,9 +772,30 @@ function vHome() {
   var newIn = S.data.inbox.filter(function (i) { return i.status === '신규' || i.status === '방어 추정'; }).sort(function (a, b) { return b.postedAt.localeCompare(a.postedAt); }).slice(0, 8);
   html += '<div class="split home">' +
     '<div class="card"><div class="hd"><h3>처리 필요한 AS</h3><span class="muted small">' + act.length + '건</span></div>' + caseTable(act.slice(0, 60)) + '</div>' +
+    '<div class="grid" style="align-content:start">' + todoCard() +
     '<div class="card"><div class="hd"><h3>Slack 새 인입</h3><span style="flex:1"></span><button class="btn sm" data-act="go" data-v="inbox">전체 보기</button></div>' +
-    (newIn.length ? newIn.map(inboxLi).join('') : '<div class="empty">새 인입이 없습니다.</div>') + '</div></div>';
+    (newIn.length ? newIn.map(inboxLi).join('') : '<div class="empty">새 인입이 없습니다.</div>') + '</div></div></div>';
   return html;
+}
+/** 📌 할 일 (Slack 봇 메모 + 여기서 추가) */
+function todoOpenList() { return (S.data.todos || []).filter(function (t) { return t.status !== 'done'; }).sort(function (a, b) { return (+a.no || 0) - (+b.no || 0); }); }
+function storeKeyC(s) { return String(s || '').replace(/[\s()\[\]·.,\-_/]/g, '').toLowerCase(); }
+function todosOf(c) { var k = storeKeyC(c.store); return todoOpenList().filter(function (t) { return (t.caseIds && String(t.caseIds).split(',').indexOf(c.id) >= 0) || (k && storeKeyC(t.store) === k); }); }
+function todoCard() {
+  var open = todoOpenList();
+  var done = (S.data.todos || []).filter(function (t) { return t.status === 'done'; }).sort(function (a, b) { return String(b.doneAt).localeCompare(String(a.doneAt)); }).slice(0, 5);
+  var days = function (t) { var d = Math.round((new Date(today()) - new Date(d10(t.createdAt))) / 86400000); return d > 0 ? d + '일째' : '오늘'; };
+  return '<div class="card"><div class="hd"><h3 class="nowrap">📌 할 일 <span class="muted small">' + open.length + '건</span></h3></div><div class="bd"><div class="small muted" style="margin-bottom:4px">Slack 봇에 “매장명 + ~해야 해”라고 보내도 여기 기록되고, 끝날 때까지 아침·오후에 알려드려요.</div>' +
+    (open.length ? open.map(function (t) {
+      var c = (String(t.caseIds || '').split(',').map(function (id) { return IDX.caseById[id]; }).filter(function (x) { return x && x.closed !== 'Y'; }))[0];
+      return '<div style="padding:8px 0;border-bottom:1px solid var(--line2)"><div class="row" style="gap:6px;align-items:flex-start;flex-wrap:nowrap"><b class="nowrap">#' + esc(t.no) + '</b><div style="flex:1;min-width:0">' +
+        (t.store ? (c ? '<span class="click" data-act="case" data-id="' + esc(c.id) + '"><b>' + esc(t.store) + '</b></span>' : '<b>' + esc(t.store) + '</b>') + ' — ' : '') + esc(t.text) +
+        '<div class="small muted">' + esc(md(t.createdAt)) + ' · ' + days(t) + (c ? ' · ' + bpill(c) : '') + '</div></div>' +
+        '<button class="btn sm pri" data-act="todoDone" data-id="' + esc(t.id) + '">완료</button><button class="btn sm" data-act="todoDel" data-id="' + esc(t.id) + '">삭제</button></div></div>';
+    }).join('') : '<div class="small muted" style="padding:6px 0">미처리 할 일이 없어요 ✅</div>') +
+    '<div class="row" style="margin-top:10px"><input class="inp" id="tdText" placeholder="할 일 (예: 화덕풍경 회수 결과 알려주기)" style="flex:1;min-width:160px"><button class="btn" data-act="todoAdd">추가</button></div>' +
+    (done.length ? '<div class="small muted" style="margin-top:10px">최근 완료: ' + done.map(function (t) { return '#' + esc(t.no) + ' ' + esc(t.store ? String(t.store).split('(')[0] + ' ' : '') + esc(String(t.text).slice(0, 18)) + (t.closedCases ? ' (AS 종결)' : ''); }).join(' · ') + '</div>' : '') +
+    '</div></div>';
 }
 /** 공통 목록 (홈에서 사용) */
 function caseTable(list) {
@@ -1092,6 +1113,8 @@ function caseDrawer(c) {
   var hist = jparse(c.history, []).slice().reverse();
   var h = '<div class="dh"><div style="flex:1;min-width:0"><div class="row" style="gap:8px"><span class="mono muted">' + esc(cid(c)) + '</span>' + bpill(c) + ' ' + tagOf(OUT_LABEL, st.out) + ' ' + (st.ret !== 'none' ? tagOf(RET_LABEL, st.ret) + ' ' : '') + mtag(caseModel(c)) + '</div>' +
     '<h2 style="margin:6px 0 0;font-size:18px">' + esc(c.store) + '</h2>' + steps + '</div><button class="btn sm" data-act="closeDrawer">✕</button></div><div class="db">';
+  var tds = todosOf(c);
+  if (tds.length) h += '<div class="flags">' + tds.map(function (t) { return '<div class="flag">📌 할 일 #' + esc(t.no) + ' — ' + esc(t.text) + ' <span class="muted">(' + esc(md(t.createdAt)) + ')</span> <button class="btn sm" data-act="todoDone" data-id="' + esc(t.id) + '">완료</button></div>'; }).join('') + '</div>';
   // 기본 정보
   h += '<div class="sec" style="border:0"><h4>기본 정보 ' + (c.slackUrl ? '<a class="btn sm" target="_blank" href="' + esc(c.slackUrl) + '">Slack ↗</a>' : '') + (c.torderRow ? '<a class="btn sm" target="_blank" href="' + esc(S.data.meta.torderUrl) + '#gid=0&range=A' + esc(c.torderRow) + '">티오더 시트 ' + esc(c.torderRow) + '행 ↗</a>' : '') + '</h4>' +
     '<div class="row"><label class="fld"><span>문의번호</span><input class="inp" id="cf_inquiryNo" value="' + esc(c.inquiryNo) + '" style="width:120px"></label>' +
@@ -1755,6 +1778,12 @@ var ACT = {
   },
   linkGo: function (d, el) { run('linkInbox', { id: d.id, caseId: d.cid }, 'AS 건에 연결했습니다.', el).then(function () { closeModal(); }); },
   inboxFilter: function (d) { S.inboxFilter = d.v; S.inboxSel = null; render(); },
+  todoAdd: function (d, b) { var v = $('#tdText').value.trim(); if (!v) return toast('할 일을 적어 주세요.', true); run('todoAdd', { text: v }, function (r) { return '할 일 #' + r.todo.no + ' 추가했습니다.' + (r.todo.store ? ' (' + r.todo.store + ')' : ''); }, b); },
+  todoDone: function (d, b) { run('todoDone', { id: d.id }, function (r) { return '할 일 #' + r.todo.no + ' 완료' + (r.closed && r.closed.length ? ' · AS 건 종결: ' + r.closed.join(', ') : ''); }, b); },
+  todoDel: function (d, b) {
+    if (!b.dataset.sure) { b.dataset.sure = '1'; b.textContent = '한 번 더'; b.classList.add('red'); return; }
+    run('todoDelete', { id: d.id }, '할 일을 삭제했습니다.', b);
+  },
   toTop: function () { window.scrollTo({ top: 0, behavior: 'smooth' }); },
   inboxSel: function (d) { if (S.view !== 'inbox') { S.view = 'inbox'; S.inboxFilter = '전체'; } else S.inboxTap = true; S.inboxSel = d.id; render(); },
   case: function (d) { closeModal(); openCase(d.id); },
