@@ -4,6 +4,7 @@
 <base target="_top">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
 <title>볼타레스 AS Desk</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
 <style>
@@ -473,13 +474,13 @@ function call(action, payload) {
       var r = typeof s === 'string' ? JSON.parse(s) : s;
       if (r.ok) return res(r.data);
       if (r.needKey) gate('접속 키가 올바르지 않습니다. 다시 입력해 주세요.');
+      if (r.needAdmin) { adminPrompt_(); return rej(new Error('관리자 전용 기능입니다. 관리자 키를 넣은 뒤 다시 눌러 주세요.')); }
       rej(new Error(r.error));
     };
     if (!EXT && window.google && google.script && google.script.run) return google.script.run.withSuccessHandler(ok).withFailureHandler(function (e) { rej(e); }).api(JSON.stringify(body));
     if (window.__devApi) return window.__devApi(JSON.stringify(body)).then(ok, rej);
-    var url = ls('gasUrl') || '';
-    body.key = ls('appKey') || '';
-    if (!url || !body.key) { gate(); return rej(new Error('서버 주소와 접속 키를 먼저 입력해 주세요.')); }
+    var url = ls('gasUrl') || DEFAULT_GAS_URL;   // 주소만 열어도 바로 연결 (접속 키 없이 공개 사용)
+    body.key = ls('appKey') || '';   // 관리자 키가 있으면 관리 기능까지
     if (ls('noPost') === '1') return jsonpRetry_(url, body).then(ok, rej);
     var ctl = window.AbortController ? new AbortController() : null;
     var timedOut = false;
@@ -541,6 +542,13 @@ function gate(msg) {
     if (!k) return alert('접속 키를 입력해 주세요.');
     ls('gasUrl', u); ls('appKey', k); location.reload();
   };
+}
+/** 관리 기능(토큰·시트 반영·Slack 발송)용 관리자 키 입력 */
+function adminPrompt_() {
+  modal('관리자 키', '<div class="small muted" style="margin-bottom:8px">토큰 저장·티오더 시트 반영·Slack 발송 같은 관리 기능은 관리자 키가 필요합니다. 한 번 넣으면 이 브라우저에 저장됩니다.</div>' +
+    '<input class="inp mono" id="admKey" placeholder="관리자 키" style="width:100%">',
+    '<button class="btn" data-act="closeModal">닫기</button><button class="btn pri" data-act="admSave">저장</button>');
+  setTimeout(function () { var k = $('#admKey'); if (k) k.focus(); }, 50);
 }
 /* ---- 마지막 데이터 캐시 (IndexedDB): 열자마자 직전 화면을 보여주고 최신 데이터는 뒤에서 받아 교체 ---- */
 function idb_() {
@@ -607,6 +615,11 @@ function load(silent) {
 }
 function run(action, payload, okMsg, btn) {
   if (S.busy) return Promise.resolve();
+  if (!(ls('me') || '').trim() && S.data && !S.data.meta.admin) {   // 공개 사용: 누가 바꿨는지 이력에 남도록 처음 한 번 이름을 받음
+    var nm = window.prompt('기록에 남길 이름(소속)을 입력해 주세요.\n예: 티오더 김OO, 폼즈 최민규');
+    if (!nm || !nm.trim()) { toast('이름을 입력해야 저장할 수 있어요.', true); return Promise.resolve(); }
+    ls('me', nm.trim().slice(0, 20));
+  }
   S.busy = true;
   var orig; if (btn) { orig = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<span class="spin"></span> 처리 중'; }
   return call(action, payload).then(function (r) {
@@ -1673,15 +1686,18 @@ function vSettings() {
     '<span class="small muted">마지막 ' + t(m.lastReport) + '</span><button class="btn sm" data-act="reportToggle">' + (m.reportOn ? '끄기' : '켜기') + '</button><button class="btn sm" data-act="shipPreview">미리보기</button><button class="btn sm pri" data-act="shipSend">지금 채널에 올리기</button></div>' +
     '<div id="shipOut" style="margin-top:8px"></div>' +
     '<div class="note" style="margin-top:8px">Claude API 키: console.anthropic.com › API Keys › Create Key 로 만들어 위에 붙여넣기. 채널에 안 올라가면 #볼타-티오더cs 에서 <span class="mono">/invite @AS Desk</span> 로 봇을 초대해 주세요.</div></div></div>';
-  h += '<div class="card" style="margin-top:14px"><div class="hd"><h3>접속 정보</h3></div><div class="bd"><div class="row">' +
-    '<span class="small">웹앱 URL <span class="mono">' + esc(m.webAppUrl || '-') + '</span></span><span class="small">접속 키 <span class="mono">' + esc(m.appKey || '-') + '</span></span>' +
-    '<span class="small">직원 초대 링크 <span class="mono">' + esc('https://tori-forms.github.io/powerbank-as-desk/#k=' + (m.appKey || '')) + '</span> <span class="muted">(이 링크로 열면 바로 연결됩니다. 내부 직원에게만 전달하세요)</span></span>' +
+  var pub = 'https://tori-forms.github.io/powerbank-as-desk/';
+  h += '<div class="card" style="margin-top:14px"><div class="hd"><h3>접속 정보</h3>' + (m.admin ? '<span class="pill p-green">관리자</span>' : '<span class="pill p-gray">일반</span>') + '</div><div class="bd"><div class="row">' +
+    '<span class="small">공유 주소 <span class="mono">' + esc(pub) + '</span> <span class="muted">(누구나 이 주소만 열면 바로 사용)</span></span>' +
+    '<span class="small">내 이름 <b>' + esc(ls('me') || '(미입력)') + '</b> <button class="btn sm" data-act="setMe">변경</button></span>' +
+    (m.admin ? '<span class="small">관리자 키 <span class="mono">' + esc(m.appKey || '-') + '</span> <span class="muted">(관리 기능용 — 내부 관리자만)</span></span><button class="btn sm" data-act="admOut">관리자 해제</button>'
+      : '<button class="btn sm" data-act="admPrompt">관리자 키 입력</button><span class="small muted">토큰 저장·티오더 시트 반영·Slack 발송은 관리자만</span>') +
     (EXT ? '<span class="small muted">통신 방식 ' + (ls('noPost') === '1' ? 'JSONP(GET)' : 'POST') + '</span><button class="btn sm" data-act="resetConn">이 브라우저 연결 정보 지우기</button>' : '') + '</div>' +
     '<div class="row" style="margin-top:8px"><button class="btn sm" data-act="rebuildShips">송장 다시 정리</button>' +
     '<button class="btn sm" data-act="fillSn">접수 S/N 채우기</button>' +
     '<button class="btn sm" data-act="repairUnits">중복 유닛 병합</button>' +
     '<span class="muted small">Slack 접수의 S/N을 AS 건에 채워 회수 스캔이 매칭되게 합니다.</span></div>' +
-    '<div class="note" style="margin-top:8px">GitHub Pages 등 외부 주소에서 열 때 위 두 값을 입력합니다. 키가 유출되면 setup 화면 없이도 데이터에 접근할 수 있으니, 스크립트 속성 <span class="mono">APP_KEY</span> 값을 바꾸면 즉시 차단됩니다.</div></div></div>' +
+    '<div class="note" style="margin-top:8px">공유 주소는 로그인 없이 누구나 열어 보고 등록·수정할 수 있습니다(수정 이력엔 처음 입력한 이름이 남아요). 관리자 키가 새어 나갔다고 생각되면 Apps Script › 프로젝트 설정 › 스크립트 속성에서 <b>APP_KEY</b> 값을 바꾸면 됩니다.</div></div></div>' +
     '<div class="card" style="margin-top:14px"><div class="hd"><h3>티오더 시트 동기화</h3><a class="btn sm" target="_blank" href="' + esc(m.torderUrl) + '">시트 열기 ↗</a><a class="btn sm" target="_blank" href="' + esc(m.dbUrl) + '">AS Desk DB ↗</a></div><div class="bd">' +
     '<div class="two"><div><h4 style="margin:0 0 6px">가져오기 (티오더 시트 → AS Desk)</h4><div class="small muted" style="margin-bottom:8px">없는 건은 새로 만들고, AS Desk에 비어 있는 칸만 채웁니다. ERP 체크(물류팀)는 1시간마다 자동 갱신됩니다. 마지막 ' + t(m.lastImport) + '</div>' +
     '<div class="row"><button class="btn" data-act="importDry">미리보기</button><button class="btn pri" data-act="importApply">가져오기 실행</button></div></div>' +
@@ -1795,6 +1811,10 @@ var ACT = {
   case: function (d) { closeModal(); openCase(d.id); },
   closeDrawer: closeDrawer,
   closeModal: closeModal,
+  admPrompt: function () { adminPrompt_(); },
+  admSave: function () { var v = ($('#admKey').value || '').trim().replace(/^.*[#&]k=/, ''); if (!v) return toast('관리자 키를 입력해 주세요.', true); ls('appKey', v); closeModal(); cacheClear_(); load(true).then(function () { toast(S.data.meta.admin ? '관리자로 연결했습니다.' : '관리자 키가 맞지 않습니다.', !S.data.meta.admin); if (!S.data.meta.admin) ls('appKey', ''); }); },
+  admOut: function () { ls('appKey', ''); cacheClear_(); load(true).then(function () { toast('관리자 연결을 해제했습니다.'); }); },
+  setMe: function () { var nm = window.prompt('기록에 남길 이름(소속)', ls('me') || ''); if (nm !== null) { ls('me', nm.trim().slice(0, 20)); render(); } },
   searchStore: function (d) { S.view = 'ship'; S.shipF = 'all'; S.q = d.v; render(); },
   anModel: function (d) { S.an.model = d.v; render(); },
   // 인입
