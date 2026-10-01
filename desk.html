@@ -582,16 +582,14 @@ var GATED = false;
 function gate(msg) {
   if (GATED) return; GATED = true;
   document.body.innerHTML = '<div style="max-width:460px;margin:12vh auto;padding:0 18px">' +
-    '<div class="card"><div class="hd"><h3>볼타레스 AS Desk 연결</h3></div><div class="bd">' +
-    (msg ? '<div class="flag r" style="margin-bottom:10px">' + esc(msg) + '</div>' : '<div class="small muted" style="margin-bottom:10px">처음 한 번만 넣으면 이 브라우저에 저장돼서, 다음부터는 주소만 열어도 바로 들어가집니다.<br>관리자에게 받은 <b>초대 링크</b>로 열면 이 화면 없이 바로 연결돼요.</div>') +
-    '<label class="fld"><span>접속 키</span><input class="inp mono" id="gKey" value="' + esc(ls('appKey') || '') + '" placeholder="관리자에게 받은 접속 키" autofocus></label>' +
-    '<details style="margin-top:10px"><summary class="small muted" style="cursor:pointer">고급 — 서버 주소</summary><label class="fld" style="margin-top:6px"><span>Apps Script 웹앱 URL (…/exec)</span><input class="inp mono" id="gUrl" value="' + esc(ls('gasUrl') || DEFAULT_GAS_URL) + '"></label></details>' +
+    '<div class="card"><div class="hd"><h3>접속</h3></div><div class="bd">' +
+    (msg ? '<div class="flag r" style="margin-bottom:10px">' + esc(msg) + '</div>' : '') +
+    '<label class="fld"><span>접속 키</span><input class="inp mono" id="gKey" type="password" value="" placeholder="접속 키" autofocus></label>' +
     '<div class="row" style="margin-top:14px"><button class="btn pri" id="gSave">연결</button></div></div></div></div>';
   var gk = document.getElementById('gKey');
   gk.onkeydown = function (e) { if (e.key === 'Enter') document.getElementById('gSave').click(); };
   document.getElementById('gSave').onclick = function () {
-    var u = document.getElementById('gUrl').value.trim(), k = gk.value.trim().replace(/^.*[#&]k=/, '');
-    if (!/\/exec$/.test(u)) return alert('웹앱 URL은 /exec 로 끝나야 합니다.');
+    var u = DEFAULT_GAS_URL, k = gk.value.trim().replace(/^.*[#&]k=/, '');
     if (!k) return alert('접속 키를 입력해 주세요.');
     ls('gasUrl', u); ls('appKey', k); location.reload();
   };
