@@ -1361,7 +1361,7 @@ function lotNextName() {
   return (mx + 1) + '차';
 }
 function lotBatchForm() {
-  return '<div class="card"><div class="hd"><h3>양산 차수 등록</h3><span class="muted small">재고 입고처럼 S/N 배치를 넣으면 돼요 · 구간 여러 개는 쉼표로 (예: 1~15000, 15001~20000)</span></div><div class="bd">' +
+  return '<div class="card"><div class="hd"><h3>양산 차수 등록</h3><span class="muted small">차수별 S/N 배치를 넣으면 AS S/N에 차수가 붙고 차수별 접수율이 아래에 나와요 · 구간 여러 개는 쉼표로 (예: 1~15000, 15001~20000)</span></div><div class="bd">' +
     '<div class="row"><input class="inp" id="lbName" placeholder="차수 (예: 1차)" value="' + esc(lotNextName()) + '" style="width:110px"><select class="inp" id="lbModel"><option value="P20BOTA25">기존 P20BOTA25</option><option value="P20VA">신형 P20VA</option></select>' +
     '<input class="inp mono" id="lbSns" placeholder="S/N 배치 (예: 1~15000 · P20BOTA250000001~P20BOTA250015000)" style="flex:1;min-width:220px"></div>' +
     '<div class="row" style="margin-top:8px"><label class="small nowrap">생산일 <input class="inp" id="lbMade" type="date" style="width:150px"></label><input class="inp" id="lbNote" placeholder="메모 (공장·셀 lot·PCB rev 등)" style="flex:1;min-width:140px">' +
@@ -1532,8 +1532,7 @@ function vStock() {
     '<div class="row"><select class="inp" id="soModel"><option value="P20BOTA25">기존 P20BOTA25</option><option value="P20VA"' + (sm === 'P20VA' ? ' selected' : '') + '>신형 P20VA</option></select><input class="inp mono" id="soSns" placeholder="S/N · 구간 (예: 30900~30910, 30915)" style="flex:1;min-width:200px">' +
     '<select class="inp" id="soPurpose">' + ['별도 교환', '샘플', '테스트·분석', '수입검사 불량', '불량 폐기', '반품·회수', '기타'].map(function (x) { return '<option>' + x + '</option>'; }).join('') + '</select></div>' +
     '<div class="row" style="margin-top:8px"><input class="inp" id="soDate" type="date" value="' + esc(today()) + '" style="width:150px"><input class="inp" id="soDest" placeholder="받는 곳·메모" style="flex:1;min-width:140px">' +
-    '<button class="btn pri" data-act="stockOut">출고 기록</button></div><div class="small muted" id="soPrev" style="margin-top:8px"></div></div></div></div>' +
-    '<div style="margin-top:14px">' + lotBatchForm() + '</div>';
+    '<button class="btn pri" data-act="stockOut">출고 기록</button></div><div class="small muted" id="soPrev" style="margin-top:8px"></div></div></div></div>';
   if (models.length > 1) h += '<div class="tabs" style="margin-top:14px">' + [['all', '전체']].concat(models.map(function (m) { return [m, MN[m] || m]; })).map(function (t) {
     return '<button class="' + (sm === t[0] ? 'on' : '') + '" data-act="stockM" data-v="' + t[0] + '">' + t[1] + (t[0] === 'all' ? '' : '<span class="n">남음 ' + byM[t[0]].left.toLocaleString() + '</span>') + '</button>';
   }).join('') + '</div>';
