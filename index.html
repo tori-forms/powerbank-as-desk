@@ -476,13 +476,14 @@ function cjLink(no) { return '<a class="mono" target="_blank" href="https://trac
 
 var EXT = !(window.google && google.script && google.script.run) && !window.__devApi;
 function call(action, payload) {
+  if (DEMO_MODE) return demoCall_(action, payload);
   var body = { action: action, payload: payload || {}, actor: me() };
   if (action !== 'bootstrap') body.rid = Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
   return new Promise(function (res, rej) {
     var ok = function (s) {
       var r = typeof s === 'string' ? JSON.parse(s) : s;
       if (r.ok) return res(r.data);
-      if (r.needKey) { try { ls('appKey', ''); cacheClear_(); } catch (e) { } gate('전용 링크로만 접속할 수 있어요. 받은 링크로 다시 열어 주세요.'); }
+      if (r.needKey) { try { ls('appKey', ''); } catch (e) { } cacheClear_().then(function () { location.reload(); }, function () { location.reload(); }); return; }
       if (r.needAdmin) { adminPrompt_(); return rej(new Error('관리자 전용 기능입니다. 관리자 키를 넣은 뒤 다시 눌러 주세요.')); }
       rej(new Error(r.error));
     };
@@ -529,6 +530,21 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
     if (!ls('gasUrl') && ls('appKey')) ls('gasUrl', DEFAULT_GAS_URL);
   } catch (e) { }
 })();
+var DEMO_MODE = EXT && !ls('appKey');
+var DEMO_DATA = null;
+function demoCall_(action, payload) {
+  if (action === 'bootstrap') {
+    var get = DEMO_DATA ? Promise.resolve(DEMO_DATA) : fetch('demo.json', { cache: 'no-cache' }).then(function (r) { return r.json(); }).then(function (d) { DEMO_DATA = d; return d; });
+    return get.then(function (d) {
+      var t0 = new Date((d.meta.today || '2026-10-01') + 'T00:00:00Z'), now = new Date(), t1 = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+      var off = Math.round((t1 - t0) / 86400000);
+      var js = JSON.stringify(d).replace(/(20\d\d)-(\d\d)-(\d\d)/g, function (m, y, mo, da) { if (+y < 2026) return m; var x = new Date(Date.UTC(+y, +mo - 1, +da) + off * 86400000); return x.toISOString().slice(0, 10); });
+      return JSON.parse(js);
+    });
+  }
+  if (action === 'inboxDetail') { var it = (DEMO_DATA.inbox || []).filter(function (x) { return x.id === payload.id; })[0] || {}; return Promise.resolve({ id: it.id, raw: '[데모] ' + (it.symptom || ''), threadText: '', address: '', files: '[]' }); }
+  return Promise.reject(new Error('데모 화면이라 저장되지 않아요.'));
+}
 var GATED = false;
 function gate(msg) {
   if (GATED) return; GATED = true;
@@ -598,11 +614,12 @@ function load(silent) {
   if (GATED) return Promise.resolve();
   var first = !S.data;
   if (!silent && $('#view')) $('#view').innerHTML = '<div class="loading"><span class="spin"></span> 불러오는 중…</div>';
-  if (first) cacheGet_().then(function (c) {
+  if (first && DEMO_MODE) cacheClear_();
+  if (first && !DEMO_MODE) cacheGet_().then(function (c) {
     if (!c || !c.d) return;
     setTimeout(function () { if (!S.data && !GATED) { useData_(c.d); S.stale = true; staleBadge(c.at); } }, 2500);
   });
-  return callHedged_('bootstrap', 2500, 3).then(function (d) { S.stale = false; staleBadge(null); useData_(d); cachePut_(d); })
+  return callHedged_('bootstrap', 2500, 3).then(function (d) { S.stale = false; staleBadge(null); useData_(d); if (!DEMO_MODE) cachePut_(d); })
     .catch(function (e) {
       staleBadge(null);
       if (GATED || !$('#view')) return;
@@ -611,6 +628,7 @@ function load(silent) {
     });
 }
 function run(action, payload, okMsg, btn) {
+  if (DEMO_MODE) { toast('데모 화면이라 저장되지 않아요.', true); return Promise.resolve(); }
   if (S.busy) return Promise.resolve();
   if (!(ls('me') || '').trim() && S.data && !S.data.meta.admin) {
     var nm = window.prompt('기록에 남길 이름(소속)을 입력해 주세요.\n예: 티오더 김OO, 폼즈 최민규');
@@ -753,7 +771,7 @@ function render() {
   var sub = { home: '', inbox: 'Slack #ext-볼타레스-티오더 접수 양식 자동 수집', cases: '교환 출고 → 반품 신청 → 회수 입고', inspect: '바코드 스캔으로 회수 매칭 → 판정 · 원인 · 처분', analysis: '모델별 불량 데이터', stock: '교체 재고(AS 교환용) · 납품 재고(고객사 납품·양산 차수)', settings: '연동 상태와 티오더 시트 동기화' }[S.view] || '';
   $('#subtitle').textContent = sub; $('#subtitle').style.display = sub ? '' : 'none';
   var fn = { home: vHome, inbox: vInbox, ship: vShip, ret: vReturn, inspect: vInspect, stock: vStock, analysis: vAnalysis, settings: vSettings }[S.view];
-  $('#view').innerHTML = fn();
+  $('#view').innerHTML = (DEMO_MODE ? '<div class="flag" style="margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#fff7e6;color:#8a5a00;border:1px solid #ffe2a8"><b>데모 화면</b><span>가상 데이터로 만든 예시예요. 실제 AS 현황이 아닙니다.</span><a href="#" data-act="demoLogin" style="margin-left:auto;color:#8a5a00;text-decoration:underline">관리자 접속</a></div>' : '') + fn();
   if (S.view === 'inbox') { loadInboxDetail(); setTimeout(loadSlackImgs, 30); }
   if (isMobile_()) {
     var nb = $('#nav button.on'); if (nb && nb.scrollIntoView) nb.scrollIntoView({ block: 'nearest', inline: 'center' });
@@ -1845,6 +1863,7 @@ var ACT = {
   admPrompt: function () { adminPrompt_(); },
   admSave: function () {
     var v = ($('#admKey').value || '').trim().replace(/^.*[#&]k=/, ''); if (!v) return toast('관리자 비밀번호를 입력해 주세요.', true);
+    if (DEMO_MODE) { ls('appKey', v); location.reload(); return; }
     var prev = ls('appKey') || ''; ls('appKey', v); closeModal(); cacheClear_();
     load(true).then(function () {
       if (S.data.meta.admin) { S.setOk = true; render(); toast('관리자로 확인했습니다.'); }
@@ -1912,6 +1931,7 @@ var ACT = {
     run('stockAdd', { model: m, color: $('#stColor') ? $('#stColor').value : '', from: a.sn, to: z.sn, receivedAt: $('#stDate').value, qc: $('#stQc').value, note: $('#stNote').value }, function (r) { return '재고 ' + (+r.stock.qty).toLocaleString() + '개 등록했습니다. (' + STAGE_[stockStage(r.stock)].t + ')'; }, b);
   },
   stockM: function (d) { S.stockM = d.v; render(); },
+  demoLogin: function () { GATED = false; gate(); },
   stockView: function (d) { S.stockView = d.v; render(); },
   goDeliv: function () { S.stockView = 'deliv'; S.view = 'stock'; render(); window.scrollTo(0, 0); },
   lotEdit: function (d) { S.lotEdit = d.id || null; render(); },
