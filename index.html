@@ -447,6 +447,14 @@ function prodColor(id) { var i = prodIdx(id); return PROD_COLORS[(i < 0 ? 7 : i)
 function prodLabel(id) { var p = prodOf(id); return p ? p.label : (id || '모델 미상'); }
 function prodColors(id) { var p = prodOf(id); return (p && p.colors) || []; }
 function colorOpts(id, sel) { var cs = prodColors(id); return cs.length ? '<option value="">색상</option>' + cs.map(function (c) { return '<option' + (sel === c ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('') : ''; }
+var COLOR_CODES = [[/^(BK|BLK|BLACK)/, /블랙|검정|black/i], [/^(WH|WHT|WHITE)/, /화이트|흰|white/i], [/^(GR|GRY|GRAY)/, /그레이|회색|gray/i], [/^(BL|BLU|BLUE)/, /블루|파랑|blue/i], [/^(PK|PNK|PINK)/, /핑크|pink/i], [/^(SV|SLV)/, /실버|silver/i]];
+function colorOfSn(sn) {
+  sn = String(sn || '').toUpperCase(); var p = prodOf(modelOfSn(sn)); if (!p || !(p.colors || []).length) return '';
+  var px = [p.prefix].concat(p.prefixes || []).map(function (x) { return String(x || '').toUpperCase(); }).filter(function (x) { return x && sn.indexOf(x) === 0; }).sort(function (a, b) { return a.length - b.length; })[0];
+  var rest = px ? sn.slice(px.length) : '';
+  for (var i = 0; i < COLOR_CODES.length; i++) if (COLOR_CODES[i][0].test(rest)) { var c = p.colors.filter(function (x) { return COLOR_CODES[i][1].test(x); })[0]; if (c) return c; }
+  return '';
+}
 function colorTag(c) { if (!c) return ''; var dark = /블랙|검|black/i.test(c); return ' <span class="mtag" style="background:' + (dark ? '#2b2f36' : '#fff') + ';color:' + (dark ? '#fff' : '#333') + ';border:1px solid #d5d9de">' + esc(c) + '</span>'; }
 function prodOpts(sel, list, empty) { return (empty !== undefined ? '<option value="">' + esc(empty) + '</option>' : '') + (list || PRODS()).map(function (p) { return '<option value="' + esc(p.id) + '"' + (sel === p.id ? ' selected' : '') + '>' + esc(p.label) + '</option>'; }).join(''); }
 function mtag(m) { m = String(m || '').split('/')[0]; if (!m) return '<span class="mtag m-x">모델 미상</span>'; var c = prodColor(m); return '<span class="mtag" style="background:' + c[0] + ';color:' + c[1] + '">' + esc(prodLabel(m)) + '</span>'; }
@@ -1417,14 +1425,14 @@ function lotCard() {
   S.data.inbox.forEach(function (i) { if (i.status === '확정' || i.status === '신규' || i.status === '보류') jparse(i.sns, []).forEach(function (sn) { add(sn, null); }); });
   var ed = S.lotEdit && lots.filter(function (l) { return l.id === S.lotEdit; })[0];
   var h = (ed ? '' : '<div style="margin-top:14px">' + lotBatchForm() + '</div>') + '<div class="card" style="margin-top:14px"><div class="hd"><h3>양산 차수별 AS</h3><span class="muted small">등록한 차수가 인입·회수 S/N에 자동으로 붙고, 차수별 AS 접수율을 계산합니다</span></div>' + (ed ? '<div class="bd">' +
-    '<div class="row"><input class="inp" id="lotName" placeholder="차수 (예: 3차)" value="' + esc(ed ? ed.name : '') + '" style="width:120px"><select class="inp" id="lotModel">' + prodOpts(ed ? ed.model : '', SN_PRODS()) + '</select>' +
+    '<div class="row"><input class="inp" id="lotName" placeholder="차수 (예: 3차)" value="' + esc(ed ? ed.name : '') + '" style="width:120px"><select class="inp" id="lotModel">' + prodOpts(ed ? ed.model : '', SN_PRODS()) + '</select>' + (ed && prodColors(ed.model).length ? '<select class="inp" id="lotColor">' + colorOpts(ed.model, ed.color || colorOfSn(stockSn(ed, ed.fromNo))) + '</select>' : '') +
     '<input class="inp mono" id="lotFrom" placeholder="시작 S/N·번호" value="' + esc(ed ? stockSn(ed, ed.fromNo) : '') + '" style="flex:1;min-width:150px"><span>~</span><input class="inp mono" id="lotTo" placeholder="끝 S/N·번호" value="' + esc(ed ? stockSn(ed, ed.toNo) : '') + '" style="flex:1;min-width:150px">' +
     '<label class="small nowrap">생산일 <input class="inp" id="lotMade" type="date" value="' + esc(ed ? ed.madeAt : '') + '" style="width:150px"></label><input class="inp" id="lotNote" placeholder="메모 (공장·셀 등)" value="' + esc(ed ? ed.note : '') + '" style="flex:1;min-width:120px">' +
     '<button class="btn pri" data-act="lotSave" data-id="' + esc(ed ? ed.id : '') + '">' + (ed ? '수정 저장' : '차수 등록') + '</button>' + (ed ? '<button class="btn" data-act="lotEdit" data-id="">취소</button>' : '') + '</div></div>' : '');
   h += lots.length ? '<div class="tw"><table class="t"><thead><tr><th>차수</th><th>모델</th><th>S/N 구간</th><th>생산일</th><th>생산 수량</th><th>AS 접수 S/N</th><th>접수율</th><th>판정 불량 / 정상</th><th>메모</th><th></th></tr></thead><tbody>' +
     lots.map(function (l) {
       var x = st[l.id] || { n: 0, bad: 0, ok: 0 };
-      return '<tr><td><span class="lotTag" style="margin:0">' + esc(l.name) + '</span></td><td>' + mtag(l.model) + colorTag(l.color) + '</td><td class="mono small">' + esc(stockSn(l, l.fromNo)) + '<br>~ ' + esc(stockSn(l, l.toNo)) + '</td>' +
+      return '<tr><td><span class="lotTag" style="margin:0">' + esc(l.name) + '</span></td><td>' + mtag(l.model) + colorTag(l.color || colorOfSn(stockSn(l, l.fromNo))) + '</td><td class="mono small">' + esc(stockSn(l, l.fromNo)) + '<br>~ ' + esc(stockSn(l, l.toNo)) + '</td>' +
         '<td class="nowrap">' + esc(ymd(l.madeAt) || '-') + '</td><td>' + (+l.qty).toLocaleString() + '</td><td><b>' + x.n.toLocaleString() + '</b></td>' +
         '<td>' + (+l.qty ? (x.n / +l.qty * 100).toFixed(2) + '%' : '-') + '</td><td><span style="color:var(--red)">' + x.bad + '</span> / <span style="color:var(--green)">' + x.ok + '</span></td>' +
         '<td class="small">' + esc(l.note || '') + '</td><td class="nowrap"><button class="btn sm" data-act="lotEdit" data-id="' + esc(l.id) + '">수정</button> <button class="btn sm" data-act="lotDel" data-id="' + esc(l.id) + '">삭제</button></td></tr>';
@@ -1621,7 +1629,7 @@ function vStockRep() {
     (view.length ? view.map(function (x, i) {
       var r = x.r, open = S.countOpen === r.id, m = mOf(r);
       var gh = (i === 0 || mOf(view[i - 1].r) !== m) ? '<tr><td colspan="9" style="background:var(--line2);padding:8px 14px">' + mtag(m) + ' <span class="small muted" style="margin-left:6px">입고 ' + byM[m].qty.toLocaleString() + '개 · 남음 <b style="color:var(--ink)">' + byM[m].left.toLocaleString() + '개</b></span></td></tr>' : '';
-      var row = gh + '<tr><td class="mono small">' + esc(stockSn(r, r.fromNo)) + '<br>~ ' + esc(stockSn(r, r.toNo)) + colorTag(r.color) + '</td><td class="nowrap">' + esc(ymd(r.receivedAt)) + '</td><td>' + stockStageCell(x) + (stockQcBtns(x) ? '<div class="row" style="gap:4px;margin-top:6px">' + stockQcBtns(x) + '</div>' : '') + '</td>' +
+      var row = gh + '<tr><td class="mono small">' + esc(stockSn(r, r.fromNo)) + '<br>~ ' + esc(stockSn(r, r.toNo)) + colorTag(r.color || colorOfSn(stockSn(r, r.fromNo))) + '</td><td class="nowrap">' + esc(ymd(r.receivedAt)) + '</td><td>' + stockStageCell(x) + (stockQcBtns(x) ? '<div class="row" style="gap:4px;margin-top:6px">' + stockQcBtns(x) + '</div>' : '') + '</td>' +
         '<td>' + (+r.qty).toLocaleString() + '</td><td>' + x.used.toLocaleString() + '</td>' +
         '<td><b>' + x.left.toLocaleString() + '</b>' + (x.counted ? '<div class="small muted">실사 ' + esc(md(r.countedAt)) + ' 기준</div>' : '<div class="small muted">기록 기준</div>') + '</td>' +
         '<td class="' + (x.wh ? 'mono ' : '') + 'small">' + (!x.wh ? '<span class="small" style="color:' + STAGE_[x.stage].c + '">' + { qc: '검사 합격(또는 생략) 후 외주창고 입고해야 출고 가능', ready: '외주창고 입고 후 출고 가능', fail: '불합격 — 출고 불가', pre: '외주창고 입고 후 출고 가능' }[x.stage] + '</span>' : x.next.map(esc).join('<br>') || '<span class="muted">소진</span>') + '</td>' +
@@ -1633,6 +1641,7 @@ function vStockRep() {
         '<div class="row"><input class="inp mono" id="edFrom" value="' + esc(stockSn(r, r.fromNo)) + '" style="width:190px"><span>~</span><input class="inp mono" id="edTo" value="' + esc(stockSn(r, r.toNo)) + '" style="width:190px">' +
         '<label class="small nowrap">입고일 <input class="inp" id="edRecv" type="date" value="' + esc(r.receivedAt || '') + '" style="width:150px"></label>' +
         '<label class="small nowrap">창고 입고일 <input class="inp" id="edWh" type="date" value="' + esc(r.whAt || '') + '" style="width:150px"></label>' +
+        (prodColors(m).length ? '<select class="inp" id="edColor">' + colorOpts(m, r.color || colorOfSn(stockSn(r, r.fromNo))) + '</select>' : '') +
         '<input class="inp" id="edNote" value="' + esc(r.note || '') + '" placeholder="메모" style="flex:1;min-width:120px">' +
         '<button class="btn pri" data-act="stockEdit" data-id="' + esc(r.id) + '">저장</button><button class="btn" data-act="editOpen" data-id="">닫기</button></div></td></tr>';
       if (S.qcOpen && S.qcOpen.id === r.id) {
@@ -1899,7 +1908,7 @@ var ACT = {
   stockAdd: function (d, b) {
     var m = $('#stModel').value, a = snSplit($('#stFrom').value, m), z = snSplit($('#stTo').value || $('#stFrom').value, m);
     if (!a || !z) return toast('S/N을 확인해 주세요. 번호만 입력이 안 되는 제품은 전체 S/N으로 입력해 주세요.', true);
-    if (prodColors(m).length && !$('#stColor').value) return toast('색상을 골라 주세요.', true);
+    if (prodColors(m).length && !$('#stColor').value && !colorOfSn(a.sn)) return toast('색상을 골라 주세요.', true);
     run('stockAdd', { model: m, color: $('#stColor') ? $('#stColor').value : '', from: a.sn, to: z.sn, receivedAt: $('#stDate').value, qc: $('#stQc').value, note: $('#stNote').value }, function (r) { return '재고 ' + (+r.stock.qty).toLocaleString() + '개 등록했습니다. (' + STAGE_[stockStage(r.stock)].t + ')'; }, b);
   },
   stockM: function (d) { S.stockM = d.v; render(); },
@@ -1909,7 +1918,7 @@ var ACT = {
   lotSave: function (d, b) {
     var m = $('#lotModel').value, a = snSplit($('#lotFrom').value, m), z = snSplit($('#lotTo').value || $('#lotFrom').value, m);
     if (!a || !z) return toast('S/N을 확인해 주세요. 번호만 입력이 안 되는 제품은 전체 S/N으로 입력해 주세요.', true);
-    run('lotSave', { id: d.id || '', name: $('#lotName').value, model: m, from: a.sn, to: z.sn, madeAt: $('#lotMade').value, note: $('#lotNote').value },
+    run('lotSave', { id: d.id || '', name: $('#lotName').value, model: m, color: $('#lotColor') ? $('#lotColor').value : undefined, from: a.sn, to: z.sn, madeAt: $('#lotMade').value, note: $('#lotNote').value },
       function (r) { S.lotEdit = null; return r.lot.name + ' 차수를 저장했습니다. (' + (+r.lot.qty).toLocaleString() + '개)'; }, b);
   },
   lotBatch: function (d, b) {
@@ -1918,7 +1927,7 @@ var ACT = {
     if (!rg.length) return toast('S/N 배치를 입력해 주세요. (예: 1~15000)', true);
     if (!$('#lbName').value.trim()) return toast('차수 이름을 입력해 주세요. (예: 1차)', true);
     var ranges = rg.map(function (x) { return { from: stockSn(x, x.lo), to: stockSn(x, x.hi) }; });
-    if (prodColors(m).length && !$('#lbColor').value) return toast('색상을 골라 주세요.', true);
+    if (prodColors(m).length && !$('#lbColor').value && !colorOfSn(ranges[0].from)) return toast('색상을 골라 주세요.', true);
     S.lbModel = m;
     run('lotBatch', { name: $('#lbName').value.trim(), model: m, color: $('#lbColor') ? $('#lbColor').value : '', ranges: ranges, madeAt: $('#lbMade').value, note: $('#lbNote').value },
       function (r) { return r.name + ' 차수를 등록했습니다. (' + (+r.qty).toLocaleString() + '개' + (r.lots.length > 1 ? ' · 구간 ' + r.lots.length + '개' : '') + ')'; }, b);
@@ -1936,7 +1945,9 @@ var ACT = {
     run('stockQc', { id: d.id, step: step, at: $('#qcAt').value, note: $('#qcNote').value }, function (r) { S.qcOpen = null; return '기록했습니다 — ' + STAGE_[stockStage(r.stock)].t; }, b);
   },
   stockEdit: function (d, b) {
-    run('stockEdit', { id: d.id, from: $('#edFrom').value, to: $('#edTo').value, receivedAt: $('#edRecv').value, whAt: $('#edWh').value, note: $('#edNote').value },
+    var ep = { id: d.id, from: $('#edFrom').value, to: $('#edTo').value, receivedAt: $('#edRecv').value, whAt: $('#edWh').value, note: $('#edNote').value };
+    if ($('#edColor')) ep.color = $('#edColor').value;
+    run('stockEdit', ep,
       function (r) { S.editOpen = null; return r.changed ? '재고 구간을 수정했습니다.' : '바뀐 내용이 없습니다.'; }, b);
   },
   countOpen: function (d) { S.countOpen = d.id || null; S.editOpen = null; render(); var t = $('#cntTxt'); if (t) t.focus(); },
@@ -2063,7 +2074,7 @@ var ACT = {
   rebuildShips: function (d, b) { run('rebuildShips', {}, function (r) { return '송장 ' + r.added + '건 정리 완료. [배송 상태 갱신]을 눌러 주세요.'; }, b); },
   resetConn: function () { ls('gasUrl', ''); ls('appKey', ''); ls('noPost', ''); cacheClear_().then(function () { location.reload(); }); },
   reqDone: function (d, b) { run('requestDone', { id: d.id }, '처리 완료로 표시했습니다.', b).then(function () { if (S.caseSel) openCase(S.caseSel, true); }); },
-  prodEdit: function (d) { S.prodEdit = d.id || null; render(); var f = $('#pdLabel'); if (f && d.id) f.focus(); },
+  prodEdit: function (d) { S.prodEdit = d.id || null; render(); var f = $('#pdLabel'); if (f && d.id) { f.scrollIntoView({ block: 'center' }); f.focus(); } },
   prodSave: function (d, b) {
     var ship = $('#pdShip').value.replace(/[,\s]/g, '');
     if (ship && !/^\d+$/.test(ship)) return toast('납품 수량은 숫자로 입력해 주세요.', true);
