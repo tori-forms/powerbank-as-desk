@@ -477,13 +477,14 @@ function cjLink(no) { return '<a class="mono" target="_blank" href="https://trac
 var EXT = !(window.google && google.script && google.script.run) && !window.__devApi;
 function call(action, payload) {
   if (DEMO_MODE) return demoCall_(action, payload);
+  if (EXT && !ls('appKey')) { cacheClear_(); gate(); return Promise.reject(new Error('접속 키가 필요합니다.')); }
   var body = { action: action, payload: payload || {}, actor: me() };
   if (action !== 'bootstrap') body.rid = Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
   return new Promise(function (res, rej) {
     var ok = function (s) {
       var r = typeof s === 'string' ? JSON.parse(s) : s;
       if (r.ok) return res(r.data);
-      if (r.needKey) { try { ls('appKey', ''); } catch (e) { } cacheClear_().then(function () { location.reload(); }, function () { location.reload(); }); return; }
+      if (r.needKey) { var hadKey = !!ls('appKey'); try { ls('appKey', ''); } catch (e) { } if (!hadKey) { cacheClear_(); gate(); return rej(new Error('접속 키가 필요합니다.')); } cacheClear_().then(function () { location.reload(); }, function () { location.reload(); }); return; }
       if (r.needAdmin) { adminPrompt_(); return rej(new Error('관리자 전용 기능입니다. 관리자 키를 넣은 뒤 다시 눌러 주세요.')); }
       rej(new Error(r.error));
     };
@@ -530,7 +531,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
     if (!ls('gasUrl') && ls('appKey')) ls('gasUrl', DEFAULT_GAS_URL);
   } catch (e) { }
 })();
-var DEMO_MODE = EXT && !ls('appKey');
+var DEMO_MODE = false;
 var DEMO_DATA = null;
 function demoData_() {
 let rnd=20261001; const R=()=>{rnd=(rnd*1103515245+12345)&0x7fffffff; return rnd/0x7fffffff;}; const pick=a=>a[Math.floor(R()*a.length)];
