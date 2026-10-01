@@ -532,16 +532,48 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
 })();
 var DEMO_MODE = EXT && !ls('appKey');
 var DEMO_DATA = null;
-function demoCall_(action, payload) {
-  if (action === 'bootstrap') {
-    var get = DEMO_DATA ? Promise.resolve(DEMO_DATA) : fetch('demo.json', { cache: 'no-cache' }).then(function (r) { return r.json(); }).then(function (d) { DEMO_DATA = d; return d; });
-    return get.then(function (d) {
-      var t0 = new Date((d.meta.today || '2026-10-01') + 'T00:00:00Z'), now = new Date(), t1 = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
-      var off = Math.round((t1 - t0) / 86400000);
-      var js = JSON.stringify(d).replace(/(20\d\d)-(\d\d)-(\d\d)/g, function (m, y, mo, da) { if (+y < 2026) return m; var x = new Date(Date.UTC(+y, +mo - 1, +da) + off * 86400000); return x.toISOString().slice(0, 10); });
-      return JSON.parse(js);
-    });
+function demoData_() {
+let rnd=20261001; const R=()=>{rnd=(rnd*1103515245+12345)&0x7fffffff; return rnd/0x7fffffff;}; const pick=a=>a[Math.floor(R()*a.length)];
+const areas=['강남','홍대','분당','일산','수원','부산서면','대구동성로','광주상무','대전둔산','인천송도','천안','청주','전주','창원','제주','울산','김해','평택','용인','안양','잠실','목동'];
+const brands=['한우마당','국밥명가','돈까스하우스','바다횟집','치킨공방','곱창이야기','파스타랩','라멘집','샤브샤브','삼겹살천국','쌀국수','떡볶이연구소','갈비명가','순대국','브런치카페','피자공작소','족발야시장','쭈꾸미','냉면집','막창골목'];
+const REASONS=['충전','충전','빠른 소모','빠른 소모','LED','포트','스웰링','기타'];
+const SYM=['충전 불량','충전 불량','성능 저하','출력 불량','표시 불량','포트 불량','스웰링'];
+const CAUSE=['IC 소손(과전압·서지)','셀 용량 저하(80% 미만)','포트 용접 불량','포트 이탈(외력)','부품 탈락(충격)'];
+const now0=new Date(); const today=new Date(now0.getFullYear(),now0.getMonth(),now0.getDate(),9); const day=d=>new Date(today-d*86400000).toISOString().slice(0,10);
+const no=()=>'3019'+String(Math.floor(R()*1e8)).padStart(8,'0'), rno=()=>'8447'+String(Math.floor(R()*1e8)).padStart(8,'0');
+const snB=()=>'P20BOTA25'+String(Math.floor(R()*49999)+1).padStart(7,'0');
+const snV=()=>'P20VA'+(R()<0.5?'BK':'WH')+'2604'+String(Math.floor(R()*99999)).padStart(5,'0');
+const cases=[],units=[],ships=[];
+for(let i=0;i<48;i++){
+  const age=Math.floor(i*3.6+R()*3); const va=R()<0.2; const qty=R()<0.7?1:(R()<0.7?2:(R()<0.6?3:5));
+  const id='DEMO-'+String(i+1).padStart(3,'0'); const store=pick(brands)+'('+pick(areas)+'점)';
+  const out=no(), ret=rno(); const outDate=day(age);
+  const delivered=age>=2, retStage= age<4?'none': age<9?(R()<0.4?'moving':(R()<0.7?'before':'fail')):'done';
+  const recv= retStage==='done'? day(Math.max(age-8,0)) : '';
+  const closed= age>60 && R()<0.8;
+  const c={id,source:'manual',inboxId:'',torderNo:String(101+i),torderRow:'',inquiryNo:'',store,accountId:'',model:va?'P20VA':'P20BOTA25',qty:String(qty),reasonCode:pick(REASONS),symptom:'',createdAt:outDate+'T10:00:00',decidedBy:'',
+    outDate,outTracking:out,outStatus:delivered?'도착완료':'배송중',outDoneAt:delivered?day(age-1):'',returnTracking:retStage==='none'?'':ret,returnStatus:{none:'',moving:'회수중',before:'회수전',fail:'회수 실패(재접수 필요)',done:'회수완료'}[retStage],
+    returnCheckedAt:'',returnDoneAt:recv,recvDate:recv,erp1:'Y',erp2:recv?'Y':'',erp3:'',note:recv?'':(retStage==='none'?'':'회수 요청 완료'),autoLog:'',slackUrl:'',closed:closed?'Y':'',closedReason:closed?'처리 완료':'',history:'',updatedAt:outDate+'T10:00:00',rev:'1',outQty:String(qty),retReqAt:'',retReqBy:''};
+  cases.push(c);
+  ships.push({id:'S'+out,caseId:id,type:'out',no:out,stage:delivered?'done':'moving',status:delivered?'배송완료':'간선상차',lastAt:'',doneAt:delivered?day(age-1):'',ori:'',rtn:retStage==='none'?'':ret,failFlag:'',checkedAt:'',createdAt:outDate,updatedAt:outDate,reissueOf:'',reissueReqAt:'',reissueReqBy:'',notified:''});
+  if(retStage!=='none') ships.push({id:'S'+ret,caseId:id,type:'return',no:ret,stage:retStage==='done'?'done':retStage==='moving'?'moving':'before',status:retStage==='done'?'배송완료':retStage==='moving'?'집화처리':'조회내역 없음',lastAt:retStage==='moving'?day(age-5)+' 14:00:00':'',doneAt:recv,ori:out,rtn:'',failFlag:retStage==='fail'?'Y':'',checkedAt:'',createdAt:day(age-2),updatedAt:day(age-2),reissueOf:'',reissueReqAt:'',reissueReqBy:'',notified:''});
+  for(let k=0;k<qty;k++){
+    const orig=va?snV():snB(), outSn=va?snV():snB(); const tested=recv && R()<0.85;
+    const v= tested ? (R()<0.62?'불량':(R()<0.8?'정상':'외력/사용자 과실')) : '';
+    units.push({id:id+'-'+(k+1),caseId:id,store,origSn:orig,outSn,recvSn:recv?orig:'',model:c.model,lot:'',testDate:tested?recv:'',verdict:v,testSymptom:v==='불량'?pick(SYM):'',cause:v==='불량'?pick(CAUSE):'',opinion:'',capPct:v?String(Math.floor(55+R()*45)):'',disposition:v==='불량'?pick(['폐기','폐기','제조사 반송']):v==='정상'?'양품화/샘플':'',actor:'',updatedAt:outDate,torderTestRow:'',flags:''});
   }
+}
+const iso=d=>new Date(today-d*86400000).toISOString().slice(0,19);
+const inb=[['한우마당(강남점)','P20BOTA250012345\nP20BOTA250012346','완충 후 2시간 만에 방전됩니다','신규',0.2],['국밥명가(분당점)','P20BOTA250023456','충전 단자 접촉 불량, 충전 안 됨','신규',0.6],['바다횟집(부산서면점)','P20VABK260400123','LED 표시가 깜빡이고 출력 없음','신규',1.1],['치킨공방(수원점)','P20BOTA250034567\nP20BOTA250034568','배터리가 부풀어 오름 — 사용 중지','확정',2],['라멘집(대전둔산점)','P20BOTA250045678','충전 시간이 비정상적으로 김','보류',3],['파스타랩(일산점)','P20VAWH260400456','충전 잘 됨 — 사용법 안내로 종결','방어',4]];
+const inbox=inb.map((x,i)=>({id:'DEMO-IN'+(i+1),ts:'',postedAt:iso(x[4]),inquiryNo:String(1200000+i*37),inquiryUrl:'',requester:'',store:x[0],accountId:'',installDate:'',contact:'',address:'',modelText:'볼타레스 보조배터리',model:/P20VA/.test(x[1])?'P20VA':'P20BOTA25',sns:JSON.stringify(x[1].split('\n')),reqQty:String(x[1].split('\n').length),symptom:x[2],reasonCode:/방전/.test(x[2])?'빠른 소모':/충전/.test(x[2])?'충전':/LED/.test(x[2])?'LED':/부풀/.test(x[2])?'스웰링':'기타',note:'',author:'데모',authorId:'',permalink:'',replyCount:'0',latestReply:'',files:'[]',threadText:'',editedAt:'',editNote:'',status:x[3],decisionNote:'',decidedAt:'',decidedBy:'',caseId:'',flags:'[]',raw:'',updatedAt:iso(x[4]),reqSeen:''}));
+const stock=[{id:'DEMO-ST1',model:'P20BOTA25',color:'',prefix:'P20BOTA',fromNo:'250030001',toNo:'250031000',digits:'9',qty:'1000',receivedAt:'2026-05-28',whAt:'2026-05-28',note:'데모 입고',qcStatus:'생략',log:'[]',onHand:'',countedAt:''},{id:'DEMO-ST2',model:'P20VA',color:'블랙',prefix:'P20VABK',fromNo:'260405001',toNo:'260405250',digits:'9',qty:'250',receivedAt:'2026-09-29',whAt:'',note:'',qcStatus:'검사중',log:'[]',onHand:'',countedAt:''},{id:'DEMO-ST3',model:'P20VA',color:'화이트',prefix:'P20VAWH',fromNo:'260405001',toNo:'260405250',digits:'9',qty:'250',receivedAt:'2026-09-29',whAt:'',note:'',qcStatus:'검사중',log:'[]',onHand:'',countedAt:''}];
+const lots=[{id:'DEMO-L1',model:'P20BOTA25',name:'1차',prefix:'P20BOTA',digits:'9',fromNo:'250000001',toNo:'250020000',qty:'20000',madeAt:'2025-06-01',note:'',color:''},{id:'DEMO-L2',model:'P20BOTA25',name:'2차',prefix:'P20BOTA',digits:'9',fromNo:'250020001',toNo:'250050000',qty:'30000',madeAt:'2025-11-15',note:'',color:''}];
+const products=[{id:'P20BOTA25',label:'기존 P20BOTA25',short:'기존',kind:'본체',snMode:'sn',prefix:'P20BOTA25',snLen:16,numDigits:7,torder:true,active:true,order:0},{id:'P20VA',label:'신형 P20VA',short:'신형',kind:'본체',snMode:'sn',prefix:'P20VA',snLen:0,numDigits:0,torder:false,active:true,colors:['블랙','화이트'],order:1}];
+  var meta = Object.assign({"lists": {"REASONS": ["충전", "빠른 소모", "LED", "스웰링", "포트", "안전 (연기/불꽃)", "비정상적인 소음", "기타"], "VERDICTS": ["불량", "정상", "외력/사용자 과실"], "TEST_SYMPTOMS": ["충전 불량", "성능 저하", "출력 불량", "표시 불량", "포트 불량", "스웰링", "발연·발화(안전)", "기타"], "CAUSES": ["IC 소손(과전압·서지)", "셀 용량 저하(80% 미만)", "포트 용접 불량", "포트 이탈(외력)", "부품 탈락(충격)", "스웰링(과충전·고온)", "표시부 불량", "외부 요인(케이블 등)", "NTF(재현 안 됨)", "분석 중"], "DISPOSITIONS": ["폐기", "양품화/샘플", "제조사 반송", "손망실(회수 포기)", "미회수", "회수불가", "분실", "고객 폐기", "오배송 반송"], "DEFENSE_REASONS": ["사용 안내로 해결", "증상 미확인(정상)", "보증 기간 외", "고객 과실", "중복 접수", "기타"]}, "holidays": ["2026-01-01", "2026-02-16", "2026-02-17", "2026-02-18", "2026-03-02", "2026-05-05", "2026-05-25", "2026-06-08", "2026-08-17", "2026-09-24", "2026-09-25", "2026-09-26", "2026-10-05", "2026-10-09", "2026-12-25", "2027-01-01", "2027-02-05", "2027-02-06", "2027-02-07", "2027-03-01", "2027-05-05", "2027-05-13", "2027-06-07", "2027-08-16", "2027-09-14", "2027-09-15", "2027-09-16", "2027-10-04", "2027-10-11", "2027-12-25"], "returnDelayDays": 14, "returnFailBizDays": 2, "aiModel": "claude-sonnet-5-5"}, { version: 'demo', today: day(0), shipTotals: { P20BOTA25: 50000, P20VA: 5000 }, botReady: false, aiReady: false, reportOn: false, slackReady: true, lastSlack: iso(0.01), lastCj: iso(0.02), lastImport: '', lastPush: '', lastReport: '', botEvt: '', lastDigest: '', notifyUser: '', dbUrl: '', torderUrl: '', admin: false, appKey: '', webAppUrl: '', demo: true, cachedAt: '' });
+  return { cases: cases, units: units, inbox: inbox, ships: ships, requests: [], stock: stock, stockout: [], lots: lots, todos: [], products: products, meta: meta };
+}
+function demoCall_(action, payload) {
+  if (action === 'bootstrap') { if (!DEMO_DATA) DEMO_DATA = demoData_(); return Promise.resolve(JSON.parse(JSON.stringify(DEMO_DATA))); }
   if (action === 'inboxDetail') { var it = (DEMO_DATA.inbox || []).filter(function (x) { return x.id === payload.id; })[0] || {}; return Promise.resolve({ id: it.id, raw: '[데모] ' + (it.symptom || ''), threadText: '', address: '', files: '[]' }); }
   return Promise.reject(new Error('데모 화면이라 저장되지 않아요.'));
 }
