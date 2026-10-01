@@ -734,7 +734,7 @@ function render() {
   var badge = { inbox: k.inboxTodo, ship: k.ship_wait, ret: k.retAll, inspect: k.inspectUnits };
   $('#nav').innerHTML = VIEWS.map(function (v) {
     var n = badge[v[0]];
-    return '<button data-act="go" data-v="' + v[0] + '" class="' + (S.view === v[0] ? 'on' : '') + '"><span class="ic">' + v[1] + '</span>' + v[2] + (v[0] === 'settings' && !S.data.meta.admin ? ' 🔒' : '') +
+    return '<button data-act="go" data-v="' + v[0] + '" class="' + (S.view === v[0] ? 'on' : '') + '"><span class="ic">' + v[1] + '</span>' + v[2] + (v[0] === 'settings' && !(S.data.meta.admin && S.setOk) ? ' 🔒' : '') +
       (n !== undefined ? '<span class="cnt ' + (n ? '' : 'z') + '">' + n + '</span>' : '') + '</button>';
   }).join('');
   var m = S.data.meta;
@@ -1682,8 +1682,8 @@ function vStockRep() {
 }
 function vSettings() {
   var m = S.data.meta;
-  if (!m.admin) return '<div class="card" style="max-width:460px;margin:40px auto"><div class="hd"><h3>🔒 관리자 전용</h3></div><div class="bd">' +
-    '<div class="small muted" style="margin-bottom:10px">설정·동기화는 관리자만 볼 수 있어요. 관리자 비밀번호(키)를 넣어 주세요. 한 번 넣으면 이 브라우저에 저장돼요.</div>' +
+  if (!m.admin || !S.setOk) return '<div class="card" style="max-width:460px;margin:40px auto"><div class="hd"><h3>🔒 관리자 전용</h3></div><div class="bd">' +
+    '<div class="small muted" style="margin-bottom:10px">설정·동기화는 관리자만 볼 수 있어요. 들어올 때마다 관리자 비밀번호를 넣어 주세요.</div>' +
     '<div class="row"><input class="inp mono" id="admKey" type="password" placeholder="관리자 비밀번호" style="flex:1"><button class="btn pri" data-act="admSave">들어가기</button></div></div></div>';
   var t = function (s) { return s ? esc(String(s).replace('T', ' ').slice(0, 16)) : '-'; };
   var h = '<div class="two">' +
@@ -1834,8 +1834,15 @@ var ACT = {
   closeDrawer: closeDrawer,
   closeModal: closeModal,
   admPrompt: function () { adminPrompt_(); },
-  admSave: function () { var v = ($('#admKey').value || '').trim().replace(/^.*[#&]k=/, ''); if (!v) return toast('관리자 키를 입력해 주세요.', true); ls('appKey', v); closeModal(); cacheClear_(); load(true).then(function () { toast(S.data.meta.admin ? '관리자로 연결했습니다.' : '관리자 키가 맞지 않습니다.', !S.data.meta.admin); if (!S.data.meta.admin) ls('appKey', ''); }); },
-  admOut: function () { ls('appKey', ''); cacheClear_(); load(true).then(function () { toast('관리자 연결을 해제했습니다.'); }); },
+  admSave: function () {
+    var v = ($('#admKey').value || '').trim().replace(/^.*[#&]k=/, ''); if (!v) return toast('관리자 비밀번호를 입력해 주세요.', true);
+    var prev = ls('appKey') || ''; ls('appKey', v); closeModal(); cacheClear_();
+    load(true).then(function () {
+      if (S.data.meta.admin) { S.setOk = true; render(); toast('관리자로 확인했습니다.'); }
+      else { ls('appKey', prev); S.setOk = false; toast('관리자 비밀번호가 맞지 않습니다.', true); if (prev) load(true); }
+    });
+  },
+  admOut: function () { S.setOk = false; ls('appKey', ''); cacheClear_(); load(true).then(function () { toast('관리자 연결을 해제했습니다.'); }); },
   setMe: function () { var nm = window.prompt('기록에 남길 이름(소속)', ls('me') || ''); if (nm !== null) { ls('me', nm.trim().slice(0, 20)); render(); } },
   searchStore: function (d) { S.view = 'ship'; S.shipF = 'all'; S.q = d.v; render(); },
   anModel: function (d) { S.an.model = d.v; render(); },
