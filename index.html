@@ -436,8 +436,23 @@ function ymd(s) { s = d10(s); return s ? s.slice(2).replace(/-/g, '.') : ''; }
 function days(a, b) { if (!a) return null; var x = new Date(d10(a) + 'T00:00:00'), y = new Date(d10(b || today()) + 'T00:00:00'); return Math.round((y - x) / 86400000); }
 function jparse(s, d) { try { return JSON.parse(s || ''); } catch (e) { return d; } }
 function trk(s) { return String(s || '').split(/\n/).filter(String); }
-function mtag(m) { m = String(m || '').split('/')[0]; return m ? '<span class="mtag m-' + esc(m) + '">' + (m === 'P20BOTA25' ? '기존 P20BOTA25' : m === 'P20VA' ? '신형 P20VA' : esc(m)) + '</span>' : '<span class="mtag m-x">모델 미상</span>'; }
-function modelOfSn(sn) { sn = String(sn || '').toUpperCase(); return /^P20BOTA25/.test(sn) ? 'P20BOTA25' : /^P20VA/.test(sn) ? 'P20VA' : ''; }
+var PROD_DEFAULT = [{ id: 'P20BOTA25', label: '기존 P20BOTA25', short: '기존', kind: '본체', snMode: 'sn', prefix: 'P20BOTA25', snLen: 16, numDigits: 7, torder: true, active: true },
+  { id: 'P20VA', label: '신형 P20VA', short: '신형', kind: '본체', snMode: 'sn', prefix: 'P20VA', snLen: 0, numDigits: 0, torder: false, active: true }];
+var PROD_COLORS = [['#e8f3ff', '#1b64da', '#3182f6'], ['#f1edff', '#6a4fe0', '#8b6cff'], ['#e6f7ef', '#0a8a52', '#1fb86c'], ['#fff3e0', '#c26a00', '#ffa41b'], ['#ffeef0', '#d6304a', '#f04452'], ['#e9f6fb', '#0b7aa6', '#18a8d8'], ['#f4f0e8', '#7a5b2e', '#b08850'], ['#eef1f4', '#4e5968', '#8b95a1']];
+function PRODS(all) { var l = (S.data && S.data.products && S.data.products.length) ? S.data.products : PROD_DEFAULT; return all ? l : l.filter(function (p) { return p.active !== false; }); }
+function SN_PRODS() { return PRODS().filter(function (p) { return p.snMode !== 'qty'; }); }
+function prodOf(id) { return PRODS(true).filter(function (p) { return p.id === id; })[0] || null; }
+function prodIdx(id) { var l = PRODS(true); for (var i = 0; i < l.length; i++) if (l[i].id === id) return i; return -1; }
+function prodColor(id) { var i = prodIdx(id); return PROD_COLORS[(i < 0 ? 7 : i) % PROD_COLORS.length]; }
+function prodLabel(id) { var p = prodOf(id); return p ? p.label : (id || '모델 미상'); }
+function prodOpts(sel, list, empty) { return (empty !== undefined ? '<option value="">' + esc(empty) + '</option>' : '') + (list || PRODS()).map(function (p) { return '<option value="' + esc(p.id) + '"' + (sel === p.id ? ' selected' : '') + '>' + esc(p.label) + '</option>'; }).join(''); }
+function mtag(m) { m = String(m || '').split('/')[0]; if (!m) return '<span class="mtag m-x">모델 미상</span>'; var c = prodColor(m); return '<span class="mtag" style="background:' + c[0] + ';color:' + c[1] + '">' + esc(prodLabel(m)) + '</span>'; }
+function modelOfSn(sn) {
+  sn = String(sn || '').toUpperCase(); if (!sn) return '';
+  var hit = PRODS(true).filter(function (p) { return p.snMode !== 'qty' && p.prefix && sn.indexOf(String(p.prefix).toUpperCase()) === 0; })
+    .sort(function (a, b) { return String(b.prefix).length - String(a.prefix).length; })[0];
+  return hit ? hit.id : '';
+}
 function pill(stage) { var s = STAGES[stage] || ['-', 'p-gray']; return '<span class="pill ' + s[1] + '">' + s[0] + '</span>'; }
 function cid(c) { return c.torderNo ? '#' + c.torderNo : c.id; }
 function inqNo(v) { v = String(v || ''); if (!v) return ''; while (v.length < 8) v = '0' + v; return v; }
@@ -670,6 +685,11 @@ function bizDays(from, to) {
   while (cur < b) { cur = new Date(cur.getTime() + 86400000); var w = cur.getUTCDay(), iso = cur.toISOString().slice(0, 10); if (w && w !== 6 && hol.indexOf(iso) < 0) n++; }
   return n;
 }
+function anModels() {
+  var used = {}; S.data.cases.forEach(function (c) { var m = caseModel(c); if (m) used[m] = 1; });
+  var l = PRODS(true).filter(function (p) { return used[p.id]; }).map(function (p) { return p.id; });
+  return l.length ? l : [PRODS()[0].id];
+}
 function caseModel(c) {
   var m = String(c.model || '').split('/')[0];
   if (m) return m;
@@ -702,7 +722,7 @@ function counts() {
 
 var VIEWS = [
   ['home', '▦', '대시보드'], ['inbox', '✉', '인입함'], ['ship', '⇢', '출고'], ['ret', '⇠', '회수'], ['inspect', '⚗', '회수분 검사'],
-  ['stock', '▣', '교체 재고'], ['analysis', '▤', '불량 분석'], ['settings', '⚙', '설정·동기화']
+  ['stock', '▣', '재고'], ['analysis', '▤', '불량 분석'], ['settings', '⚙', '설정·동기화']
 ];
 function isMobile_() { return window.matchMedia ? window.matchMedia('(max-width:860px)').matches : window.innerWidth <= 860; }
 function render() {
@@ -719,7 +739,7 @@ function render() {
     '<div><span>CJ 조회</span><span>' + (m.lastCj ? md(m.lastCj) + ' ' + m.lastCj.slice(11, 16) : '-') + '</span></div><div><span>v' + esc(m.version) + '</span><span></span></div>';
   var t = VIEWS.filter(function (v) { return v[0] === S.view; })[0];
   $('#title').textContent = t[2];
-  var sub = { home: '', inbox: 'Slack #ext-볼타레스-티오더 접수 양식 자동 수집', cases: '교환 출고 → 반품 신청 → 회수 입고', inspect: '바코드 스캔으로 회수 매칭 → 판정 · 원인 · 처분', analysis: '모델별 불량 데이터', stock: '교체용 재고 S/N 구간 · 출고 S/N으로 사용량 자동 계산', settings: '연동 상태와 티오더 시트 동기화' }[S.view] || '';
+  var sub = { home: '', inbox: 'Slack #ext-볼타레스-티오더 접수 양식 자동 수집', cases: '교환 출고 → 반품 신청 → 회수 입고', inspect: '바코드 스캔으로 회수 매칭 → 판정 · 원인 · 처분', analysis: '모델별 불량 데이터', stock: '교체 재고(AS 교환용) · 납품 재고(고객사 납품·양산 차수)', settings: '연동 상태와 티오더 시트 동기화' }[S.view] || '';
   $('#subtitle').textContent = sub; $('#subtitle').style.display = sub ? '' : 'none';
   var fn = { home: vHome, inbox: vInbox, ship: vShip, ret: vReturn, inspect: vInspect, stock: vStock, analysis: vAnalysis, settings: vSettings }[S.view];
   $('#view').innerHTML = fn();
@@ -786,7 +806,7 @@ function caseTable(list) {
         '<td class="nowrap">' + progTag(st) + '</td><td>' + bpill(c) + '</td></tr>';
     }).join('') + '</tbody></table></div>';
 }
-function mtagSmall(c) { return caseModel(c) === 'P20VA' ? ' <span class="mtag m-P20VA">신형</span>' : ''; }
+function mtagSmall(c) { var m = caseModel(c); if (!m || prodIdx(m) === 0) return ''; var p = prodOf(m), col = prodColor(m); return ' <span class="mtag" style="background:' + col[0] + ';color:' + col[1] + '">' + esc((p && (p.short || p.label)) || m) + '</span>'; }
 function progTag(st) {
   if (!st.expected) return '-';
   return '<span class="prog ' + (st.scanned >= st.expected ? 'full' : st.scanned ? 'short' : '') + '">' + st.scanned + '/' + st.expected + '</span>';
@@ -985,9 +1005,7 @@ function vShip() {
     }).join('') : '<tr><td colspan="9"><div class="empty">해당 건이 없습니다.</div></td></tr>') + '</tbody></table></div></div>';
 }
 function toolbar(kind) {
-  return '<div class="tool"><select class="inp" id="modelF"><option value="all">전체 모델</option>' +
-    '<option value="P20BOTA25" ' + (S.model === 'P20BOTA25' ? 'selected' : '') + '>기존 P20BOTA25</option>' +
-    '<option value="P20VA" ' + (S.model === 'P20VA' ? 'selected' : '') + '>신형 P20VA</option></select>' +
+  return '<div class="tool"><select class="inp" id="modelF"><option value="all">전체 모델</option>' + prodOpts(S.model) + '</select>' +
     '<input class="inp" id="q" placeholder="매장·S/N·송장·문의번호 검색" value="' + esc(S.q) + '" style="width:240px"><span class="sp"></span>' +
     (kind === '회수' ? '<button class="btn" data-act="bulkReturn">반품 송장 일괄 등록</button>' : '') +
     '<button class="btn" data-act="syncCj">⟳ 배송 상태 갱신</button>' +
@@ -1089,7 +1107,7 @@ function caseDrawer(c) {
     '<div class="row"><label class="fld"><span>문의번호</span><input class="inp" id="cf_inquiryNo" value="' + esc(c.inquiryNo) + '" style="width:120px"></label>' +
     '<label class="fld"><span>매장</span><input class="inp" id="cf_store" value="' + esc(c.store) + '" style="width:220px"></label>' +
     '<label class="fld"><span>교체사유</span><select class="inp" id="cf_reasonCode">' + ['<option></option>'].concat(L.REASONS.map(function (r) { return '<option ' + (r === c.reasonCode ? 'selected' : '') + '>' + esc(r) + '</option>'; })).join('') + '</select></label>' +
-    '<label class="fld"><span>모델</span><select class="inp" id="cf_model">' + ['', 'P20BOTA25', 'P20VA'].map(function (m) { return '<option value="' + m + '" ' + (caseModel(c) === m ? 'selected' : '') + '>' + (m || '미상') + '</option>'; }).join('') + '</select></label></div>' +
+    '<label class="fld"><span>모델</span><select class="inp" id="cf_model">' + prodOpts(caseModel(c), PRODS(true), '미상') + '</select></label></div>' +
     '<label class="fld" style="margin-top:8px"><span>증상 / 비고</span><textarea class="inp" id="cf_symptom" rows="2">' + esc(c.symptom) + '</textarea></label>' +
     '<label class="fld" style="margin-top:8px"><span>특이사항 (티오더 시트 M열)</span><input class="inp" id="cf_note" value="' + esc(c.note) + '"></label>' +
     '<div class="row" style="margin-top:8px"><button class="btn sm" data-act="saveInfo" data-id="' + esc(c.id) + '">정보 저장</button>' +
@@ -1283,12 +1301,12 @@ function vAnalysis() {
     var tp = tested.filter(function (u) { return modelOf(u) === m; }), bp = tp.filter(function (u) { return u.verdict === '불량'; }).length;
     return { m: m, ship: +ST[m] || 0, ex: ex, tested: tu.length, bad: bd, tp: tp.length, bp: bp };
   };
-  var QM = (A.model === 'all' ? ['P20BOTA25', 'P20VA'] : [A.model]).map(qStat);
+  var QM = (A.model === 'all' ? anModels() : [A.model]).map(qStat);
   var fmt = function (n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','); };
   var kp = function (l, v, d) { return '<div class="kpi" style="cursor:default"><div class="l">' + l + '</div><div class="v">' + v + '</div><div class="d">' + d + '</div></div>'; };
-  var h = '<div class="tool"><div class="tabs" style="margin:0">' + [['all', '전체 모델'], ['P20BOTA25', '기존 P20BOTA25'], ['P20VA', '신형 P20VA']].map(function (m) { return '<button class="' + (A.model === m[0] ? 'on' : '') + '" data-act="anModel" data-v="' + m[0] + '">' + m[1] + '</button>'; }).join('') + '</div>' +
+  var h = '<div class="tool"><div class="tabs" style="margin:0">' + [['all', '전체 모델']].concat(anModels().map(function (id) { return [id, prodLabel(id)]; })).map(function (m) { return '<button class="' + (A.model === m[0] ? 'on' : '') + '" data-act="anModel" data-v="' + m[0] + '">' + m[1] + '</button>'; }).join('') + '</div>' +
     '<select class="inp" id="anMonths">' + [[3, '최근 3개월'], [6, '최근 6개월'], [12, '최근 12개월'], [0, '전체 기간']].map(function (x) { return '<option value="' + x[0] + '" ' + (A.months === x[0] ? 'selected' : '') + '>' + x[1] + '</option>'; }).join('') + '</select></div>';
-  var MN = { P20BOTA25: '기존 P20BOTA25', P20VA: '신형 P20VA' };
+  var MN = {}; PRODS(true).forEach(function (p) { MN[p.id] = p.label; });
   var setLink = '<a href="#" data-act="go" data-v="settings" style="color:var(--blue)">설정에서 납품 수량 입력 →</a>';
   var cell = function (q, kind) {
     var head = QM.length > 1 ? '<div class="small" style="font-weight:700;opacity:.8">' + MN[q.m] + '</div>' : '';
@@ -1313,7 +1331,7 @@ function vAnalysis() {
   var ms = months || monthsBack(12);
   var byM = function (arr, keyFn, filt) { var o = {}; arr.forEach(function (x) { if (filt && !filt(x)) return; var k = String(keyFn(x) || '').slice(0, 7); o[k] = (o[k] || 0) + 1; }); return o; };
   var allUnits = S.data.units;
-  var exSeries = [['P20BOTA25', '기존 P20BOTA25', '#3182f6'], ['P20VA', '신형 P20VA', '#8b6cff']].filter(function (m) { return A.model === 'all' || A.model === m[0]; }).map(function (m) {
+  var exSeries = anModels().map(function (id) { return [id, prodLabel(id), prodColor(id)[2]]; }).filter(function (m) { return A.model === 'all' || A.model === m[0]; }).map(function (m) {
     return { name: m[1], color: m[2], vals: byM(allUnits, function (u) { return (IDX.caseById[u.caseId] || {}).outDate; }, function (u) { var c = IDX.caseById[u.caseId] || {}; return String(u.model || c.model).split('/')[0] === m[0] && c.outDate; }) };
   });
   var vSeries = [['불량', '#f04452'], ['정상', '#1fb86c'], ['외력/사용자 과실', '#ffa41b']].map(function (v) { return { name: v[0], color: v[1], vals: byM(units, function (u) { return u.testDate; }, function (u) { return u.verdict === v[0]; }) }; });
@@ -1346,7 +1364,7 @@ function vAnalysis() {
           rs.slice(0, 30).map(function (u) { var c1 = IDX.caseById[u.caseId] || {}; return '<tr class="click" data-act="case" data-id="' + esc(c1.id) + '"><td class="mono small">' + esc(u.recvSn || u.origSn) + '</td><td>' + vp(u.verdict) + '</td><td class="small">' + res(u) + '</td></tr>'; }).join('') +
           '</tbody></table></div>' : '<div class="empty">없음</div>') + '</div>';
     })() + '</div>';
-  h += lotCard();
+  h += '<div class="note" style="margin-top:14px">양산 차수별 AS 접수율은 <a href="#" data-act="goDeliv" style="color:var(--blue)">재고 › 납품 재고</a>에서 볼 수 있어요.</div>';
   var top = cItems[0];
   var notes = [];
   if (tested.length >= 10) notes.push('NTF 비율 ' + pct(ok.length, tested.length) + '% — 교환 후 재현되지 않는 비중입니다. 인입 단계에서 케이블 교차·직렬 충전·잔량 0% 재충전 확인 여부를 방어 기준으로 삼으면 교환 수량을 줄일 수 있습니다.');
@@ -1362,7 +1380,7 @@ function lotNextName() {
 }
 function lotBatchForm() {
   return '<div class="card"><div class="hd"><h3>양산 차수 등록</h3><span class="muted small">차수별 S/N 배치를 넣으면 AS S/N에 차수가 붙고 차수별 접수율이 아래에 나와요 · 구간 여러 개는 쉼표로 (예: 1~15000, 15001~20000)</span></div><div class="bd">' +
-    '<div class="row"><input class="inp" id="lbName" placeholder="차수 (예: 1차)" value="' + esc(lotNextName()) + '" style="width:110px"><select class="inp" id="lbModel"><option value="P20BOTA25">기존 P20BOTA25</option><option value="P20VA">신형 P20VA</option></select>' +
+    '<div class="row"><input class="inp" id="lbName" placeholder="차수 (예: 1차)" value="' + esc(lotNextName()) + '" style="width:110px"><select class="inp" id="lbModel">' + prodOpts(S.stockM && prodOf(S.stockM) ? S.stockM : '', SN_PRODS()) + '</select>' +
     '<input class="inp mono" id="lbSns" placeholder="S/N 배치 (예: 1~15000 · P20BOTA250000001~P20BOTA250015000)" style="flex:1;min-width:220px"></div>' +
     '<div class="row" style="margin-top:8px"><label class="small nowrap">생산일 <input class="inp" id="lbMade" type="date" style="width:150px"></label><input class="inp" id="lbNote" placeholder="메모 (공장·셀 lot·PCB rev 등)" style="flex:1;min-width:140px">' +
     '<button class="btn pri" data-act="lotBatch">차수 등록</button></div><div class="small muted" id="lbPrev" style="margin-top:8px"></div></div></div>';
@@ -1396,7 +1414,7 @@ function lotCard() {
   S.data.inbox.forEach(function (i) { if (i.status === '확정' || i.status === '신규' || i.status === '보류') jparse(i.sns, []).forEach(function (sn) { add(sn, null); }); });
   var ed = S.lotEdit && lots.filter(function (l) { return l.id === S.lotEdit; })[0];
   var h = (ed ? '' : '<div style="margin-top:14px">' + lotBatchForm() + '</div>') + '<div class="card" style="margin-top:14px"><div class="hd"><h3>양산 차수별 AS</h3><span class="muted small">등록한 차수가 인입·회수 S/N에 자동으로 붙고, 차수별 AS 접수율을 계산합니다</span></div>' + (ed ? '<div class="bd">' +
-    '<div class="row"><input class="inp" id="lotName" placeholder="차수 (예: 3차)" value="' + esc(ed ? ed.name : '') + '" style="width:120px"><select class="inp" id="lotModel"><option value="P20BOTA25">기존 P20BOTA25</option><option value="P20VA"' + (ed && ed.model === 'P20VA' ? ' selected' : '') + '>신형 P20VA</option></select>' +
+    '<div class="row"><input class="inp" id="lotName" placeholder="차수 (예: 3차)" value="' + esc(ed ? ed.name : '') + '" style="width:120px"><select class="inp" id="lotModel">' + prodOpts(ed ? ed.model : '', SN_PRODS()) + '</select>' +
     '<input class="inp mono" id="lotFrom" placeholder="시작 S/N·번호" value="' + esc(ed ? stockSn(ed, ed.fromNo) : '') + '" style="flex:1;min-width:150px"><span>~</span><input class="inp mono" id="lotTo" placeholder="끝 S/N·번호" value="' + esc(ed ? stockSn(ed, ed.toNo) : '') + '" style="flex:1;min-width:150px">' +
     '<label class="small nowrap">생산일 <input class="inp" id="lotMade" type="date" value="' + esc(ed ? ed.madeAt : '') + '" style="width:150px"></label><input class="inp" id="lotNote" placeholder="메모 (공장·셀 등)" value="' + esc(ed ? ed.note : '') + '" style="flex:1;min-width:120px">' +
     '<button class="btn pri" data-act="lotSave" data-id="' + esc(ed ? ed.id : '') + '">' + (ed ? '수정 저장' : '차수 등록') + '</button>' + (ed ? '<button class="btn" data-act="lotEdit" data-id="">취소</button>' : '') + '</div></div>' : '');
@@ -1411,10 +1429,42 @@ function lotCard() {
     : '<div class="empty">등록된 차수가 없습니다. 위에서 차수별 S/N 배치를 등록해 주세요.</div>';
   return h + '</div>';
 }
+function productCard() {
+  var ST = S.data.meta.shipTotals || {}, ed = S.prodEdit === '__new' ? {} : (S.prodEdit ? prodOf(S.prodEdit) : null);
+  var h = '<div class="card" style="margin-top:14px"><div class="hd"><h3>제품 관리</h3><span class="muted small">운영하는 제품을 추가하면 모델 선택·태그·불량 분석·재고·양산 차수에 자동으로 들어가요</span>' +
+    (ed ? '' : '<button class="btn sm pri" data-act="prodEdit" data-id="__new" style="margin-left:auto">+ 제품 추가</button>') + '</div>';
+  h += '<div class="tw"><table class="t"><thead><tr><th>제품</th><th>구분</th><th>관리 방식</th><th>S/N 앞자리</th><th>납품 수량</th><th>티오더 시트</th><th></th></tr></thead><tbody>' +
+    PRODS(true).map(function (p) {
+      return '<tr' + (p.active === false ? ' style="opacity:.5"' : '') + '><td>' + mtag(p.id) + ' <span class="mono small muted">' + esc(p.id) + '</span></td><td>' + esc(p.kind || '-') + '</td>' +
+        '<td>' + (p.snMode === 'qty' ? '수량만' : 'S/N' + (+p.snLen ? ' ' + p.snLen + '자리' : '')) + '</td><td class="mono small">' + esc(p.prefix || '-') + (+p.numDigits ? ' <span class="muted">(번호 ' + p.numDigits + '자리 입력 가능)</span>' : '') + '</td>' +
+        '<td>' + (+ST[p.id] ? (+ST[p.id]).toLocaleString() : '-') + '</td><td>' + (p.torder ? '반영' : '-') + '</td>' +
+        '<td class="nowrap"><button class="btn sm" data-act="prodEdit" data-id="' + esc(p.id) + '">수정</button></td></tr>';
+    }).join('') + '</tbody></table></div>';
+  if (ed) {
+    var isNew = !ed.id, qty = ed.snMode === 'qty';
+    var KINDS = ['본체', '충전기·스테이션', '어댑터', '케이블', '박스·포장', '기타 부속'];
+    h += '<div class="bd" style="border-top:1px solid var(--line)"><div class="small" style="font-weight:700;margin-bottom:8px">' + (isNew ? '새 제품 추가' : esc(ed.label) + ' 수정') + '</div>' +
+      '<div class="row"><input class="inp mono" id="pdId" placeholder="제품 코드 (예: TBS1)" value="' + esc(ed.id || '') + '"' + (isNew ? '' : ' disabled') + ' style="width:150px">' +
+      '<input class="inp" id="pdLabel" placeholder="표시 이름 (예: 충전 스테이션 TBS1)" value="' + esc(ed.label || '') + '" style="flex:1;min-width:180px">' +
+      '<input class="inp" id="pdShort" placeholder="짧은 이름 (예: TBS1)" value="' + esc(ed.short || '') + '" style="width:130px">' +
+      '<select class="inp" id="pdKind">' + KINDS.map(function (k) { return '<option' + ((ed.kind || '본체') === k ? ' selected' : '') + '>' + k + '</option>'; }).join('') + '</select></div>' +
+      '<div class="row" style="margin-top:8px"><select class="inp" id="pdMode"><option value="sn"' + (qty ? '' : ' selected') + '>S/N으로 관리</option><option value="qty"' + (qty ? ' selected' : '') + '>수량만 관리 (S/N 없음)</option></select>' +
+      '<input class="inp mono" id="pdPrefix" placeholder="S/N 앞자리 (예: TBS1A)" value="' + esc(ed.prefix || '') + '" style="width:170px"' + (qty ? ' disabled' : '') + '>' +
+      '<label class="small nowrap">S/N 자릿수 <input class="inp mono" id="pdLen" inputmode="numeric" placeholder="모름" value="' + (+ed.snLen || '') + '" style="width:70px"' + (qty ? ' disabled' : '') + '></label>' +
+      '<label class="small nowrap">번호만 입력 시 뒷자리 <input class="inp mono" id="pdNum" inputmode="numeric" placeholder="없음" value="' + (+ed.numDigits || '') + '" style="width:70px"' + (qty ? ' disabled' : '') + '></label></div>' +
+      '<div class="row" style="margin-top:8px"><label class="small nowrap">납품 수량 <input class="inp mono" id="pdShip" inputmode="numeric" placeholder="누적 EA" value="' + (+ST[ed.id] || '') + '" style="width:120px"></label>' +
+      '<input class="inp" id="pdKeys" placeholder="Slack 접수 글에서 알아볼 단어 (쉼표로, 예: 충전 스테이션, 캐비닛)" value="' + esc(ed.keywords || '') + '" style="flex:1;min-width:200px">' +
+      '<label class="small nowrap"><input type="checkbox" id="pdTorder"' + (ed.torder ? ' checked' : '') + '> 티오더 시트에 반영</label>' +
+      (isNew ? '' : '<label class="small nowrap"><input type="checkbox" id="pdActive"' + (ed.active === false ? '' : ' checked') + '> 사용 중</label>') + '</div>' +
+      '<div class="row" style="margin-top:10px"><button class="btn pri" data-act="prodSave" data-id="' + (isNew ? '' : esc(ed.id)) + '">' + (isNew ? '추가' : '저장') + '</button><button class="btn" data-act="prodEdit" data-id="">취소</button></div>' +
+      '<div class="note" style="margin-top:8px">S/N으로 관리하는 제품은 S/N 앞자리로 자동 구분돼요. 어댑터·케이블·박스처럼 S/N이 없는 부속은 "수량만 관리"로 두면 AS 건에서 모델로 선택하고 수량으로 집계해요.</div></div>';
+  }
+  return h + '</div>';
+}
 function snSplit(sn, model) {
   var v = String(sn || '').toUpperCase().replace(/[\s\-_]/g, '').replace(/^P20BPTA/, 'P20BOTA');
   if (!v) return null;
-  if (/^\d+$/.test(v)) { if (model === 'P20VA') return null; v = 'P20BOTA25' + ('0000000' + v).slice(-7); }
+  if (/^\d+$/.test(v)) { var pm = model ? prodOf(model) : SN_PRODS().filter(function (x) { return +x.numDigits; })[0]; if (!pm || !+pm.numDigits) return null; v = String(pm.prefix).toUpperCase() + ('000000000000' + v).slice(-(+pm.numDigits)); }
   var m = v.match(/^(.*\D)(\d+)$/);
   return m ? { sn: v, prefix: m[1], num: +m[2], digits: m[2].length } : null;
 }
@@ -1511,25 +1561,50 @@ function stockCalc() {
   return { list: list, dup: dup, unreg: unreg, noSn: noSn };
 }
 function vStock() {
+  var sv = S.stockView === 'deliv' ? 'deliv' : 'rep';
+  var h = '<div class="tabs" style="margin:0 0 14px">' + [['rep', '교체 재고'], ['deliv', '납품 재고']].map(function (t) { return '<button class="' + (sv === t[0] ? 'on' : '') + '" data-act="stockView" data-v="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div>';
+  return h + (sv === 'deliv' ? vDeliv() : vStockRep());
+}
+function vDeliv() {
+  var ST = S.data.meta.shipTotals || {}, lots = S.data.lots || [];
+  var seen = {}, asN = {}, lotN = {}, lotC = {}, caseQ = {};
+  var add = function (sn) { if (!sn || seen[sn]) return; seen[sn] = 1; var m = modelOfSn(sn); if (m) asN[m] = (asN[m] || 0) + 1; };
+  S.data.units.forEach(function (u) { add(u.recvSn || u.origSn); });
+  S.data.inbox.forEach(function (i) { if (i.status === '확정' || i.status === '신규' || i.status === '보류') jparse(i.sns, []).forEach(add); });
+  S.data.cases.forEach(function (c) { var m = caseModel(c); if (m) caseQ[m] = (caseQ[m] || 0) + (+c.qty || 1); });
+  lots.forEach(function (l) { lotN[l.model] = (lotN[l.model] || 0) + (+l.qty || 0); lotC[l.model] = lotC[l.model] || {}; lotC[l.model][l.name] = 1; });
+  var ps = PRODS().filter(function (p) { return +ST[p.id] || lotN[p.id] || caseQ[p.id]; });
+  if (!ps.length) ps = PRODS().slice(0, 2);
+  var setLink = '<a href="#" data-act="go" data-v="settings" style="color:var(--blue)">설정 › 제품 관리에서 입력</a>';
+  var h = '<div class="kpis" style="grid-template-columns:repeat(' + Math.min(ps.length, 4) + ',minmax(0,1fr))">' + ps.map(function (p) {
+    var st = +ST[p.id] || 0, sn = p.snMode !== 'qty', as = sn ? (asN[p.id] || 0) : (caseQ[p.id] || 0), ln = lotN[p.id] || 0;
+    return '<div class="kpi" style="cursor:default"><div class="l">' + mtag(p.id) + ' 납품 수량</div><div class="v">' + (st ? st.toLocaleString() : '-') + '<small>EA</small></div>' +
+      '<div class="d small">' + (st ? 'AS 접수 ' + as.toLocaleString() + (sn ? ' S/N' : 'EA') + ' · 접수율 <b>' + (as / st * 100).toFixed(2) + '%</b>' : setLink) + '</div>' +
+      (sn ? '<div class="d small muted">양산 차수 ' + Object.keys(lotC[p.id] || {}).length + '개 · 등록 S/N ' + ln.toLocaleString() + (st && ln < st ? ' · <span style="color:var(--orange,#c26a00)">차수 미등록 ' + (st - ln).toLocaleString() + '</span>' : '') + '</div>' : '<div class="d small muted">S/N 없이 수량으로 관리</div>') + '</div>';
+  }).join('') + '</div>';
+  return h + lotCard();
+}
+function vStockRep() {
   var X = stockCalc(), tot = 0, usedN = 0, left = 0, gapN = 0;
   var mOf = function (r) { return r.model || modelOfSn(stockSn(r, r.fromNo)) || '기타'; };
-  var MN = { P20BOTA25: '기존 P20BOTA25', P20VA: '신형 P20VA' };
+  var MN = {}; PRODS(true).forEach(function (p) { MN[p.id] = p.label; });
   var models = [], byM = {};
   X.list.forEach(function (x) { var m = mOf(x.r); if (!byM[m]) { byM[m] = { qty: 0, left: 0, wh: 0, st: {} }; models.push(m); } byM[m].qty += +x.r.qty; byM[m].left += x.left; if (x.wh) byM[m].wh += x.left; byM[m].st[x.stage] = (byM[m].st[x.stage] || 0) + x.left; });
   var stTxt = function (st) { return ['qc', 'ready', 'fail', 'pre'].filter(function (k) { return st[k]; }).map(function (k) { return ' · <b style="color:' + STAGE_[k].c + '">' + { qc: '검사 중', ready: '입고 대기', fail: '불합격', pre: '창고 입고 전' }[k] + ' ' + st[k].toLocaleString() + '</b>'; }).join(''); };
-  models.sort(function (a, b) { return (a === 'P20BOTA25' ? 0 : a === 'P20VA' ? 1 : 2) - (b === 'P20BOTA25' ? 0 : b === 'P20VA' ? 1 : 2); });
+  var rk = function (m) { var i = prodIdx(m); return i < 0 ? 99 : i; };
+  models.sort(function (a, b) { return rk(a) - rk(b); });
   var sm = models.indexOf(S.stockM) >= 0 ? S.stockM : 'all';
   var view = X.list.filter(function (x) { return sm === 'all' || mOf(x.r) === sm; })
     .sort(function (a, b) { return models.indexOf(mOf(a.r)) - models.indexOf(mOf(b.r)) || String(a.r.receivedAt).localeCompare(String(b.r.receivedAt)); });
   if (sm !== 'all') X.noSn = X.noSn.filter(function (d) { return caseModel(d.c) === sm; });
   view.forEach(function (x) { tot += +x.r.qty; usedN += x.used; left += x.left; gapN += x.gap.length; });
   var h = '<div class="two"><div class="card"><div class="hd"><h3>재고 입고 등록</h3><span class="muted small">연번이면 시작·끝만 · 번호만 입력해도 돼요 (30001 → P20BOTA250030001)</span></div><div class="bd">' +
-    '<div class="row"><select class="inp" id="stModel"><option value="P20BOTA25">기존 P20BOTA25</option><option value="P20VA"' + (sm === 'P20VA' ? ' selected' : '') + '>신형 P20VA</option></select>' +
+    '<div class="row"><select class="inp" id="stModel">' + prodOpts(sm, SN_PRODS()) + '</select>' +
     '<input class="inp mono" id="stFrom" placeholder="시작 S/N·번호" style="flex:1;min-width:120px"><span>~</span><input class="inp mono" id="stTo" placeholder="끝 S/N·번호" style="flex:1;min-width:120px"></div>' +
     '<div class="row" style="margin-top:8px"><input class="inp" id="stDate" type="date" value="' + esc(today()) + '" style="width:150px" title="입고일"><select class="inp" id="stQc" title="입고 상태"><option value="inspect">수입검사 중 (우리 창고)</option><option value="pass">검사 합격 · 외주창고 입고 대기</option><option value="passWh">검사 합격 · 외주창고 입고 완료</option><option value="skipWh">검사 생략(패스) · 외주창고 입고 완료</option></select><input class="inp" id="stNote" placeholder="메모 (입고처·PO 등)" style="flex:1;min-width:120px">' +
     '<button class="btn pri" data-act="stockAdd">입고 등록</button></div><div class="small muted" id="stPrev" style="margin-top:8px"></div></div></div>' +
     '<div class="card"><div class="hd"><h3>별도 출고 기록</h3><span class="muted small">AS 채널 외로 나간 재고 (추가 교환·샘플·테스트·폐기 등)</span></div><div class="bd">' +
-    '<div class="row"><select class="inp" id="soModel"><option value="P20BOTA25">기존 P20BOTA25</option><option value="P20VA"' + (sm === 'P20VA' ? ' selected' : '') + '>신형 P20VA</option></select><input class="inp mono" id="soSns" placeholder="S/N · 구간 (예: 30900~30910, 30915)" style="flex:1;min-width:200px">' +
+    '<div class="row"><select class="inp" id="soModel">' + prodOpts(sm, SN_PRODS()) + '</select><input class="inp mono" id="soSns" placeholder="S/N · 구간 (예: 30900~30910, 30915)" style="flex:1;min-width:200px">' +
     '<select class="inp" id="soPurpose">' + ['별도 교환', '샘플', '테스트·분석', '수입검사 불량', '불량 폐기', '반품·회수', '기타'].map(function (x) { return '<option>' + x + '</option>'; }).join('') + '</select></div>' +
     '<div class="row" style="margin-top:8px"><input class="inp" id="soDate" type="date" value="' + esc(today()) + '" style="width:150px"><input class="inp" id="soDest" placeholder="받는 곳·메모" style="flex:1;min-width:140px">' +
     '<button class="btn pri" data-act="stockOut">출고 기록</button></div><div class="small muted" id="soPrev" style="margin-top:8px"></div></div></div></div>';
@@ -1620,15 +1695,10 @@ function vSettings() {
     '<div class="small muted" style="margin-bottom:8px">채널 #ext-볼타레스-티오더 · 10분마다 자동 수집 · 마지막 ' + t(m.lastSlack) + '</div>' +
     '<div class="row"><input class="inp mono" id="slackTok" type="password" placeholder="xoxp-… (이미 저장되어 있으면 비워 두세요)" style="flex:1;min-width:220px"><button class="btn" data-act="saveTok">토큰 저장</button><button class="btn pri" data-act="syncSlack">지금 동기화</button>' +
     '<button class="btn" data-act="backfill">과거 첨부·답글 불러오기</button></div>' +
-    '<div class="note" style="margin-top:10px">볼타레스 워크스페이스에서 만든 Slack 앱의 <b>User OAuth Token</b>을 관리자가 직접 붙여넣어 주세요. 필요한 권한은 groups:history, channels:history, users:read 입니다. 토큰은 스크립트 속성에만 저장됩니다.</div></div></div>' +
+    '<div class="note" style="margin-top:10px">볼타레스 워크스페이스에서 만든 Slack 앱의 <b>User OAuth Token</b>을 관리자가 직접 붙여넣어 주세요. 필요한 권한은 groups:history, channels:history, users:read, files:read 입니다. 토큰은 스크립트 속성에만 저장됩니다.</div></div></div>' +
     '<div class="card"><div class="hd"><h3>CJ대한통운 배송조회</h3></div><div class="bd"><div class="small muted" style="margin-bottom:8px">1시간마다 출고·반품 송장 상태를 갱신합니다. 반품이 배송완료되면 회수 입고일이 자동 기록됩니다. 마지막 ' + t(m.lastCj) + '</div>' +
     '<div class="row"><button class="btn pri" data-act="syncCj">지금 조회</button><input class="inp mono" id="trkTest" placeholder="송장번호 단건 조회" style="width:180px"><button class="btn" data-act="trackTest">조회</button></div><div id="trkOut" class="small" style="margin-top:8px"></div></div></div></div>';
-  var STs = m.shipTotals || {};
-  h += '<div class="card" style="margin-top:14px"><div class="hd"><h3>고객사 납품 수량 (누적)</h3><span class="muted small">불량 분석의 불량률·실제 불량률 분모</span></div><div class="bd">' +
-    '<div class="row"><label class="small" style="min-width:120px">기존 P20BOTA25</label><input class="inp mono" id="shipP20BOTA25" inputmode="numeric" placeholder="예: 30000" value="' + (STs.P20BOTA25 || '') + '" style="width:160px"><span class="small muted">EA</span>' +
-    '<label class="small" style="min-width:90px;margin-left:16px">신형 P20VA</label><input class="inp mono" id="shipP20VA" inputmode="numeric" placeholder="예: 5000" value="' + (STs.P20VA || '') + '" style="width:160px"><span class="small muted">EA</span>' +
-    '<button class="btn pri" data-act="saveShip">저장</button></div>' +
-    '<div class="note" style="margin-top:8px">티오더에 지금까지 납품한 누적 수량입니다. 추가 납품이 있을 때마다 숫자만 올려 주세요.</div></div></div>';
+  h += productCard();
   h += '<div class="card" style="margin-top:14px"><div class="hd"><h3>Slack 회수 알림 (DM)</h3>' + (m.botReady ? '<span class="pill p-green">켜짐</span>' : '<span class="pill p-red">Bot 토큰 필요</span>') + '</div><div class="bd">' +
     '<div class="small muted" style="margin-bottom:8px">평일 오전 9시, 알림 받는 담당자 DM으로 회수 실패 · 반품 재접수 현황 · 출고 배송완료 · 회수 완료를 요약해 보냅니다. 외주센터 카톡에 붙여넣을 재접수 요청 문구도 같이 옵니다. 마지막 발송 ' + t(m.lastDigest) + '</div>' +
     '<div class="row"><input class="inp mono" id="botTok" type="password" placeholder="xoxb-… (Bot User OAuth Token)" style="flex:1;min-width:220px"><button class="btn" data-act="saveBot">토큰 저장</button>' +
@@ -1825,14 +1895,16 @@ var ACT = {
   },
   stockAdd: function (d, b) {
     var m = $('#stModel').value, a = snSplit($('#stFrom').value, m), z = snSplit($('#stTo').value || $('#stFrom').value, m);
-    if (!a || !z) return toast('S/N을 확인해 주세요. P20VA는 전체 S/N으로 입력해 주세요.', true);
+    if (!a || !z) return toast('S/N을 확인해 주세요. 번호만 입력이 안 되는 제품은 전체 S/N으로 입력해 주세요.', true);
     run('stockAdd', { model: m, from: a.sn, to: z.sn, receivedAt: $('#stDate').value, qc: $('#stQc').value, note: $('#stNote').value }, function (r) { return '재고 ' + (+r.stock.qty).toLocaleString() + '개 등록했습니다. (' + STAGE_[stockStage(r.stock)].t + ')'; }, b);
   },
   stockM: function (d) { S.stockM = d.v; render(); },
+  stockView: function (d) { S.stockView = d.v; render(); },
+  goDeliv: function () { S.stockView = 'deliv'; S.view = 'stock'; render(); window.scrollTo(0, 0); },
   lotEdit: function (d) { S.lotEdit = d.id || null; render(); },
   lotSave: function (d, b) {
     var m = $('#lotModel').value, a = snSplit($('#lotFrom').value, m), z = snSplit($('#lotTo').value || $('#lotFrom').value, m);
-    if (!a || !z) return toast('S/N을 확인해 주세요. P20VA는 전체 S/N으로 입력해 주세요.', true);
+    if (!a || !z) return toast('S/N을 확인해 주세요. 번호만 입력이 안 되는 제품은 전체 S/N으로 입력해 주세요.', true);
     run('lotSave', { id: d.id || '', name: $('#lotName').value, model: m, from: a.sn, to: z.sn, madeAt: $('#lotMade').value, note: $('#lotNote').value },
       function (r) { S.lotEdit = null; return r.lot.name + ' 차수를 저장했습니다. (' + (+r.lot.qty).toLocaleString() + '개)'; }, b);
   },
@@ -1865,7 +1937,7 @@ var ACT = {
   stockCount: function (d, b) { run('stockCount', { id: d.id, onHand: $('#cntTxt').value, countedAt: $('#cntDate').value }, function (r) { S.countOpen = null; return r.onHand ? '실사 반영: 남은 재고 ' + r.onHand + '개 기준으로 계산합니다.' : '실사 기준을 해제했습니다.'; }, b); },
   stockOut: function (d, b) {
     var som = $('#soModel').value, rg = snRangesTxt($('#soSns').value, som);
-    if (typeof rg === 'string' || !rg.length) return toast(typeof rg === 'string' ? rg + (som === 'P20VA' ? ' (P20VA는 전체 S/N으로)' : '') : 'S/N을 입력해 주세요.', true);
+    if (typeof rg === 'string' || !rg.length) return toast(typeof rg === 'string' ? rg + (som && prodOf(som) && !+prodOf(som).numDigits ? ' (' + prodLabel(som) + '은(는) 전체 S/N으로)' : '') : 'S/N을 입력해 주세요.', true);
     run('stockOut', { sns: $('#soSns').value, model: som, outAt: $('#soDate').value, purpose: $('#soPurpose').value, dest: $('#soDest').value }, function (r) { return '별도 출고 ' + r.stockout.qty + '개 기록했습니다.'; }, b);
   },
   stockOutDel: function (d, b) {
@@ -1985,10 +2057,14 @@ var ACT = {
   rebuildShips: function (d, b) { run('rebuildShips', {}, function (r) { return '송장 ' + r.added + '건 정리 완료. [배송 상태 갱신]을 눌러 주세요.'; }, b); },
   resetConn: function () { ls('gasUrl', ''); ls('appKey', ''); ls('noPost', ''); cacheClear_().then(function () { location.reload(); }); },
   reqDone: function (d, b) { run('requestDone', { id: d.id }, '처리 완료로 표시했습니다.', b).then(function () { if (S.caseSel) openCase(S.caseSel, true); }); },
-  saveShip: function (d, b) {
-    var a = $('#shipP20BOTA25').value.replace(/[,\s]/g, ''), v = $('#shipP20VA').value.replace(/[,\s]/g, '');
-    if ((a && !/^\d+$/.test(a)) || (v && !/^\d+$/.test(v))) return toast('숫자만 입력해 주세요.', true);
-    call('saveSetting', { key: 'SHIP_TOTAL_P20BOTA25', value: a }).then(function () { return run('saveSetting', { key: 'SHIP_TOTAL_P20VA', value: v }, '납품 수량을 저장했습니다.', b); }).catch(function (e) { toast(e.message, true); });
+  prodEdit: function (d) { S.prodEdit = d.id || null; render(); var f = $('#pdLabel'); if (f && d.id) f.focus(); },
+  prodSave: function (d, b) {
+    var mode = $('#pdMode').value, ship = $('#pdShip').value.replace(/[,\s]/g, '');
+    if (ship && !/^\d+$/.test(ship)) return toast('납품 수량은 숫자로 입력해 주세요.', true);
+    var p = { isNew: !d.id, id: d.id || $('#pdId').value.trim().toUpperCase(), label: $('#pdLabel').value.trim(), short: $('#pdShort').value.trim(), kind: $('#pdKind').value, snMode: mode,
+      prefix: mode === 'sn' ? $('#pdPrefix').value.trim() : '', snLen: +$('#pdLen').value || 0, numDigits: +$('#pdNum').value || 0, shipTotal: ship, keywords: $('#pdKeys').value, torder: $('#pdTorder').checked,
+      active: $('#pdActive') ? $('#pdActive').checked : true };
+    run('productSave', p, function (r) { S.prodEdit = null; return r.product.label + ' 저장했습니다.'; }, b);
   },
   saveAi: function (d, b) { var v = $('#aiKey').value.trim(); if (!/^sk-ant-/.test(v)) return toast('sk-ant- 로 시작하는 Claude API 키를 입력해 주세요.', true); run('saveSetting', { key: 'ANTHROPIC_API_KEY', value: v }, 'Claude API 키를 저장했습니다. 이제 봇이 AI로 대화합니다.', b); },
   saveAiModel: function (d, b) { run('saveSetting', { key: 'CLAUDE_MODEL', value: $('#aiModel').value }, '모델을 저장했습니다.', b); },
@@ -2062,7 +2138,7 @@ document.addEventListener('input', function (e) {
   }
   if (e.target.id === 'lbSns') lotBatchPreview();
   if (e.target.id === 'soSns' || e.target.id === 'cntTxt') {
-    var rg = snRangesTxt(e.target.value, e.target.id === 'soSns' ? ($('#soModel') || {}).value : 'P20BOTA25'), pv2 = $(e.target.id === 'soSns' ? '#soPrev' : '#cntPrev'), n = 0;
+    var rg = snRangesTxt(e.target.value, e.target.id === 'soSns' ? ($('#soModel') || {}).value : (SN_PRODS()[0] || {}).id), pv2 = $(e.target.id === 'soSns' ? '#soPrev' : '#cntPrev'), n = 0;
     if (pv2) { if (typeof rg === 'string') pv2.innerHTML = '<span style="color:var(--red)">' + esc(rg) + '</span>'; else { rg.forEach(function (x) { n += x.hi - x.lo + 1; }); pv2.innerHTML = n ? '<b>' + n.toLocaleString() + '개</b>' : ''; } }
   }
   if (e.target.id === 'q') { clearTimeout(qTimer); var v = e.target.value; qTimer = setTimeout(function () { S.q = v; render(); var q = $('#q'); if (q) { q.focus(); q.setSelectionRange(v.length, v.length); } }, 250); }
@@ -2071,6 +2147,7 @@ document.addEventListener('change', function (e) {
   if (e.target.id === 'modelF') { S.model = e.target.value; render(); }
   if (e.target.id === 'anMonths') { S.an.months = +e.target.value; render(); }
   if (e.target.id === 'lbModel') lotBatchPreview();
+  if (e.target.id === 'pdMode') ['#pdPrefix', '#pdLen', '#pdNum'].forEach(function (k) { var x = $(k); if (x) x.disabled = e.target.value === 'qty'; });
 });
 document.addEventListener('keydown', function (e) {
   if (e.key === 'Escape') { if ($('#mbg')) closeModal(); else if (S.caseSel) closeDrawer(); }
