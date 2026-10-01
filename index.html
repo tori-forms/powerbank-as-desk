@@ -482,7 +482,7 @@ function call(action, payload) {
     var ok = function (s) {
       var r = typeof s === 'string' ? JSON.parse(s) : s;
       if (r.ok) return res(r.data);
-      if (r.needKey) gate('접속 키가 올바르지 않습니다. 다시 입력해 주세요.');
+      if (r.needKey) { try { ls('appKey', ''); cacheClear_(); } catch (e) { } gate('전용 링크로만 접속할 수 있어요. 받은 링크로 다시 열어 주세요.'); }
       if (r.needAdmin) { adminPrompt_(); return rej(new Error('관리자 전용 기능입니다. 관리자 키를 넣은 뒤 다시 눌러 주세요.')); }
       rej(new Error(r.error));
     };
