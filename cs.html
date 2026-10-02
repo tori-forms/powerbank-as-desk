@@ -1236,7 +1236,7 @@ function vReturn() {
     need: '출고 송장이 <b>도착 완료</b>로 확인된 건입니다. 반품 송장을 등록하면 회수 진행중으로 넘어갑니다.',
     doing: '반품 송장이 발행된 건입니다. 집화가 되면 <b>회수 중</b>, 배송완료되면 <b>회수 완료</b>로 자동으로 바뀝니다.',
     fail: '반품 송장 등록 후 ' + (S.data.meta.returnFailBizDays || 2) + '영업일(주말·공휴일 제외)이 지나도 <b>조회내역이 없는</b> 건과, <b>Slack으로 재회수 요청이 들어온</b> 건입니다. 굵게 표시된 송장이 집화가 안 된 송장입니다. 매장에 확인 후 <b>재접수</b>해 주세요.',
-    short: '회수했는데 <b>수량이 모자라거나</b>, 들어온 S/N이 <b>불량 접수한 S/N과 다른</b> 건입니다. 모자란 건은 재회수 송장을 넣거나 미회수로 확정하고, S/N이 다른 건은 실물 확인 후 확인 완료를 눌러 주세요.',
+    short: '회수했는데 <b>수량이 모자라거나</b>, 들어온 S/N이 <b>불량 접수한 S/N과 다른</b> 건입니다.',
     done: '회수가 끝난 건입니다. 더 추적할 필요가 없으면 종결하세요.' }[f];
   var oldBtn = oldOnes.length ? '<div class="oldtog">' + (S.showOld
     ? '출고 후 ' + OLD + '일 지난 ' + oldOnes.length + '건 포함해서 보는 중<button data-act="toggleOld">다시 숨기기</button>'
@@ -1244,7 +1244,7 @@ function vReturn() {
   return '<div class="tabs">' + tabs + '</div>' + scopeBar(all0.length - all.length) + oldBtn + toolbar('회수') +
     '<div class="card"><div class="tw"><table class="t"><thead>' + head + '</thead><tbody>' +
     (rows || '<tr><td colspan="8"><div class="empty">해당 건이 없습니다.</div></td></tr>') + '</tbody></table></div></div>' +
-    '<div class="note" style="margin-top:12px">' + note + (oldOnes.length && !S.showOld ? ' <b>출고 후 ' + OLD + '일이 지난 ' + oldOnes.length + '건은 숨겨져 있습니다.</b> 대부분 회수를 포기했거나 기록이 끝난 건이니, 확인 후 [손망실]로 정리하시면 목록이 깔끔해집니다.' : '') + '</div>';
+    (CS() && f !== 'short' ? '' : '<div class="note" style="margin-top:12px">' + note + (oldOnes.length && !S.showOld ? ' <b>출고 후 ' + OLD + '일이 지난 ' + oldOnes.length + '건은 숨겨져 있습니다.</b> 대부분 회수를 포기했거나 기록이 끝난 건이니, 확인 후 [손망실]로 정리하시면 목록이 깔끔해집니다.' : '') + '</div>');
 }
 
 function openCase(id, keep) {
@@ -1595,22 +1595,64 @@ function vResults() {
     '<select class="inp" id="modelF"><option value="all">전체 모델</option>' + prodOpts(S.model) + '</select>' +
     '<input class="inp" id="q" placeholder="매장·S/N·문의번호 검색" value="' + esc(S.q) + '" style="width:220px"><span class="sp"></span>' +
     '<span class="small muted">' + groups.length + '건 · ' + list.length + 'EA' + (vsum.length ? ' (' + vsum.map(function (x) { return x[0] + ' ' + x[1]; }).join(' · ') + ')' : '') + '</span>' +
-    '<button class="btn" data-act="resCsv">엑셀(CSV) 받기</button></div>' +
+    '<button class="btn" data-act="resCsv">엑셀 받기</button></div>' +
     '<div class="card"><div class="tw"><table class="t"><thead><tr><th>검사일</th><th>매장</th><th>모델</th><th>수량</th><th>판정</th><th>증상</th><th>원인</th><th>처분</th><th>검사 의견</th></tr></thead><tbody>' +
     (rows || '<tr><td colspan="9"><div class="empty">해당 기간에 검사 끝난 회수품이 없습니다.</div></td></tr>') + '</tbody></table></div></div>' +
-    '<div class="note" style="margin-top:10px">AS 건(인입) 단위로 묶어서 보여줘요. 줄을 누르면 S/N별 결과가 펼쳐져요.' + (groups.length > 300 ? ' 최근 300건만 보여요. 전체는 CSV로 받아 주세요.' : '') + '</div>';
+    '<div class="note" style="margin-top:10px">AS 건(인입) 단위로 묶어서 보여줘요. 줄을 누르면 S/N별 결과가 펼쳐져요.' + (groups.length > 300 ? ' 최근 300건만 보여요. 전체는 엑셀로 받아 주세요.' : '') + '</div>';
 }
 function resCsv_() {
   var f = S.resF || 'all', list = resList_().filter(function (u) { return f === 'all' || u.verdict === f; });
-  var q = function (v) { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
-  var lines = [['검사일', '매장', '문의번호', '출고일', '접수 S/N', '회수 S/N', '모델', '판정', '증상', '원인', '용량(%)', '처분', '검사 의견'].join(',')].concat(list.map(function (u) {
+  var rows = [['검사일', '매장', '문의번호', '출고일', '접수 S/N', '회수 S/N', '모델', '판정', '증상', '원인', '용량(%)', '처분', '검사 의견']].concat(list.map(function (u) {
     var c = IDX.caseById[u.caseId] || {};
-    return [resDate_(u), c.store || u.store, c.inquiryNo, c.outDate, u.origSn, u.recvSn, String(u.model || caseModel(c)).split('/')[0], u.verdict, u.testSymptom, cz(u.cause), u.capPct, u.disposition, u.opinion].map(q).join(',');
+    return [resDate_(u), c.store || u.store, c.inquiryNo ? inqNo(c.inquiryNo) : '', c.outDate, u.origSn, u.recvSn, String(u.model || caseModel(c)).split('/')[0], u.verdict, u.testSymptom, cz(u.cause), u.capPct, u.disposition, u.opinion];
   }));
-  var blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
-  var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = '검사결과_' + today().replace(/-/g, '') + '.csv';
-  document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
-  toast(list.length + '개를 내려받았습니다.');
+  var blob = xlsxBlob_(rows, '검사결과', [11, 24, 11, 11, 20, 20, 12, 10, 12, 18, 8, 12, 50]);
+  saveBlob_(blob, 'AS_inspection_' + today().replace(/-/g, '') + '.xlsx');
+  toast(list.length + '개를 엑셀로 내려받았습니다.');
+}
+function saveBlob_(blob, name) {
+  if (window.navigator && navigator.msSaveOrOpenBlob) return navigator.msSaveOrOpenBlob(blob, name);
+  var url = URL.createObjectURL(blob), a = document.createElement('a');
+  a.href = url; a.download = name; a.rel = 'noopener'; a.style.display = 'none';
+  document.body.appendChild(a); a.click();
+  setTimeout(function () { URL.revokeObjectURL(url); a.remove(); }, 60000);
+}
+function xlsxBlob_(rows, sheetName, widths) {
+  var X = function (v) { return String(v == null ? '' : v).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
+  var col = function (i) { var n = ''; i++; while (i) { var m = (i - 1) % 26; n = String.fromCharCode(65 + m) + n; i = Math.floor((i - 1) / 26); } return n; };
+  var sheet = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+    '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>' +
+    (widths ? '<cols>' + widths.map(function (w, i) { return '<col min="' + (i + 1) + '" max="' + (i + 1) + '" width="' + w + '" customWidth="1"/>'; }).join('') + '</cols>' : '') + '<sheetData>' +
+    rows.map(function (r, ri) { return '<row r="' + (ri + 1) + '">' + r.map(function (v, ci) { return '<c r="' + col(ci) + (ri + 1) + '" t="inlineStr"' + (ri === 0 ? ' s="1"' : ' s="2"') + '><is><t xml:space="preserve">' + X(v) + '</t></is></c>'; }).join('') + '</row>'; }).join('') +
+    '</sheetData></worksheet>';
+  var files = [
+    ['[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>'],
+    ['_rels/.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'],
+    ['xl/workbook.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="' + X(sheetName || 'Sheet1') + '" sheetId="1" r:id="rId1"/></sheets></workbook>'],
+    ['xl/_rels/workbook.xml.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>'],
+    ['xl/styles.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="10"/><name val="맑은 고딕"/></font><font><b/><sz val="10"/><name val="맑은 고딕"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFEEF2F7"/></patternFill></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf/></cellStyleXfs><cellXfs count="3"><xf/><xf fontId="1" fillId="2" applyFont="1" applyFill="1"/><xf applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf></cellXfs></styleSheet>'],
+    ['xl/worksheets/sheet1.xml', sheet]
+  ];
+  return new Blob([zipStore_(files)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+function zipStore_(files) {
+  var enc = new TextEncoder(), T = zipStore_.T;
+  if (!T) { T = zipStore_.T = []; for (var n = 0; n < 256; n++) { var c = n; for (var k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; T[n] = c >>> 0; } }
+  var crc = function (b) { var c = 0xFFFFFFFF; for (var i = 0; i < b.length; i++) c = T[(c ^ b[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+  var parts = [], cen = [], off = 0;
+  var u16 = function (v) { return [v & 255, (v >>> 8) & 255]; }, u32 = function (v) { return [v & 255, (v >>> 8) & 255, (v >>> 16) & 255, (v >>> 24) & 255]; };
+  files.forEach(function (f) {
+    var name = enc.encode(f[0]), data = enc.encode(f[1]), c = crc(data);
+    var head = [].concat(u32(0x04034b50), u16(20), u16(0x0800), u16(0), u16(0), u16(0x21), u32(c), u32(data.length), u32(data.length), u16(name.length), u16(0));
+    parts.push(new Uint8Array(head), name, data);
+    cen.push(new Uint8Array([].concat(u32(0x02014b50), u16(20), u16(20), u16(0x0800), u16(0), u16(0), u16(0x21), u32(c), u32(data.length), u32(data.length), u16(name.length), u16(0), u16(0), u16(0), u16(0), u32(0), u32(off))), name);
+    off += head.length + name.length + data.length;
+  });
+  var cenSize = cen.reduce(function (n, b) { return n + b.length; }, 0);
+  var end = new Uint8Array([].concat(u32(0x06054b50), u16(0), u16(0), u16(files.length), u16(files.length), u32(cenSize), u32(off), u16(0)));
+  var all = parts.concat(cen, [end]), len = all.reduce(function (n, b) { return n + b.length; }, 0), out = new Uint8Array(len), p = 0;
+  all.forEach(function (b) { out.set(b, p); p += b.length; });
+  return out;
 }
 
 function csDef_(since, mOk) {
