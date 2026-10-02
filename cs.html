@@ -709,7 +709,9 @@ function cstate(c) {
       : outs.some(function (x) { return x.stage === 'moving'; }) ? 'moving'
         : outs.every(function (x) { return x.stage === 'expired'; }) ? 'expired' : 'before';
   if (c.recvDate || c.returnDoneAt) st.out = 'done';
-  st.stuck = rets.filter(function (x) { return !x.doneAt && x.stage !== 'moving' && x.failFlag === 'Y'; });
+  var lim = S.data.meta.returnFailBizDays || 2;
+  var overdue = function (x) { var base = x.reissueOf ? d10(x.createdAt) : (c.outDoneAt || c.outDate || d10(x.createdAt)); return x.stage === 'before' && bizDays(base) > lim; };
+  st.stuck = rets.filter(function (x) { return !x.doneAt && x.stage !== 'moving' && !x.reissueReqAt && x.failFlag === 'Y'; });
   st.ret = !rets.length ? 'none'
     : rets.every(function (x) { return x.doneAt; }) ? 'done'
       : rets.some(function (x) { return x.stage === 'moving'; }) ? 'moving'
@@ -717,18 +719,32 @@ function cstate(c) {
           : rets.every(function (x) { return x.stage === 'expired'; }) ? 'expired' : 'before';
   if (st.ret === 'none' && (c.returnTracking || c.returnStatus)) st.ret = (c.returnDoneAt || c.recvDate) ? 'done' : 'before';
   if (st.ret === 'none' && c.retReqAt && !c.recvDate) st.ret = 'req';
-  if (st.ret !== 'done' && (c.recvDate || c.returnDoneAt)) st.ret = 'done';
+  var anyDone = rets.some(function (x) { return x.doneAt; }), allDone = rets.length && rets.every(function (x) { return x.doneAt; });
+  st.split = anyDone && !allDone;
+  if (st.split && st.ret !== 'moving') {
+    var anyScan = us.some(function (u) { return u.recvSn; }), missing = open.some(function (u) { return !u.recvSn; });
+    st.left = rets.filter(function (x) { return !x.doneAt; });
+    if (!anyScan) st.ret = 'arrived';
+    else if (!missing) st.ret = 'done';
+    else st.ret = st.left.some(function (x) { return x.stage !== 'moving' && !x.reissueReqAt && (x.failFlag === 'Y' || overdue(x)); }) ? 'fail'
+      : st.left.some(function (x) { return x.reissueReqAt; }) ? 'rereq' : 'part';
+  }
+  if (!st.split && st.ret !== 'done' && (c.recvDate || c.returnDoneAt)) st.ret = 'done';
   st.retBase = st.reissued.length ? d10(st.reissued.map(function (x) { return x.createdAt; }).sort().slice(-1)[0])
     : (c.outDoneAt || c.outDate || (rets.length ? d10(rets[0].createdAt) : ''));
   st.retDays = rets.length ? bizDays(st.retBase) : null;
   if (st.out === 'expired') st.out = 'done';
-  if (st.ret === 'before' && st.retDays !== null && st.retDays > (S.data.meta.returnFailBizDays || 2)) st.ret = 'fail';
+  if (st.ret === 'before' && st.retDays !== null && st.retDays > lim) st.ret = 'fail';
+  if (st.ret === 'arrived') st.retDays = bizDays(rets.filter(function (x) { return x.doneAt; }).map(function (x) { return d10(x.doneAt); }).sort().pop());
+  var rq = rets.filter(function (x) { return !x.doneAt && x.reissueReqAt && x.stage !== 'moving'; });
+  if (!st.stuck.length && (st.ret === 'fail' || st.ret === 'before') && (rq.length || (st.reissued.length && st.ret === 'before'))) st.ret = 'rereq';
   st.trk = inTrack(c, us);
   st.chk = us.filter(unitChk);
   if (c.closed === 'Y') st.b = 'closed';
   else if (!c.outDate && st.out === 'none') st.b = 'ship_wait';
   else if (st.ret === 'none') st.b = st.out === 'done' ? 'ret_need' : 'shipping';
-  else if (st.ret === 'fail' || (st.ret !== 'done' && (IDX.req[c.id] || []).some(function (q) { return q.kind === 'recollect'; }))) st.b = 'ret_fail';
+  else if (st.ret === 'part') st.b = 'ret_short';
+  else if (st.ret === 'fail' || (st.ret !== 'done' && st.ret !== 'rereq' && (IDX.req[c.id] || []).some(function (q) { return q.kind === 'recollect'; }))) st.b = 'ret_fail';
   else if (st.ret !== 'done') st.b = 'ret_doing';
   else if (open.some(function (u) { return !u.recvSn; }) || st.chk.length) st.b = 'ret_short';
   else if (open.some(function (u) { return !u.verdict; })) st.b = 'judge';
@@ -740,6 +756,7 @@ function unitChk(u) { return u.disposition !== '미회수' && (/^S\/N 상이\(/.
 function chkLines(st, short) {
   var miss = st.units.filter(function (u) { return !u.recvSn && !u.disposition; });
   var out = [];
+  if (st.ret === 'part' && st.left) out.push('<div><span class="pill p-blue">남은 반품 송장 회수 대기</span> <span class="mono small">' + st.left.map(function (x) { return esc(x.no); }).join(', ') + '</span></div>');
   if (miss.length) out.push('<div><span class="pill p-red">수량 부족 ' + miss.length + 'EA</span> <span class="mono small">' + miss.map(function (u) { return esc(u.origSn || '(S/N 미상)'); }).join(', ') + '</span></div>');
   st.chk.forEach(function (u) {
     var m = /접수 ([A-Z0-9]+)/.exec(u.flags || '');
@@ -771,7 +788,7 @@ var BUCKET = {
   judge: ['판정 대기', 'p-inspect'], dispose: ['처분 대기', 'p-dispose'], done: ['완료', 'p-done'], closed: ['종결', 'p-closed']
 };
 var OUT_LABEL = { none: ['송장 없음', 'p-gray'], before: ['배송 전', 'p-gray'], moving: ['배송 중', 'p-blue'], done: ['도착 완료', 'p-green'], expired: ['조회 기간 만료', 'p-gray'] };
-var RET_LABEL = { req: ['접수함 · 번호 대기', 'p-blue'], none: ['-', 'p-gray'], before: ['회수 전', 'p-gray'], moving: ['회수 중', 'p-blue'], done: ['회수 완료', 'p-green'], fail: ['회수 실패', 'p-red'], expired: ['조회 기간 만료', 'p-gray'], replaced: ['재접수로 대체', 'p-gray'] };
+var RET_LABEL = { arrived: ['도착 · 입고 대조 대기', 'p-violet'], part: ['남은 송장 회수 대기', 'p-blue'], rereq: ['회수 재접수 완료', 'p-blue'], req: ['접수함 · 번호 대기', 'p-blue'], none: ['-', 'p-gray'], before: ['회수 전', 'p-gray'], moving: ['회수 중', 'p-blue'], done: ['회수 완료', 'p-green'], fail: ['회수 실패', 'p-red'], expired: ['조회 기간 만료', 'p-gray'], replaced: ['재접수로 대체', 'p-gray'] };
 function bpill(c) { var b = (IDX.st[c.id] || {}).b, x = BUCKET[b] || ['-', 'p-gray']; return '<span class="pill ' + x[1] + '">' + x[0] + '</span>'; }
 function tagOf(map, k) { var x = map[k] || ['-', 'p-gray']; return '<span class="pill ' + x[1] + '">' + x[0] + '</span>'; }
 function bizDays(from, to) {
@@ -820,10 +837,10 @@ function counts() {
 
 var VIEWS = [
   ['home', '▦', '대시보드'], ['inbox', '✉', '인입함'], ['ship', '⇢', '출고'], ['ret', '⇠', '회수'], ['inspect', '⚗', '회수분 검사'], ['results', '✔', '검사 결과'],
-  ['stock', '▣', '재고'], ['analysis', '▤', '불량 분석'], ['settings', '⚙', '설정·동기화']
+  ['stock', '▣', '재고'], ['analysis', '▤', '불량 분석'], ['guide', 'ⓘ', '제품 안내'], ['settings', '⚙', '설정·동기화']
 ];
 var CS_HIDE = { inbox: 1, inspect: 1, stock: 1, settings: 1 };
-var CS_ACT = { allCases: 1, resF: 1, resCsv: 1, resOpen: 1, go: 1, 'case': 1, closeDrawer: 1, closeModal: 1, inboxFilter: 1, inboxSel: 1, toggleOld: 1, toTop: 1, slkBig: 1, ship: 1, ret: 1, anModel: 1, searchStore: 1, reload: 1 };
+var CS_ACT = { guideP: 1, allCases: 1, resF: 1, resCsv: 1, resOpen: 1, go: 1, 'case': 1, closeDrawer: 1, closeModal: 1, inboxFilter: 1, inboxSel: 1, toggleOld: 1, toTop: 1, slkBig: 1, ship: 1, ret: 1, anModel: 1, searchStore: 1, reload: 1 };
 var CS_IN = { q: 1, modelF: 1, anMonths: 1, resP: 1 };
 function csScrub_() {
   if (!CS()) return;
@@ -855,9 +872,9 @@ function render() {
   var t = VIEWS.filter(function (v) { return v[0] === S.view; })[0];
   document.body.classList.toggle('cs', CS());
   $('#title').textContent = t[2];
-  var sub = { home: '', inbox: 'Slack #ext-볼타레스-티오더 접수 양식 자동 수집', cases: '교환 출고 → 반품 신청 → 회수 입고', inspect: '바코드 스캔으로 회수 매칭 → 판정 · 원인 · 처분', results: '검사 끝난 회수품 — 판정별로 전산 처리할 때 보세요', analysis: '모델별 불량 데이터', stock: '교체 재고(AS 교환용) · 납품 재고(고객사 납품·양산 차수)', settings: '연동 상태와 티오더 시트 동기화' }[S.view] || '';
+  var sub = { home: '', inbox: 'Slack #ext-볼타레스-티오더 접수 양식 자동 수집', cases: '교환 출고 → 반품 신청 → 회수 입고', inspect: '바코드 스캔으로 회수 매칭 → 판정 · 원인 · 처분', results: '검사 끝난 회수품 — 판정별로 전산 처리할 때 보세요', guide: '제품 구성 · 사양 · 사용 방법 · 매뉴얼', analysis: '모델별 불량 데이터', stock: '교체 재고(AS 교환용) · 납품 재고(고객사 납품·양산 차수)', settings: '연동 상태와 티오더 시트 동기화' }[S.view] || '';
   $('#subtitle').textContent = sub; $('#subtitle').style.display = sub ? '' : 'none';
-  var fn = { home: vHome, inbox: vInbox, ship: vShip, ret: vReturn, inspect: vInspect, results: vResults, stock: vStock, analysis: vAnalysis, settings: vSettings }[S.view];
+  var fn = { home: vHome, inbox: vInbox, ship: vShip, ret: vReturn, inspect: vInspect, results: vResults, guide: vGuide, stock: vStock, analysis: vAnalysis, settings: vSettings }[S.view];
   $('#view').innerHTML = (DEMO_MODE ? '<div class="flag" style="margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#fff7e6;color:#8a5a00;border:1px solid #ffe2a8"><b>데모 화면</b><span>가상 데이터로 만든 예시예요. 실제 AS 현황이 아닙니다.</span><a href="#" data-act="demoLogin" style="margin-left:auto;color:#8a5a00;text-decoration:underline">관리자 접속</a></div>' : '') + fn();
   if (S.view === 'inbox') { loadInboxDetail(); setTimeout(loadSlackImgs, 30); }
   if (isMobile_()) {
@@ -997,8 +1014,9 @@ function trkList(ships, fallback, note) {
     : (note ? '<span class="muted small">' + esc(note) + '</span>' : '<span class="muted">-</span>');
   return ships.map(function (x) {
     if (x.stage === 'replaced') return '<div class="muted"><s class="mono small">' + esc(x.no) + '</s> <span class="small">재접수로 대체</span></div>';
+    if (x.stage === 'merged') return '<div class="muted"><s class="mono small">' + esc(x.no) + '</s> <span class="small">합포장(미사용)</span></div>';
     var lab = x.doneAt ? '완료 ' + md(x.doneAt) : (x.status || '');
-    var stuck = !x.doneAt && x.stage !== 'moving' && x.failFlag === 'Y';
+    var stuck = !x.doneAt && x.stage !== 'moving' && x.failFlag === 'Y' && !x.reissueReqAt;
     var no = stuck ? '<b style="color:var(--red)">' + cjLink(x.no) + '</b>' : cjLink(x.no);
     return '<div>' + no + (lab ? ' <span class="muted small">' + esc(String(lab).slice(0, 18)) + '</span>' : '') +
       (x.reissueOf ? ' <span class="pill p-partial">재발급</span>' : '') +
@@ -1681,6 +1699,55 @@ function defenseCard_(ms, since, mOk) {
     (rows ? '<div class="tw"><table class="t"><thead><tr><th>월</th><th>인입</th><th>출고</th><th>CS 방어율</th><th>검사</th><th>방어 실패</th></tr></thead><tbody>' + rows + '</tbody></table></div>' : '') + '</div></div>';
 }
 
+function driveId_(u) { var m = /\/file\/d\/([\w-]{10,})/.exec(u) || /[?&]id=([\w-]{10,})/.exec(u); return m && /drive\.google\.com|docs\.google\.com/.test(u) ? m[1] : ''; }
+function imgSrc_(u) { var id = driveId_(u); return id ? 'https://drive.google.com/thumbnail?id=' + id + '&sz=w1600' : u; }
+function viewUrl_(u) { var id = driveId_(u); return id ? 'https://drive.google.com/file/d/' + id + '/view' : u; }
+function pinfoOf(m) { return (S.data.pinfo || []).filter(function (x) { return x.model === m; })[0] || { model: m }; }
+function linkLines_(txt) {
+  return String(txt || '').split('\n').map(function (l) { l = l.trim(); if (!l) return null; var i = l.lastIndexOf('|'); var name = i > 0 ? l.slice(0, i).trim() : '', url = (i > 0 ? l.slice(i + 1) : l).trim(); return /^https?:\/\//.test(url) ? { name: name, url: url } : null; }).filter(Boolean);
+}
+function vGuide() {
+  var ps = PRODS(); if (!ps.length) return '<div class="empty">등록된 제품이 없습니다.</div>';
+  if (!S.guideM || !prodOf(S.guideM)) S.guideM = ps[0].id;
+  var m = S.guideM, P = prodOf(m), I = pinfoOf(m), edit = !CS() && S.guideEdit === m;
+  var tabs = '<div class="tabs">' + ps.map(function (p) { return '<button class="' + (p.id === m ? 'on' : '') + '" data-act="guideP" data-v="' + esc(p.id) + '">' + esc(p.label) + '</button>'; }).join('') + '</div>';
+  var photos = jparse(I.photos, []), files = jparse(I.files, []);
+  if (edit) {
+    var ta = function (id, label, val, ph, rows) { return '<label class="fld" style="display:block;margin-bottom:12px"><span>' + label + '</span><textarea class="inp" id="' + id + '" rows="' + (rows || 4) + '" style="width:100%" placeholder="' + esc(ph) + '">' + esc(val || '') + '</textarea></label>'; };
+    var ll = function (arr) { return arr.map(function (x) { return (x.name ? x.name + ' | ' : '') + x.url; }).join('\n'); };
+    return tabs + '<div class="card"><div class="hd"><h3>' + esc(P.label) + ' 안내 편집</h3></div><div class="bd">' +
+      ta('gSummary', '제품 소개', I.summary, '예: 매장 테이블 주문 태블릿용 보조배터리. 포고핀 거치대에 꽂아 충전합니다.', 3) +
+      ta('gParts', '구성품 (한 줄에 하나)', I.parts, '보조배터리 본체 1\nUSB-C 케이블 1\n사용설명서 1', 4) +
+      ta('gSpecs', '주요 사양 (항목: 내용)', I.specs, '용량: 10,000mAh\n입력: USB-C 5V 3A\n출력: 포고핀 5V\nKC 인증번호: ', 5) +
+      ta('gUsage', '사용 방법 (한 줄에 한 단계)', I.usage, '거치대에 끝까지 밀어 넣어 장착\n잔량 LED 4칸 = 완충', 5) +
+      ta('gCaution', '주의사항 · 자주 묻는 문제 (한 줄에 하나)', I.caution, '케이블 교차 사용 시 충전이 안 될 수 있음\n잔량 0%에서는 30분 이상 충전 후 사용', 4) +
+      ta('gPhotos', '사진 주소 (한 줄에 하나 · "이름 | 주소" 가능)', ll(photos), '정면 | https://drive.google.com/file/d/…/view', 3) +
+      ta('gFiles', '매뉴얼 · 자료 (한 줄에 하나 · "이름 | 주소")', ll(files), '사용설명서 PDF | https://drive.google.com/file/d/…/view', 3) +
+      '<div class="note" style="margin-bottom:12px">사진·PDF는 구글 드라이브에 올리고 <b>공유 → 링크가 있는 모든 사용자</b>로 바꾼 뒤 링크를 붙여 넣으세요. 다른 웹 주소도 됩니다.</div>' +
+      '<div class="row"><button class="btn pri" data-act="guideSave" data-v="' + esc(m) + '">저장</button><button class="btn" data-act="guideEdit" data-v="">취소</button></div></div></div>';
+  }
+  var lines = function (t) { return String(t || '').split('\n').map(function (x) { return x.trim(); }).filter(String); };
+  var sec = function (title, body) { return body ? '<div class="sec"><h4>' + title + '</h4>' + body + '</div>' : ''; };
+  var specs = lines(I.specs).map(function (l) { var i = l.search(/[:：]/); return i > 0 ? '<tr><th style="width:34%;text-align:left">' + esc(l.slice(0, i).trim()) + '</th><td>' + esc(l.slice(i + 1).trim()) + '</td></tr>' : '<tr><td colspan="2">' + esc(l) + '</td></tr>'; }).join('');
+  var empty = !I.summary && !I.parts && !I.specs && !I.usage && !I.caution && !photos.length && !files.length;
+  var colors = prodColors(m);
+  var h = tabs + '<div class="card"><div class="hd"><h3>' + esc(P.label) + '</h3>' + mtag(m) + (colors.length ? ' <span class="small muted">' + esc(colors.join(' · ')) + '</span>' : '') + '<span style="flex:1"></span>' +
+    (!CS() ? '<button class="btn sm" data-act="guideEdit" data-v="' + esc(m) + '">' + (empty ? '내용 등록' : '편집') + '</button>' : '') + '</div><div class="bd">';
+  if (empty) return h + '<div class="empty">아직 등록된 안내가 없습니다.' + (!CS() ? '<br>오른쪽 위 [내용 등록]으로 구성품·사양·사용 방법·사진·매뉴얼을 넣어 주세요.' : '') + '</div></div></div>';
+  if (photos.length) h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-bottom:14px">' + photos.map(function (x) {
+    return '<a href="' + esc(viewUrl_(x.url)) + '" target="_blank" rel="noopener" style="display:block;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff;text-decoration:none;color:inherit">' +
+      '<img src="' + esc(imgSrc_(x.url)) + '" alt="' + esc(x.name || '') + '" loading="lazy" referrerpolicy="no-referrer" style="width:100%;aspect-ratio:1;object-fit:contain;display:block">' +
+      (x.name ? '<div class="small" style="padding:6px 8px;border-top:1px solid var(--line)">' + esc(x.name) + '</div>' : '') + '</a>';
+  }).join('') + '</div>';
+  if (I.summary) h += '<div style="white-space:pre-wrap;margin-bottom:6px">' + esc(I.summary) + '</div>';
+  h += sec('구성품', lines(I.parts).length ? '<ul style="margin:0;padding-left:18px">' + lines(I.parts).map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>' : '');
+  h += sec('주요 사양', specs ? '<table class="t">' + specs + '</table>' : '');
+  h += sec('사용 방법', lines(I.usage).length ? '<ol style="margin:0;padding-left:20px">' + lines(I.usage).map(function (x) { return '<li style="margin-bottom:4px">' + esc(x) + '</li>'; }).join('') + '</ol>' : '');
+  h += sec('주의사항 · 자주 묻는 문제', lines(I.caution).length ? '<ul style="margin:0;padding-left:18px">' + lines(I.caution).map(function (x) { return '<li style="margin-bottom:4px">' + esc(x) + '</li>'; }).join('') + '</ul>' : '');
+  h += sec('매뉴얼 · 자료', files.length ? files.map(function (x) { return '<div style="margin-bottom:6px">📄 <a href="' + esc(viewUrl_(x.url)) + '" target="_blank" rel="noopener" style="color:var(--blue)">' + esc(x.name || '자료 열기') + '</a></div>'; }).join('') : '');
+  return h + '</div></div>';
+}
+
 function lotNextName() {
   var mx = 0; (S.data.lots || []).forEach(function (l) { var m = String(l.name).match(/(\d+)\s*차/); if (m) mx = Math.max(mx, +m[1]); });
   return (mx + 1) + '차';
@@ -2301,6 +2368,13 @@ var ACT = {
   allCases: function () { S.allCases = !S.allCases; render(); },
   resF: function (d) { S.resF = d.v; render(); },
   resCsv: function () { resCsv_(); },
+  guideP: function (d) { S.guideM = d.v; S.guideEdit = ''; render(); },
+  guideEdit: function (d) { S.guideEdit = d.v; render(); },
+  guideSave: function (d, b) {
+    var v = function (id) { return ($('#' + id) || {}).value || ''; };
+    run('pinfoSave', { model: d.v, summary: v('gSummary'), parts: v('gParts'), specs: v('gSpecs'), usage: v('gUsage'), caution: v('gCaution'), photos: linkLines_(v('gPhotos')), files: linkLines_(v('gFiles')) }, '제품 안내를 저장했습니다.', b)
+      .then(function () { S.guideEdit = ''; render(); });
+  },
   resOpen: function (d) { S.resOpen = S.resOpen || {}; S.resOpen[d.id] = !S.resOpen[d.id]; render(); },
   csPublic: function (d, b) { var on = !S.data.meta.csPublic; run('saveSetting', { key: 'CS_PUBLIC', value: on ? 'Y' : 'N' }, on ? '고객사 링크를 주소만으로 열 수 있게 했습니다.' : '고객사 링크에 다시 접속 키가 필요합니다.', b); },
   saveTrackFrom: function (d, b) { run('saveSetting', { key: 'TRACK_FROM', value: $('#trackFromIn').value }, '추적 기준일을 저장했습니다.', b); },
