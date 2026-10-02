@@ -1665,31 +1665,39 @@ function leadHrs_(u) {
 }
 function fmtLead_(h) { return h === null || h === undefined ? '-' : h < 24 ? Math.round(h) + '시간' : (Math.round(h / 24 * 10) / 10) + '일'; }
 function inspLeadCard_(tested) {
-  var rows = tested.map(function (u) { return { u: u, h: leadHrs_(u), c: IDX.caseById[u.caseId] || {} }; }).filter(function (x) { return x.h !== null; });
+  var real = [], old = [];
+  tested.forEach(function (u) { var h = leadHrs_(u); if (h === null) return; var x = { u: u, h: h, c: IDX.caseById[u.caseId] || {} }; (u.recvAt && u.testAt ? real : old).push(x); });
+  var LIM = 48;
   var grp = function (keyFn) {
     var g = {};
-    rows.forEach(function (x) { var k = keyFn(x) || '미기록'; (g[k] = g[k] || []).push(x.h); });
+    real.forEach(function (x) { var k = keyFn(x) || '미기록'; (g[k] = g[k] || []).push(x); });
     return Object.keys(g).map(function (k) {
-      var a = g[k].slice().sort(function (p, q) { return p - q; }), s = a.reduce(function (p, q) { return p + q; }, 0);
-      return { k: k, n: a.length, avg: s / a.length, med: a[Math.floor(a.length / 2)], max: a[a.length - 1] };
+      var a = g[k], s = a.reduce(function (p, q) { return p + q.h; }, 0), mx = a.slice().sort(function (p, q) { return q.h - p.h; })[0];
+      return { k: k, n: a.length, avg: s / a.length, ok: a.filter(function (x) { return x.h <= LIM; }).length, mx: mx };
     }).sort(function (p, q) { return q.n - p.n; });
   };
   var tbl = function (title, list) {
-    return '<div class="card"><div class="hd"><h3>' + title + '</h3></div>' + (list.length ? '<div class="tw"><table class="t"><thead><tr><th></th><th>검사</th><th>평균</th><th>중앙값</th><th>최장</th></tr></thead><tbody>' +
-      list.slice(0, 10).map(function (x) { return '<tr><td>' + esc(x.k) + '</td><td>' + x.n + '</td><td><b>' + fmtLead_(x.avg) + '</b></td><td>' + fmtLead_(x.med) + '</td><td class="muted">' + fmtLead_(x.max) + '</td></tr>'; }).join('') +
-      '</tbody></table></div>' : '<div class="empty">아직 데이터가 없습니다.</div>') + '</div>';
+    return '<div class="card"><div class="hd"><h3>' + title + '</h3></div>' + (list.length ? '<div class="tw"><table class="t"><thead><tr><th></th><th>검사</th><th>평균</th><th>2일 안에</th><th>가장 오래</th></tr></thead><tbody>' +
+      list.slice(0, 10).map(function (x) {
+        return '<tr><td>' + esc(x.k) + '</td><td>' + x.n + '</td><td class="nowrap"><b>' + fmtLead_(x.avg) + '</b></td><td>' + Math.round(x.ok / x.n * 100) + '%</td>' +
+          '<td class="nowrap click" data-act="case" data-id="' + esc(x.mx.c.id || '') + '" title="' + esc(x.mx.c.store || '') + ' — 눌러서 건 보기" style="color:var(--blue)">' + fmtLead_(x.mx.h) + '</td></tr>';
+      }).join('') + '</tbody></table></div>' : '<div class="empty">아직 데이터가 없습니다.</div>') + '</div>';
   };
   var all = grp(function () { return '전체'; })[0];
-  var wait = inspectQueue(), late = wait.filter(function (u) { return u.recvAt && (Date.now() - new Date(u.recvAt)) / 3600000 >= 48; }).length;
-  return '<div class="card" style="margin-top:14px"><div class="hd"><h3>검사 리드타임</h3><span class="muted small">회수 처리(입고) → 판정까지 · 사내 전용</span></div><div class="bd">' +
-    '<div class="row" style="gap:22px;margin-bottom:12px"><div><div class="small muted">평균</div><b style="font-size:22px">' + fmtLead_(all && all.avg) + '</b></div>' +
-    '<div><div class="small muted">중앙값</div><b style="font-size:22px">' + fmtLead_(all && all.med) + '</b></div>' +
-    '<div><div class="small muted">집계</div><b style="font-size:22px">' + (all ? all.n : 0) + '</b>개</div>' +
-    '<div><div class="small muted">지금 검사중</div><b style="font-size:22px">' + wait.length + '</b>개' + (late ? ' <span style="color:var(--red)">· 2일 넘음 ' + late + '</span>' : '') + '</div></div>' +
-    '<div class="three">' + tbl('기종별', grp(function (x) { return prodLabel(String(x.u.model || x.c.model || '').split('/')[0]); })) +
-    tbl('불량 인입 사유별', grp(function (x) { return x.c.reasonCode; })) +
-    tbl('검사 증상별', grp(function (x) { return x.u.testSymptom || (x.u.verdict === '정상' ? '(정상 판정)' : ''); })) + '</div>' +
-    '<div class="small muted" style="margin-top:8px">이번 업데이트 전에 검사한 건은 입고일·검사일 날짜 차이로 계산해서 대략적인 값이에요.</div></div></div>';
+  var wait = inspectQueue(), late = wait.filter(function (u) { return u.recvAt && (Date.now() - new Date(u.recvAt)) / 3600000 >= LIM; }).length;
+  var oldAvg = old.length ? old.reduce(function (p, q) { return p + q.h; }, 0) / old.length : null;
+  var kpi = function (l, v, d) { return '<div><div class="small muted">' + l + '</div><b style="font-size:22px">' + v + '</b>' + (d ? '<div class="small muted">' + d + '</div>' : '') + '</div>'; };
+  return '<div class="card" style="margin-top:14px"><div class="hd"><h3>검사 리드타임</h3><span class="muted small">회수 처리(입고 확인) → 판정까지 걸린 시간 · 사내 전용</span></div><div class="bd">' +
+    '<div class="row" style="gap:28px;margin-bottom:12px">' +
+    kpi('평균', all ? fmtLead_(all.avg) : '-', all ? all.n + '개 기준' : '') +
+    kpi('2일 안에 끝낸 비율', all ? Math.round(all.ok / all.n * 100) + '%' : '-', all ? all.ok + '/' + all.n + '개' : '') +
+    kpi('지금 검사중', wait.length + '개', late ? '<span style="color:var(--red)">2일 넘음 ' + late + '개</span>' : '2일 넘은 것 없음') + '</div>' +
+    (real.length ? '<div class="three">' + tbl('기종별', grp(function (x) { return prodLabel(String(x.u.model || x.c.model || '').split('/')[0]); })) +
+      tbl('불량 인입 사유별', grp(function (x) { return x.c.reasonCode; })) +
+      tbl('검사 증상별', grp(function (x) { return x.u.testSymptom || (x.u.verdict === '정상' ? '(정상 판정)' : ''); })) + '</div>'
+      : '<div class="empty" style="padding:18px">10/2부터 <b>회수 처리 → 판정</b>한 제품부터 실제 검사 시간이 쌓여요.</div>') +
+    (old.length ? '<div class="small muted" style="margin-top:10px">참고: 예전 티오더 시트 데이터 ' + old.length + '개는 <b>회수일 → 결과 공유일</b> 기준이라(검사를 끝내고 며칠 모아서 공유한 기간까지 포함) 검사 시간 집계에서 뺐어요. 그 기준 평균은 ' + fmtLead_(oldAvg) + '입니다.</div>' : '') +
+    '</div></div>';
 }
 function resDate_(u) { var c = IDX.caseById[u.caseId] || {}; return d10(u.testDate) || d10(c.recvDate) || ''; }
 function resList_() {
