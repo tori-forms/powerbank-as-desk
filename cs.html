@@ -839,7 +839,7 @@ var VIEWS = [
   ['home', '▦', '대시보드'], ['inbox', '✉', '인입함'], ['ship', '⇢', '출고'], ['ret', '⇠', '회수'], ['inspect', '⚗', '회수분 검사'], ['results', '✔', '검사 결과'],
   ['stock', '▣', '재고'], ['analysis', '▤', '불량 분석'], ['guide', 'ⓘ', '제품 안내'], ['settings', '⚙', '설정·동기화']
 ];
-var CS_HIDE = { inbox: 1, inspect: 1, stock: 1, settings: 1 };
+var CS_HIDE = { inbox: 1, inspect: 1, stock: 1, settings: 1, guide: 1 };
 var CS_ACT = { guideP: 1, allCases: 1, resF: 1, resCsv: 1, resOpen: 1, go: 1, 'case': 1, closeDrawer: 1, closeModal: 1, inboxFilter: 1, inboxSel: 1, toggleOld: 1, toTop: 1, slkBig: 1, ship: 1, ret: 1, anModel: 1, searchStore: 1, reload: 1 };
 var CS_IN = { q: 1, modelF: 1, anMonths: 1, resP: 1 };
 function csScrub_() {
@@ -1731,7 +1731,7 @@ function vGuide() {
   var specs = lines(I.specs).map(function (l) { var i = l.search(/[:：]/); return i > 0 ? '<tr><th style="width:34%;text-align:left">' + esc(l.slice(0, i).trim()) + '</th><td>' + esc(l.slice(i + 1).trim()) + '</td></tr>' : '<tr><td colspan="2">' + esc(l) + '</td></tr>'; }).join('');
   var empty = !I.summary && !I.parts && !I.specs && !I.usage && !I.caution && !photos.length && !files.length;
   var colors = prodColors(m);
-  var h = tabs + '<div class="card"><div class="hd"><h3>' + esc(P.label) + '</h3>' + mtag(m) + (colors.length ? ' <span class="small muted">' + esc(colors.join(' · ')) + '</span>' : '') + '<span style="flex:1"></span>' +
+  var h = tabs + '<div class="card"><div class="hd"><h3>' + esc(P.label) + '</h3>' + (colors.length ? ' <span class="small muted">' + esc(colors.join(' · ')) + '</span>' : '') + '<span style="flex:1"></span>' +
     (!CS() ? '<button class="btn sm" data-act="guideEdit" data-v="' + esc(m) + '">' + (empty ? '내용 등록' : '편집') + '</button>' : '') + '</div><div class="bd">';
   if (empty) return h + '<div class="empty">아직 등록된 안내가 없습니다.' + (!CS() ? '<br>오른쪽 위 [내용 등록]으로 구성품·사양·사용 방법·사진·매뉴얼을 넣어 주세요.' : '') + '</div></div></div>';
   if (photos.length) h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-bottom:14px">' + photos.map(function (x) {
