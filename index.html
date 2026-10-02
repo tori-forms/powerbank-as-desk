@@ -895,7 +895,7 @@ function vHomeCs() {
     kp('회수 실패', k.ret_fail, '건', k.ret_fail ? '<b style="color:var(--red)">재접수 진행</b>' : '정상', '#f04452', ['ret', 'fail']) +
     kp('회수 완료', retDone, '건', '회수 입고 완료', '#ff8a00', ['ret', 'done']) +
     kp('검사 완료', res.length, '개', '최근 30일 · 불량 ' + nb + ' · 정상 ' + nn, '#191f28', ['go', 'results']) +
-    kp('CS 방어 실패', nn + nw, '개', '최근 30일 검사 중 ' + (res.length ? Math.round((nn + nw) / res.length * 1000) / 10 : 0) + '% · 불량 아님(AS 비대상)', '#ff7a45', ['go', 'analysis']) + '</div>';
+    kp('CS 방어율', res.length ? Math.round((res.length - nn - nw) / res.length * 1000) / 10 : 0, '%', '최근 30일 검사 ' + res.length + '개 중 방어 실패 ' + (nn + nw) + '개', '#3182f6', ['go', 'analysis']) + '</div>';
   var fail = b(['ret_fail']);
   var recent = S.data.units.filter(function (u) { return u.verdict; }).sort(function (a, c) { return resDate_(c).localeCompare(resDate_(a)); }).slice(0, 8);
   var vp = function (v) { return '<span class="pill ' + (v === '불량' ? 'p-red' : v === '정상' ? 'p-green' : 'p-ship') + '">' + esc(v) + '</span>'; };
@@ -1585,14 +1585,13 @@ function defenseCard_(ms, since, mOk) {
     var d1 = dec.filter(function (i) { return d10(i.postedAt).slice(0, 7) === m; }), f1 = d1.filter(function (i) { return i.status === '방어'; }).length;
     if (!t1.length && !d1.length) return '';
     return '<tr><td class="nowrap">' + m.slice(2).replace('-', '.') + '</td>' + (cs ? '' : '<td>' + (d1.length ? pct(f1, d1.length) + '%' : '-') + '</td>') +
-      '<td>' + t1.length + '</td><td><b style="color:#ff7a45">' + n1 + '</b> <span class="muted small">' + pct(n1, t1.length) + '%</span></td></tr>';
+      '<td>' + t1.length + '</td><td><b>' + (t1.length ? pct(t1.length - n1, t1.length) + '%' : '-') + '</b></td><td style="color:#ff7a45">' + n1 + '</td></tr>';
   }).filter(String).slice(0, 6).join('');
-  return '<div class="card"><div class="hd"><h3>티오더 CS 방어 실패</h3></div><div class="bd">' +
+  return '<div class="card"><div class="hd"><h3>CS 방어율</h3><span class="muted small">교환출고 중 실제 불량 비율</span></div><div class="bd">' +
     '<div class="row" style="gap:16px;align-items:flex-start;margin-bottom:10px">' +
     (cs ? '' : stat('우리 쪽 반려 (인입 방어)', pct(def.length, dec.length) + '<small style="font-size:14px">%</small>', '인입 ' + dec.length + '건 중 방어 ' + def.length + '건 (' + defEa + 'EA)')) +
-    stat('방어 실패 · AS 비대상 교환', (nN + nW) + '<small style="font-size:14px">EA</small>', '검사 ' + tu.length + 'EA 중 ' + pct(nN + nW, tu.length) + '% · 정상 ' + nN + (nW ? ' · 외력/과실 ' + nW : ''), '#ff7a45') + '</div>' +
-    (rows ? '<div class="tw"><table class="t"><thead><tr><th>월</th>' + (cs ? '' : '<th>우리 반려</th>') + '<th>검사</th><th>방어 실패</th></tr></thead><tbody>' + rows + '</tbody></table></div>' : '') +
-    '<div class="small muted" style="margin-top:8px">티오더 CS 단계에서 걸러졌어야 할 요청이 그대로 교환출고돼, 검사해 보니 불량이 아니었던(정상·외력/사용자 과실) 수량이에요. 약정에 따라 이 교환재고는 티오더 부담으로 정산합니다.' + (cs ? '' : ' 우리 쪽 반려는 인입함에서 방어 종결한 건이에요.') + '</div></div></div>';
+    stat('CS 방어율', (tu.length ? pct(tu.length - nN - nW, tu.length) : 0) + '<small style="font-size:14px">%</small>', '검사 ' + tu.length + 'EA 중 불량 ' + (tu.length - nN - nW) + ' · 방어 실패 ' + (nN + nW) + 'EA (정상 ' + nN + (nW ? ' · 외력/과실 ' + nW : '') + ')', '#3182f6') + '</div>' +
+    (rows ? '<div class="tw"><table class="t"><thead><tr><th>월</th>' + (cs ? '' : '<th>우리 반려</th>') + '<th>검사</th><th>CS 방어율</th><th>방어 실패</th></tr></thead><tbody>' + rows + '</tbody></table></div>' : '') + '</div></div>';
 }
 
 function lotNextName() {
