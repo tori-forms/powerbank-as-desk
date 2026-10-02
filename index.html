@@ -762,7 +762,7 @@ function scopeBar(hidden) {
   if (!hidden && !S.allCases) return '';
   return '<div class="oldtog">' + (S.allCases
     ? '기준일(' + md(trackFrom()) + ') 이전 건까지 모두 보는 중<button data-act="allCases">기준일 이후만 보기</button>'
-    : CS() ? '<b>' + md(trackFrom()) + ' 이후 출고분</b>부터<button data-act="allCases">이전 건도 보기</button>'
+    : CS() ? '<b>' + md(trackFrom()) + ' 이후 출고분</b>부터'
       : '봇과 같은 기준으로 <b>' + md(trackFrom()) + ' 이후 출고분</b>만 보여줘요 · 이전 ' + hidden + '건 숨김<button data-act="allCases">이전 건도 보기</button>') + '</div>';
 }
 var BUCKET = {
@@ -823,7 +823,7 @@ var VIEWS = [
   ['stock', '▣', '재고'], ['analysis', '▤', '불량 분석'], ['settings', '⚙', '설정·동기화']
 ];
 var CS_HIDE = { inbox: 1, inspect: 1, stock: 1, settings: 1 };
-var CS_ACT = { allCases: 1, resF: 1, resCsv: 1, go: 1, 'case': 1, closeDrawer: 1, closeModal: 1, inboxFilter: 1, inboxSel: 1, toggleOld: 1, toTop: 1, slkBig: 1, ship: 1, ret: 1, anModel: 1, searchStore: 1, reload: 1 };
+var CS_ACT = { allCases: 1, resF: 1, resCsv: 1, resOpen: 1, go: 1, 'case': 1, closeDrawer: 1, closeModal: 1, inboxFilter: 1, inboxSel: 1, toggleOld: 1, toTop: 1, slkBig: 1, ship: 1, ret: 1, anModel: 1, searchStore: 1, reload: 1 };
 var CS_IN = { q: 1, modelF: 1, anMonths: 1, resP: 1 };
 function csScrub_() {
   if (!CS()) return;
@@ -1488,7 +1488,7 @@ function vAnalysis() {
   };
   var split = function (kind) { return '<div style="display:grid;grid-template-columns:repeat(' + QM.length + ',minmax(0,1fr));gap:16px">' + QM.map(function (q) { return cell(q, kind); }).join('') + '</div>'; };
   h += '<div class="qkpis">' +
-    '<div class="qkpi"><div class="l">전체 납품 수량 <span class="muted small" style="font-weight:500">고객사 누적 · 모델별</span></div>' + split('ship') + '</div>' +
+    '<div class="qkpi"><div class="l">전체 납품 수량 <span class="muted small" style="font-weight:500">누적 · 모델별</span></div>' + split('ship') + '</div>' +
     '<div class="qkpi hot"><div class="l">실제 불량률 <span class="small" style="font-weight:500;opacity:.8">검사 확정 불량 ÷ 납품 · 누적 · 모델별</span></div>' + split('rate') + '</div></div>';
   var exSub = QM.length > 1
     ? QM.map(function (q) { return q.m + ' 실제 불량 <b style="color:var(--red)">' + pct(q.bp, q.tp) + '%</b>'; }).join(' · ')
@@ -1552,31 +1552,53 @@ function resList_() {
 }
 function vResults() {
   var all = resList_(), f = S.resF || 'all';
-  var cnt = function (v) { return all.filter(function (u) { return u.verdict === v; }).length; };
+  var grp = function (arr) { var o = {}, ord = []; arr.forEach(function (u) { var k = u.caseId || u.id; if (!o[k]) { o[k] = []; ord.push(k); } o[k].push(u); }); return ord.map(function (k) { return o[k]; }); };
+  var cnt = function (v) { return grp(all.filter(function (u) { return u.verdict === v; })).length; };
   var list = f === 'all' ? all : all.filter(function (u) { return u.verdict === f; });
-  var tabs = [['all', '전체', all.length]].concat(L.VERDICTS.map(function (v) { return [v, v, cnt(v)]; }))
+  var groups = grp(list).sort(function (a, b) { var da = a.map(resDate_).sort().pop() || '', db = b.map(resDate_).sort().pop() || ''; return db.localeCompare(da); });
+  var tabs = [['all', '전체', grp(all).length]].concat(L.VERDICTS.map(function (v) { return [v, v, cnt(v)]; }))
     .map(function (x) { return '<button class="' + (f === x[0] ? 'on' : '') + '" data-act="resF" data-v="' + esc(x[0]) + '">' + esc(x[1]) + '<span class="n">' + x[2] + '</span></button>'; }).join('');
   var per = [['30', '최근 30일'], ['m0', '이번 달'], ['m1', '지난 달'], ['all', '전체 기간']];
-  var vp = function (v) { return '<span class="pill ' + (v === '불량' ? 'p-red' : v === '정상' ? 'p-green' : 'p-ship') + '">' + esc(v) + '</span>'; };
-  var rows = list.slice(0, 500).map(function (u) {
-    var c = IDX.caseById[u.caseId] || {};
-    var sn = u.recvSn || u.origSn || '-';
-    return '<tr class="click" data-act="case" data-id="' + esc(c.id || '') + '"><td class="nowrap">' + (resDate_(u) ? esc(resDate_(u).slice(2).replace(/-/g, '.')) : '-') + '</td>' +
-      '<td><b>' + esc(c.store || u.store || '') + '</b>' + (c.inquiryNo ? '<div class="muted small">문의 ' + esc(inqNo(c.inquiryNo)) + '</div>' : '') + '</td>' +
-      '<td class="mono small">' + esc(sn) + (u.origSn && u.recvSn && u.origSn !== u.recvSn ? '<div class="muted">접수 ' + esc(u.origSn) + '</div>' : '') + '</td>' +
-      '<td>' + mtag(String(u.model || caseModel(c)).split('/')[0]) + '</td><td>' + vp(u.verdict) + '</td>' +
-      '<td class="small">' + esc(u.testSymptom || '-') + '</td><td class="small">' + esc(cz(u.cause) || '-') + '</td>' +
-      '<td class="nowrap">' + (u.capPct ? esc(u.capPct) + '%' : '-') + '</td><td class="small">' + esc(u.disposition || '-') + '</td>' +
-      '<td class="small" style="max-width:260px;white-space:pre-wrap">' + esc(String(u.opinion || '').slice(0, 160)) + '</td></tr>';
+  var vp = function (v, n) { return '<span class="pill ' + (v === '불량' ? 'p-red' : v === '정상' ? 'p-green' : 'p-ship') + '">' + esc(v) + (n ? ' ' + n : '') + '</span>'; };
+  var dd = function (d) { return d ? d.slice(2).replace(/-/g, '.') : '-'; };
+  var tally = function (us, fn) { var o = {}, ord = []; us.forEach(function (u) { var k = fn(u); if (!k) return; if (!o[k]) { o[k] = 0; ord.push(k); } o[k]++; }); return ord.map(function (k) { return [k, o[k]]; }); };
+  var sumTxt = function (t, n) { return t.length ? t.map(function (x) { return '<div style="white-space:nowrap">' + esc(x[0]) + (t.length > 1 || x[1] < n ? ' <span class="muted">×' + x[1] + '</span>' : '') + '</div>'; }).join('') : '<span class="muted">-</span>'; };
+  S.resOpen = S.resOpen || {};
+  var rows = groups.slice(0, 300).map(function (us) {
+    var c = IDX.caseById[us[0].caseId] || {}, id = c.id || us[0].id, open = !!S.resOpen[id];
+    var ds = us.map(resDate_).filter(String).sort(), d1 = ds[0], d2 = ds[ds.length - 1];
+    var vs = tally(us, function (u) { return u.verdict; });
+    var ops = tally(us, function (u) { return String(u.opinion || '').trim(); });
+    var h = '<tr class="click" data-act="resOpen" data-id="' + esc(id) + '"><td class="nowrap">' + (open ? '▾' : '▸') + ' ' + dd(d2) + (d1 && d1 !== d2 ? '<div class="muted small">' + dd(d1) + '~</div>' : '') + '</td>' +
+      '<td><b>' + esc(c.store || us[0].store || '') + '</b>' + (c.inquiryNo ? '<div class="muted small">문의 ' + esc(inqNo(c.inquiryNo)) + '</div>' : '') + '</td>' +
+      '<td>' + mtag(String(us[0].model || caseModel(c)).split('/')[0]) + '</td><td class="nowrap"><b>' + us.length + '</b>EA</td>' +
+      '<td>' + vs.map(function (x) { return vp(x[0], vs.length > 1 || us.length > 1 ? x[1] : 0); }).join(' ') + '</td>' +
+      '<td class="small">' + sumTxt(tally(us, function (u) { return u.testSymptom; }), us.length) + '</td>' +
+      '<td class="small">' + sumTxt(tally(us, function (u) { return cz(u.cause); }), us.length) + '</td>' +
+      '<td class="small">' + sumTxt(tally(us, function (u) { return u.disposition; }), us.length) + '</td>' +
+      '<td class="small" style="max-width:260px;white-space:pre-wrap">' + (ops.length === 1 ? esc(ops[0][0].length > 70 ? ops[0][0].slice(0, 70) + '…' : ops[0][0]) : ops.length ? '<span class="muted">의견 ' + ops.length + '가지 · 펼쳐서 보기</span>' : '') + '</td></tr>';
+    if (open) {
+      h += '<tr><td colspan="9" style="background:var(--bg2,#f7f8fa);padding:8px 14px">' +
+        (c.id ? '<div class="row" style="margin-bottom:6px"><span class="small muted">출고 ' + md(c.outDate) + ' · 회수 ' + md(c.recvDate) + '</span><span class="sp"></span><button class="btn sm" data-act="case" data-id="' + esc(c.id) + '">AS 건 열기</button></div>' : '') +
+        '<table class="t"><thead><tr><th>회수 S/N</th><th>판정</th><th>증상</th><th>원인</th><th>용량</th><th>처분</th><th>검사 의견</th></tr></thead><tbody>' +
+        us.map(function (u) {
+          return '<tr><td class="mono small">' + esc(u.recvSn || u.origSn || '-') + (u.origSn && u.recvSn && u.origSn !== u.recvSn ? '<div class="muted">접수 ' + esc(u.origSn) + '</div>' : '') + '</td><td>' + vp(u.verdict) + '</td>' +
+            '<td class="small">' + esc(u.testSymptom || '-') + '</td><td class="small">' + esc(cz(u.cause) || '-') + '</td><td class="nowrap">' + (u.capPct ? esc(u.capPct) + '%' : '-') + '</td>' +
+            '<td class="small">' + esc(u.disposition || '-') + '</td><td class="small" style="white-space:pre-wrap">' + esc(String(u.opinion || '').slice(0, 200)) + '</td></tr>';
+        }).join('') + '</tbody></table></td></tr>';
+    }
+    return h;
   }).join('');
+  var vsum = tally(list, function (u) { return u.verdict; });
   return '<div class="tabs">' + tabs + '</div>' +
     '<div class="tool"><select class="inp" id="resP">' + per.map(function (x) { return '<option value="' + x[0] + '"' + ((S.resP || '30') === x[0] ? ' selected' : '') + '>' + x[1] + '</option>'; }).join('') + '</select>' +
     '<select class="inp" id="modelF"><option value="all">전체 모델</option>' + prodOpts(S.model) + '</select>' +
     '<input class="inp" id="q" placeholder="매장·S/N·문의번호 검색" value="' + esc(S.q) + '" style="width:220px"><span class="sp"></span>' +
+    '<span class="small muted">' + groups.length + '건 · ' + list.length + 'EA' + (vsum.length ? ' (' + vsum.map(function (x) { return x[0] + ' ' + x[1]; }).join(' · ') + ')' : '') + '</span>' +
     '<button class="btn" data-act="resCsv">엑셀(CSV) 받기</button></div>' +
-    '<div class="card"><div class="tw"><table class="t"><thead><tr><th>검사일</th><th>매장</th><th>회수 S/N</th><th>모델</th><th>판정</th><th>증상</th><th>원인</th><th>용량</th><th>처분</th><th>검사 의견</th></tr></thead><tbody>' +
-    (rows || '<tr><td colspan="10"><div class="empty">해당 기간에 검사 끝난 회수품이 없습니다.</div></td></tr>') + '</tbody></table></div></div>' +
-    (list.length > 500 ? '<div class="note" style="margin-top:10px">최근 500개만 보여요. 전체는 CSV로 받아 주세요.</div>' : '');
+    '<div class="card"><div class="tw"><table class="t"><thead><tr><th>검사일</th><th>매장</th><th>모델</th><th>수량</th><th>판정</th><th>증상</th><th>원인</th><th>처분</th><th>검사 의견</th></tr></thead><tbody>' +
+    (rows || '<tr><td colspan="9"><div class="empty">해당 기간에 검사 끝난 회수품이 없습니다.</div></td></tr>') + '</tbody></table></div></div>' +
+    '<div class="note" style="margin-top:10px">AS 건(인입) 단위로 묶어서 보여줘요. 줄을 누르면 S/N별 결과가 펼쳐져요.' + (groups.length > 300 ? ' 최근 300건만 보여요. 전체는 CSV로 받아 주세요.' : '') + '</div>';
 }
 function resCsv_() {
   var f = S.resF || 'all', list = resList_().filter(function (u) { return f === 'all' || u.verdict === f; });
@@ -2237,6 +2259,7 @@ var ACT = {
   allCases: function () { S.allCases = !S.allCases; render(); },
   resF: function (d) { S.resF = d.v; render(); },
   resCsv: function () { resCsv_(); },
+  resOpen: function (d) { S.resOpen = S.resOpen || {}; S.resOpen[d.id] = !S.resOpen[d.id]; render(); },
   csPublic: function (d, b) { var on = !S.data.meta.csPublic; run('saveSetting', { key: 'CS_PUBLIC', value: on ? 'Y' : 'N' }, on ? '고객사 링크를 주소만으로 열 수 있게 했습니다.' : '고객사 링크에 다시 접속 키가 필요합니다.', b); },
   saveTrackFrom: function (d, b) { run('saveSetting', { key: 'TRACK_FROM', value: $('#trackFromIn').value }, '추적 기준일을 저장했습니다.', b); },
   slkBig: function (d) { slackBig(d.id, +d.k); },
