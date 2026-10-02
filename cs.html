@@ -437,6 +437,7 @@ function hm(s) { s = String(s || ''); if (/^\d{4}-\d{2}-\d{2}T/.test(s)) return 
 function md(s) { s = d10(s); return s ? s.slice(5).replace('-', '.') : ''; }
 function ymd(s) { s = d10(s); return s ? s.slice(2).replace(/-/g, '.') : ''; }
 function days(a, b) { if (!a) return null; var x = new Date(d10(a) + 'T00:00:00'), y = new Date(d10(b || today()) + 'T00:00:00'); return Math.round((y - x) / 86400000); }
+function cz(v) { return v === 'NTF(재현 안 됨)' ? '재현 안 됨(정상)' : v; }
 function jparse(s, d) { try { return JSON.parse(s || ''); } catch (e) { return d; } }
 function trk(s) { return String(s || '').split(/\n/).filter(String); }
 var PROD_DEFAULT = [{ id: 'P20BOTA25', label: '기존 P20BOTA25', short: '기존', kind: '본체', snMode: 'sn', prefix: 'P20BOTA25', snLen: 16, numDigits: 7, torder: true, active: true },
@@ -902,7 +903,7 @@ function vHomeCs() {
     (recent.length ? '<div class="tw"><table class="t"><thead><tr><th>검사일</th><th>매장</th><th>회수 S/N</th><th>판정</th><th>원인</th></tr></thead><tbody>' + recent.map(function (u) {
       var c = IDX.caseById[u.caseId] || {};
       return '<tr class="click" data-act="case" data-id="' + esc(c.id || '') + '"><td class="nowrap">' + esc(resDate_(u).slice(2).replace(/-/g, '.')) + '</td><td><b>' + esc(c.store || u.store || '') + '</b></td>' +
-        '<td class="mono small">' + esc(u.recvSn || u.origSn || '-') + '</td><td>' + vp(u.verdict) + '</td><td class="small">' + esc(u.cause || u.testSymptom || '-') + '</td></tr>';
+        '<td class="mono small">' + esc(u.recvSn || u.origSn || '-') + '</td><td>' + vp(u.verdict) + '</td><td class="small">' + esc(cz(u.cause) || u.testSymptom || '-') + '</td></tr>';
     }).join('') + '</tbody></table></div>' : '<div class="empty">아직 검사 결과가 없습니다.</div>') + '</div>' +
     '<div class="card"><div class="hd"><h3>회수 실패 · 재접수</h3><span class="muted small">' + fail.length + '건</span></div>' +
     (fail.length ? fail.slice(0, 10).map(function (c) {
@@ -1289,7 +1290,7 @@ function caseDrawer(c) {
       return '<tr><td><input type="checkbox" class="uSel" value="' + esc(u.id) + '"></td><td class="mono">' + esc(u.origSn || '-') + '</td><td class="mono">' + esc(u.outSn || '-') + '</td>' +
         '<td class="mono">' + esc(u.recvSn || '-') + (u.flags ? '<div class="small" style="color:var(--amber)">' + esc(u.flags) + '</div>' : '') + '</td>' +
         '<td>' + (u.verdict ? '<span class="pill ' + (u.verdict === '불량' ? 'p-red' : u.verdict === '정상' ? 'p-green' : 'p-violet') + '">' + esc(u.verdict) + '</span>' : '<span class="muted">-</span>') + (u.lot ? ' <span class="muted small">' + esc(u.lot) + '</span>' : '') + '</td>' +
-        '<td class="small">' + esc(u.cause || '') + '</td><td class="small">' + (u.disposition ? '<b>' + esc(u.disposition) + '</b>' : '<span class="muted">-</span>') + '</td>' +
+        '<td class="small">' + esc(cz(u.cause) || '') + '</td><td class="small">' + (u.disposition ? '<b>' + esc(u.disposition) + '</b>' : '<span class="muted">-</span>') + '</td>' +
         '<td><button class="btn sm" data-act="inspectUnit" data-id="' + esc(u.id) + '">검사</button></td></tr>';
     }).join('') + '</tbody></table></div>' +
     '<div class="row" style="margin-top:8px"><span class="small muted">선택한 유닛 처분:</span><select class="inp" id="dispSel">' + L.DISPOSITIONS.map(function (d) { return '<option>' + esc(d) + '</option>'; }).join('') + '<option value="">(처분 취소)</option></select><button class="btn sm" data-act="dispose">적용</button></div></div>';
@@ -1373,7 +1374,7 @@ function judgePanel_(q) {
 }
 function inspectForm(u) {
   var c = IDX.caseById[u.caseId] || {};
-  var chips = function (name, arr, cur, cls) { return '<div class="chips" data-name="' + name + '">' + arr.map(function (v) { return '<span class="chip ' + (cls ? cls(v) : '') + (v === cur ? ' on' : '') + '" data-act="chip" data-v="' + esc(v) + '">' + esc(v) + '</span>'; }).join('') + '</div>'; };
+  var chips = function (name, arr, cur, cls) { return '<div class="chips" data-name="' + name + '">' + arr.map(function (v) { return '<span class="chip ' + (cls ? cls(v) : '') + (v === cur ? ' on' : '') + '" data-act="chip" data-v="' + esc(v) + '">' + esc(cz(v)) + '</span>'; }).join('') + '</div>'; };
   var vcls = function (v) { return v === '불량' ? 'r' : v === '정상' ? 'g' : 'a'; };
   var sibs = unitsOf(c);
   var inbox = c.inboxId ? IDX.inboxById[c.inboxId] : null;
@@ -1396,7 +1397,7 @@ function inspectForm(u) {
     OPINION_TPL.map(function (t, i) { return '<span class="chip" data-act="tpl" data-i="' + i + '" title="' + esc(t[0]) + '">' + esc(t[0].slice(0, 22)) + '…</span>'; }).join('') + '</div>' +
     '<textarea class="inp" id="in_op" rows="3">' + esc(u.opinion || '') + '</textarea></div>' +
     '<div class="fld" style="margin-top:12px"><span>처분</span>' + chips('disposition', L.DISPOSITIONS, u.disposition) + '</div>' +
-    '<div class="row" style="margin-top:16px"><button class="btn pri" data-act="saveInspect">저장 후 다음 ▶</button><span class="muted small">원인은 판정에 따라 자동 추천됩니다 (정상 → NTF, 용량 80% 미만 → 셀 용량 저하)</span></div></div></div>';
+    '<div class="row" style="margin-top:16px"><button class="btn pri" data-act="saveInspect">저장 후 다음 ▶</button><span class="muted small">원인은 판정에 따라 자동 추천됩니다 (정상 → 재현 안 됨, 용량 80% 미만 → 셀 용량 저하)</span></div></div></div>';
 }
 function chipVal(name) { var el = $('#inspCard .chips[data-name="' + name + '"] .chip.on'); return el ? el.getAttribute('data-v') : ''; }
 function setChip(name, v) { $$('#inspCard .chips[data-name="' + name + '"] .chip').forEach(function (x) { x.classList.toggle('on', x.getAttribute('data-v') === v); }); }
@@ -1472,7 +1473,7 @@ function vAnalysis() {
   h += '<div class="kpis" style="grid-template-columns:repeat(' + (CS() ? 4 : 5) + ',minmax(0,1fr))">' +
     kp('교환 출고', cases.length + '<small>건</small>' + (QM.length > 1 ? ' <small>' + qty + 'EA</small>' : ''), exSub) +
     kp('회수 검사', tested.length + '<small>EA</small>', '불량 ' + bad.length + ' · 정상 ' + ok.length) +
-    kp('NTF(정상) 비율', pct(ok.length, tested.length) + '<small>%</small>', '교환했지만 재현 안 됨') +
+    kp('정상 비율', pct(ok.length, tested.length) + '<small>%</small>', '교환했지만 검사해 보니 정상') +
     (CS() ? '' : kp('방어율', pct(defended, inb.length) + '<small>%</small>', 'Slack 인입 ' + inb.length + '건 중 ' + defended)) + kp('회수 리드타임', (med === null ? '-' : med) + '<small>일</small>', '출고→회수 입고 중앙값') + '</div>';
   var ms = months || monthsBack(12);
   var byM = function (arr, keyFn, filt) { var o = {}; arr.forEach(function (x) { if (filt && !filt(x)) return; var k = String(keyFn(x) || '').slice(0, 7); o[k] = (o[k] || 0) + 1; }); return o; };
@@ -1483,7 +1484,6 @@ function vAnalysis() {
   var vSeries = [['불량', '#f04452'], ['정상', '#1fb86c'], ['외력/사용자 과실', '#ffa41b']].map(function (v) { return { name: v[0], color: v[1], vals: byM(units, function (u) { return u.testDate; }, function (u) { return u.verdict === v[0]; }) }; });
   h += '<div class="two" style="margin-bottom:14px"><div class="card"><div class="hd"><h3>월별 교환 출고 수량</h3></div><div class="bd">' + vcols(ms, exSeries) + '</div></div>' +
     '<div class="card"><div class="hd"><h3>월별 회수 검사 판정</h3></div><div class="bd">' + vcols(ms, vSeries) + '</div></div></div>';
-  if (!CS()) h += csCostCard_(ms, since, mOk);
   var cc = {}; bad.forEach(function (u) { var k = u.cause || '미기록'; cc[k] = (cc[k] || 0) + 1; });
   var cItems = Object.keys(cc).map(function (k) { return [k, cc[k]]; }).sort(function (a, b) { return b[1] - a[1]; });
   var cum = 0;
@@ -1491,7 +1491,7 @@ function vAnalysis() {
   var sc = {}; tested.forEach(function (u) { var k = u.testSymptom || '미기록'; sc[k] = sc[k] || [0, 0]; sc[k][u.verdict === '불량' ? 0 : 1]++; });
   var sItems = Object.keys(sc).map(function (k) { return [k, sc[k][0] + sc[k][1], null, sc[k]]; }).sort(function (a, b) { return b[1] - a[1]; });
   var rc = {}; cases.forEach(function (c) { var k = c.reasonCode || '미분류'; rc[k] = (rc[k] || 0) + 1; });
-  h += '<div class="three" style="margin-bottom:14px"><div class="card"><div class="hd"><h3>불량 원인 Pareto</h3><span class="muted small">불량 ' + bad.length + 'EA · 누적%</span></div><div class="bd">' + (cItems.length ? pareto : '<div class="empty">데이터 없음</div>') + '</div></div>' +
+  h += '<div class="three" style="margin-bottom:14px"><div class="card"><div class="hd"><h3>불량 원인 순위</h3><span class="muted small">불량 ' + bad.length + 'EA · 많은 순 · 오른쪽은 누적%</span></div><div class="bd">' + (cItems.length ? pareto : '<div class="empty">데이터 없음</div>') + '</div></div>' +
     '<div class="card"><div class="hd"><h3>검사 증상별 불량/정상</h3></div><div class="bd">' + (sItems.length ? hbars(sItems, '#7b61ff', 0, function (x) { return '<span style="color:var(--red)">' + x[3][0] + '</span>/<span style="color:var(--green)">' + x[3][1] + '</span>'; }) : '<div class="empty">데이터 없음</div>') + '</div></div>' +
     '<div class="card"><div class="hd"><h3>교체사유(인입 증상)</h3></div><div class="bd">' + hbars(Object.keys(rc).map(function (k) { return [k, rc[k]]; }).sort(function (a, b) { return b[1] - a[1]; }), '#3182f6') + '</div></div></div>';
   var lc = {}; tested.forEach(function (u) { var k = lotName(u) || '미기록'; lc[k] = lc[k] || [0, 0]; lc[k][0]++; if (u.verdict === '불량') lc[k][1]++; });
@@ -1500,21 +1500,11 @@ function vAnalysis() {
   h += '<div class="three"><div class="card"><div class="hd"><h3>양산 차수별 불량률</h3></div><div class="bd">' + hbars(Object.keys(lc).sort().map(function (k) { return [k, lc[k][1], null, lc[k]]; }), '#ffa41b', 0, function (x) { return pct(x[3][1], x[3][0]) + '% <span class="muted">(' + x[3][1] + '/' + x[3][0] + ')</span>'; }) + '</div></div>' +
     '<div class="card"><div class="hd"><h3>반복 AS 매장</h3><span class="muted small">2건 이상</span></div>' + (rep.length ? '<div class="tw"><table class="t"><thead><tr><th>매장</th><th>건</th><th>EA</th><th>불량</th><th>정상</th></tr></thead><tbody>' +
       rep.map(function (x) { return '<tr class="click" data-act="searchStore" data-v="' + esc(x.name) + '"><td>' + esc(x.name) + '</td><td>' + x.n + '</td><td>' + x.q + '</td><td style="color:var(--red)">' + x.bad + '</td><td style="color:var(--green)">' + x.ok + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<div class="empty">없음</div>') + '</div>' +
-    (function () {
-      var vOrd = { '불량': 0, '외력/사용자 과실': 1, '정상': 2 };
-      var rs = reAs.slice().sort(function (a, b) { return (a.verdict in vOrd ? vOrd[a.verdict] : 3) - (b.verdict in vOrd ? vOrd[b.verdict] : 3); });
-      var nB = reAs.filter(function (u) { return u.verdict === '불량'; }).length, nO = reAs.filter(function (u) { return u.verdict === '정상'; }).length, nW = reAs.filter(function (u) { return u.verdict === '외력/사용자 과실'; }).length;
-      var vp = function (v) { return !v ? '<span class="pill p-gray">검수 전</span>' : '<span class="pill ' + (v === '불량' ? 'p-red' : v === '정상' ? 'p-green' : 'p-ship') + '">' + esc(v) + '</span>'; };
-      var res = function (u) { var t = u.cause || u.testSymptom || ''; return t ? esc(t) : '<span class="muted">-</span>'; };
-      return '<div class="card"><div class="hd"><h3>재AS 교환품</h3><span class="muted small" style="white-space:nowrap">' + reAs.length + 'EA 검사 · <span style="color:var(--red)">불량 ' + nB + '</span> · 정상 ' + nO + (nW ? ' · 외력 ' + nW : '') + '</span></div>' +
-        (reAs.length ? '<div class="tw"><table class="t"><thead><tr><th>S/N</th><th>판정</th><th>검수 결과</th></tr></thead><tbody>' +
-          rs.slice(0, 30).map(function (u) { var c1 = IDX.caseById[u.caseId] || {}; return '<tr class="click" data-act="case" data-id="' + esc(c1.id) + '"><td class="mono small">' + esc(u.recvSn || u.origSn) + '</td><td>' + vp(u.verdict) + '</td><td class="small">' + res(u) + '</td></tr>'; }).join('') +
-          '</tbody></table></div>' : '<div class="empty">없음</div>') + '</div>';
-    })() + '</div>';
+    defenseCard_(ms, since, mOk) + '</div>';
   if (!CS()) h += '<div class="note" style="margin-top:14px">양산 차수별 AS 접수율은 <a href="#" data-act="goDeliv" style="color:var(--blue)">재고 › 납품 재고</a>에서 볼 수 있어요.</div>';
   var top = cItems[0];
   var notes = [];
-  if (!CS() && tested.length >= 10) notes.push('NTF 비율 ' + pct(ok.length, tested.length) + '% — 교환 후 재현되지 않는 비중입니다. 인입 단계에서 케이블 교차·직렬 충전·잔량 0% 재충전 확인 여부를 방어 기준으로 삼으면 교환 수량을 줄일 수 있습니다.');
+  if (!CS() && tested.length >= 10) notes.push('정상 비율 ' + pct(ok.length, tested.length) + '% — 교환 후 재현되지 않는 비중입니다. 인입 단계에서 케이블 교차·직렬 충전·잔량 0% 재충전 확인 여부를 방어 기준으로 삼으면 교환 수량을 줄일 수 있습니다.');
   if (top && top[0] !== '미기록') notes.push('불량 1순위 원인은 "' + top[0] + '" (' + pct(top[1], bad.length) + '%) 입니다.' + (/IC 소손/.test(top[0]) ? ' 입력단 과전압·서지 내성(TVS·입력 필터) 개선 여부를 제조사와 협의할 근거가 됩니다. 반복 매장의 충전 환경(멀티탭·어댑터)도 함께 점검해 주세요.' : ''));
   if (reAs.length) notes.push('우리 교환품이 다시 불량으로 돌아온 건이 ' + reAs.length + 'EA 있습니다. 교환품 출고 전 검사 기준(용량·충방전) 확인이 필요합니다.');
   if (notes.length && !CS()) h += '<div class="note" style="margin-top:14px"><b>분석 코멘트</b><ul style="margin:6px 0 0;padding-left:18px">' + notes.map(function (n) { return '<li>' + esc(n) + '</li>'; }).join('') + '</ul></div>';
@@ -1552,7 +1542,7 @@ function vResults() {
       '<td><b>' + esc(c.store || u.store || '') + '</b>' + (c.inquiryNo ? '<div class="muted small">문의 ' + esc(inqNo(c.inquiryNo)) + '</div>' : '') + '</td>' +
       '<td class="mono small">' + esc(sn) + (u.origSn && u.recvSn && u.origSn !== u.recvSn ? '<div class="muted">접수 ' + esc(u.origSn) + '</div>' : '') + '</td>' +
       '<td>' + mtag(String(u.model || caseModel(c)).split('/')[0]) + '</td><td>' + vp(u.verdict) + '</td>' +
-      '<td class="small">' + esc(u.testSymptom || '-') + '</td><td class="small">' + esc(u.cause || '-') + '</td>' +
+      '<td class="small">' + esc(u.testSymptom || '-') + '</td><td class="small">' + esc(cz(u.cause) || '-') + '</td>' +
       '<td class="nowrap">' + (u.capPct ? esc(u.capPct) + '%' : '-') + '</td><td class="small">' + esc(u.disposition || '-') + '</td>' +
       '<td class="small" style="max-width:260px;white-space:pre-wrap">' + esc(String(u.opinion || '').slice(0, 160)) + '</td></tr>';
   }).join('');
@@ -1570,7 +1560,7 @@ function resCsv_() {
   var q = function (v) { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
   var lines = [['검사일', '매장', '문의번호', '출고일', '접수 S/N', '회수 S/N', '모델', '판정', '증상', '원인', '용량(%)', '처분', '검사 의견'].join(',')].concat(list.map(function (u) {
     var c = IDX.caseById[u.caseId] || {};
-    return [resDate_(u), c.store || u.store, c.inquiryNo, c.outDate, u.origSn, u.recvSn, String(u.model || caseModel(c)).split('/')[0], u.verdict, u.testSymptom, u.cause, u.capPct, u.disposition, u.opinion].map(q).join(',');
+    return [resDate_(u), c.store || u.store, c.inquiryNo, c.outDate, u.origSn, u.recvSn, String(u.model || caseModel(c)).split('/')[0], u.verdict, u.testSymptom, cz(u.cause), u.capPct, u.disposition, u.opinion].map(q).join(',');
   }));
   var blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
   var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = '검사결과_' + today().replace(/-/g, '') + '.csv';
@@ -1578,41 +1568,31 @@ function resCsv_() {
   toast(list.length + '개를 내려받았습니다.');
 }
 
-function csCostCard_(ms, since, mOk) {
-  var cost = +(S.data.meta.ntfCost || 0);
-  var fmt = function (n) { return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ','); };
-  var won = function (ea) { return cost ? fmt(ea * cost) + '원' : '-'; };
+function defenseCard_(ms, since, mOk) {
+  var cs = CS();
   var pct = function (a, b) { return b ? Math.round(a / b * 1000) / 10 : 0; };
   var eaOf = function (i) { return jparse(i.sns, []).length || +i.reqQty || 1; };
   var inbM = function (i) { var c = i.caseId && IDX.caseById[i.caseId]; return mOk(i.model || (c && c.model)); };
-  var dec = S.data.inbox.filter(function (i) { return (i.status === '확정' || i.status === '방어') && d10(i.postedAt) >= since && inbM(i); });
+  var dec = cs ? [] : S.data.inbox.filter(function (i) { return (i.status === '확정' || i.status === '방어') && d10(i.postedAt) >= since && inbM(i); });
   var def = dec.filter(function (i) { return i.status === '방어'; });
+  var defEa = def.reduce(function (n, i) { return n + eaOf(i); }, 0);
   var tu = S.data.units.filter(function (u) { var c = IDX.caseById[u.caseId] || {}; return u.verdict && d10(u.testDate) >= since && mOk(u.model || c.model); });
-  var by = function (v) { return tu.filter(function (u) { return u.verdict === v; }).length; };
-  var nB = by('불량'), nN = by('정상'), nW = by('외력/사용자 과실'), cust = nN + nW;
-  var defEa = def.reduce(function (s, i) { return s + eaOf(i); }, 0), shipEa = dec.filter(function (i) { return i.status === '확정'; }).reduce(function (s, i) { return s + eaOf(i); }, 0);
-  var kp = function (l, v, d, col) { return '<div class="kpi" style="cursor:default"><div class="l">' + l + '</div><div class="v"' + (col ? ' style="color:' + col + '"' : '') + '>' + v + '</div><div class="d">' + d + '</div></div>'; };
-  var h = '<div class="card" style="margin-bottom:14px"><div class="hd"><h3>CS 방어 · 고객 부담 비용</h3><span class="muted small">내부 전용 — 고객사 화면엔 안 보여요</span></div><div class="bd">' +
-    '<div class="kpis" style="grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:12px">' +
-    kp('CS 방어율', pct(def.length, dec.length) + '<small>%</small>', 'Slack 인입 ' + dec.length + '건 중 방어 ' + def.length + '건 (' + defEa + 'EA)') +
-    kp('방어로 아낀 교환', defEa + '<small>EA</small>', cost ? '양품화 비용 기준 ' + won(defEa) + ' 절감' : '확정 출고 ' + shipEa + 'EA 대비') +
-    kp('고객 부담 대상', cust + '<small>EA</small>', '검사 ' + tu.length + 'EA 중 정상 ' + nN + ' · 외력/과실 ' + nW + ' (' + pct(cust, tu.length) + '%)', '#ff7a45') +
-    kp('양품화 비용 (청구 예상)', cost ? won(cust) : '-', cost ? '정상·외력 ' + cust + 'EA × ' + fmt(cost) + '원' : '아래에 1EA당 단가를 넣으면 계산돼요', '#f04452') + '</div>';
-  var rows = ms.map(function (m) {
-    var d1 = dec.filter(function (i) { return d10(i.postedAt).slice(0, 7) === m; }), df = d1.filter(function (i) { return i.status === '방어'; });
-    var t1 = tu.filter(function (u) { return d10(u.testDate).slice(0, 7) === m; });
-    var b = t1.filter(function (u) { return u.verdict === '불량'; }).length, n = t1.filter(function (u) { return u.verdict === '정상'; }).length, w = t1.filter(function (u) { return u.verdict === '외력/사용자 과실'; }).length;
-    if (!d1.length && !t1.length) return '';
-    return '<tr><td class="nowrap">' + m.slice(2).replace('-', '.') + '</td><td>' + d1.length + '</td><td>' + df.length + '</td><td>' + (d1.length ? pct(df.length, d1.length) + '%' : '-') + '</td>' +
-      '<td>' + t1.length + '</td><td style="color:var(--red)">' + b + '</td><td style="color:var(--green)">' + n + '</td><td>' + w + '</td><td><b>' + (n + w) + '</b></td><td class="nowrap">' + won(n + w) + '</td></tr>';
-  }).filter(String).reverse().join('');
-  h += '<div class="tw"><table class="t"><thead><tr><th>월</th><th>인입 결정</th><th>방어</th><th>방어율</th><th>검사 EA</th><th>불량</th><th>정상</th><th>외력/과실</th><th>고객 부담 EA</th><th>양품화 비용</th></tr></thead><tbody>' +
-    (rows || '<tr><td colspan="10"><div class="empty">데이터 없음</div></td></tr>') + '</tbody></table></div>' +
-    '<div class="row" style="margin-top:12px"><span class="small"><b>양품화 단가</b> (1EA당 · 검사·재포장·왕복 물류 포함)</span>' +
-    (S.data.meta.admin ? '<input class="inp mono" id="ntfCostIn" value="' + esc(S.data.meta.ntfCost || '') + '" placeholder="예: 8000" style="width:120px"><span class="small">원</span><button class="btn sm" data-act="saveNtfCost">저장</button>'
-      : '<b>' + (cost ? fmt(cost) + '원' : '미입력') + '</b><span class="small muted">(관리자 키로 변경)</span>') +
-    '<span class="small muted">정상(NTF)·외력/사용자 과실 판정은 불량이 아닌데 교환된 수량이라, 양품화 비용을 고객사 부담으로 정산하는 근거가 됩니다. 방어율이 낮을수록 이 수량이 늘어납니다.</span></div></div></div>';
-  return h;
+  var non = function (arr) { return arr.filter(function (u) { return u.verdict === '정상' || u.verdict === '외력/사용자 과실'; }); };
+  var nN = tu.filter(function (u) { return u.verdict === '정상'; }).length, nW = tu.filter(function (u) { return u.verdict === '외력/사용자 과실'; }).length;
+  var stat = function (l, v, d, col) { return '<div style="flex:1;min-width:120px"><div class="small muted">' + l + '</div><div style="font-size:26px;font-weight:800;line-height:1.2' + (col ? ';color:' + col : '') + '">' + v + '</div><div class="small muted">' + d + '</div></div>'; };
+  var rows = ms.slice().reverse().map(function (m) {
+    var t1 = tu.filter(function (u) { return d10(u.testDate).slice(0, 7) === m; }), n1 = non(t1).length;
+    var d1 = dec.filter(function (i) { return d10(i.postedAt).slice(0, 7) === m; }), f1 = d1.filter(function (i) { return i.status === '방어'; }).length;
+    if (!t1.length && !d1.length) return '';
+    return '<tr><td class="nowrap">' + m.slice(2).replace('-', '.') + '</td>' + (cs ? '' : '<td>' + (d1.length ? pct(f1, d1.length) + '%' : '-') + '</td>') +
+      '<td>' + t1.length + '</td><td><b style="color:#ff7a45">' + n1 + '</b> <span class="muted small">' + pct(n1, t1.length) + '%</span></td></tr>';
+  }).filter(String).slice(0, 6).join('');
+  return '<div class="card"><div class="hd"><h3>' + (cs ? 'AS 비대상 교환' : 'CS 방어 · AS 비대상 교환') + '</h3></div><div class="bd">' +
+    '<div class="row" style="gap:16px;align-items:flex-start;margin-bottom:10px">' +
+    (cs ? '' : stat('CS 방어율', pct(def.length, dec.length) + '<small style="font-size:14px">%</small>', '인입 ' + dec.length + '건 중 방어 ' + def.length + '건 (' + defEa + 'EA)')) +
+    stat('AS 비대상 교환', (nN + nW) + '<small style="font-size:14px">EA</small>', '검사 ' + tu.length + 'EA 중 ' + pct(nN + nW, tu.length) + '% · 정상 ' + nN + (nW ? ' · 외력/과실 ' + nW : ''), '#ff7a45') + '</div>' +
+    (rows ? '<div class="tw"><table class="t"><thead><tr><th>월</th>' + (cs ? '' : '<th>방어율</th>') + '<th>검사</th><th>비대상</th></tr></thead><tbody>' + rows + '</tbody></table></div>' : '') +
+    '<div class="small muted" style="margin-top:8px">검사 결과 불량이 아닌데(정상·외력/사용자 과실) 교환출고된 수량이에요. 약정에 따라 이 교환재고는 티오더 부담으로 정산합니다.' + (cs ? '' : ' 방어가 안 되고 그대로 출고될수록 늘어나요.') + '</div></div></div>';
 }
 
 function lotNextName() {
@@ -2232,7 +2212,6 @@ var ACT = {
   allCases: function () { S.allCases = !S.allCases; render(); },
   resF: function (d) { S.resF = d.v; render(); },
   resCsv: function () { resCsv_(); },
-  saveNtfCost: function (d, b) { run('saveSetting', { key: 'NTF_COST', value: $('#ntfCostIn').value }, '양품화 단가를 저장했습니다.', b); },
   saveTrackFrom: function (d, b) { run('saveSetting', { key: 'TRACK_FROM', value: $('#trackFromIn').value }, '추적 기준일을 저장했습니다.', b); },
   slkBig: function (d) { slackBig(d.id, +d.k); },
   scanClear: function () { S.scan = []; render(); },
