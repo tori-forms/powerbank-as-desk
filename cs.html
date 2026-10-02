@@ -1493,7 +1493,7 @@ function vAnalysis() {
   h += '<div class="kpis" style="grid-template-columns:repeat(' + (CS() ? 4 : 5) + ',minmax(0,1fr))">' +
     kp('교환 출고', cases.length + '<small>건</small>' + (QM.length > 1 ? ' <small>' + qty + 'EA</small>' : ''), exSub) +
     kp('회수 검사', tested.length + '<small>EA</small>', '불량 ' + bad.length + ' · 정상 ' + ok.length) +
-    kp('정상 비율', pct(ok.length, tested.length) + '<small>%</small>', '교환했지만 검사해 보니 정상') +
+    kp('정상 비율', pct(ok.length, tested.length) + '<small>%</small>', '제품 문제 발견되지 않음') +
     kp('CS 방어율', pct(defended, inb.length) + '<small>%</small>', '인입 ' + inb.length + '건 중 출고 ' + (inb.length - defended) + '건') + (CS() ? '' : kp('회수 리드타임', (med === null ? '-' : med) + '<small>일</small>', '출고→회수 입고 중앙값')) + '</div>';
   var ms = months || monthsBack(12);
   var byM = function (arr, keyFn, filt) { var o = {}; arr.forEach(function (x) { if (filt && !filt(x)) return; var k = String(keyFn(x) || '').slice(0, 7); o[k] = (o[k] || 0) + 1; }); return o; };
