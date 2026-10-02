@@ -762,7 +762,8 @@ function scopeBar(hidden) {
   if (!hidden && !S.allCases) return '';
   return '<div class="oldtog">' + (S.allCases
     ? '기준일(' + md(trackFrom()) + ') 이전 건까지 모두 보는 중<button data-act="allCases">기준일 이후만 보기</button>'
-    : '봇과 같은 기준으로 <b>' + md(trackFrom()) + ' 이후 출고분</b>만 보여줘요 · 이전 ' + hidden + '건 숨김<button data-act="allCases">이전 건도 보기</button>') + '</div>';
+    : CS() ? '<b>' + md(trackFrom()) + ' 이후 출고분</b>부터<button data-act="allCases">이전 건도 보기</button>'
+      : '봇과 같은 기준으로 <b>' + md(trackFrom()) + ' 이후 출고분</b>만 보여줘요 · 이전 ' + hidden + '건 숨김<button data-act="allCases">이전 건도 보기</button>') + '</div>';
 }
 var BUCKET = {
   ship_wait: ['출고 대기', 'p-ship'], shipping: ['배송 중', 'p-blue'], ret_need: ['회수 필요', 'p-retreq'],
