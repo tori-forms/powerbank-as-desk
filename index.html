@@ -482,14 +482,14 @@ function cjLink(no) { return '<a class="mono" target="_blank" href="https://trac
 var EXT = !(window.google && google.script && google.script.run) && !window.__devApi;
 function call(action, payload) {
   if (DEMO_MODE) return demoCall_(action, payload);
-  if (EXT && !ls(KEY_NAME)) { cacheClear_(); gate(); return Promise.reject(new Error('접속 키가 필요합니다.')); }
-  var body = { action: action, payload: payload || {}, actor: me() };
+  if (EXT && !ls(KEY_NAME) && window.AS_PAGE !== 'cs') { cacheClear_(); gate(); return Promise.reject(new Error('접속 키가 필요합니다.')); }
+  var body = { action: action, payload: payload || {}, actor: me(), page: window.AS_PAGE || '' };
   if (action !== 'bootstrap') body.rid = Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
   return new Promise(function (res, rej) {
     var ok = function (s) {
       var r = typeof s === 'string' ? JSON.parse(s) : s;
       if (r.ok) return res(r.data);
-      if (r.needKey) { var hadKey = !!ls(KEY_NAME); try { ls(KEY_NAME, ''); } catch (e) { } if (!hadKey) { cacheClear_(); gate(); return rej(new Error('접속 키가 필요합니다.')); } cacheClear_().then(function () { location.reload(); }, function () { location.reload(); }); return; }
+      if (r.needKey) { var oldKey = ls(KEY_NAME) || '', hadKey = !!oldKey; try { ls(KEY_NAME, ''); } catch (e) { } if (!hadKey) { cacheClear_(); gate(); return rej(new Error('접속 키가 필요합니다.')); } cacheClear_().then(function () { location.reload(); }, function () { location.reload(); }); return; }
       if (r.needAdmin) { adminPrompt_(); return rej(new Error('관리자 전용 기능입니다. 관리자 키를 넣은 뒤 다시 눌러 주세요.')); }
       rej(new Error(r.error));
     };
@@ -528,6 +528,8 @@ function jsonp_(url, body) {
     document.body.appendChild(sc);
   });
 }
+function slowHint_() { setTimeout(function () { var l = $('#view .loading'); if (l && !/서버/.test(l.textContent)) l.innerHTML += '<div class="small muted" style="margin-top:8px">서버를 깨우는 중이에요. 처음 접속하면 20초 정도 걸릴 수 있어요.</div>'; }, 6000); }
+slowHint_();
 var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMyeFkL41zG9ZjxB7TIN9EH9cyAdGBUiYdulCEtWYOk-kui_BJB3nt/exec';
 (function () {
   try {
@@ -649,7 +651,7 @@ function useData_(d) { S.data = d; L = d.meta.lists; buildIndex(); render(); }
 function load(silent) {
   if (GATED) return Promise.resolve();
   var first = !S.data;
-  if (!silent && $('#view')) $('#view').innerHTML = '<div class="loading"><span class="spin"></span> 불러오는 중…</div>';
+  if (!silent && $('#view')) { $('#view').innerHTML = '<div class="loading"><span class="spin"></span> 불러오는 중…</div>'; slowHint_(); }
   if (first && DEMO_MODE) cacheClear_();
   if (first && !DEMO_MODE) cacheGet_().then(function (c) {
     if (!c || !c.d) return;
@@ -1940,6 +1942,9 @@ function vSettings() {
     '<div id="digestOut" style="margin-top:10px"></div>' +
     '<div class="note" style="margin-top:10px"><b>Bot 토큰 만드는 법</b> (한 번만) — api.slack.com/apps › 기존 AS Desk 앱 › <b>OAuth &amp; Permissions</b> › Bot Token Scopes에 <span class="mono">chat:write</span> 추가 › 상단 <b>Reinstall to Workspace</b> › <b>Bot User OAuth Token</b>(xoxb-) 복사해서 위에 저장. ' +
     '<b>App Home</b> › Show Tabs › <b>Messages Tab</b> 켜기까지 하면 앱 DM으로 알림이 옵니다.<br>재접수 인식: 회수 실패 건의 티오더 시트 <b>회수송장 칸에 재발급 번호를 추가</b>하면(기존 번호 옆에 줄바꿈) 1시간 안에 자동으로 재접수로 잡힙니다. CJ 출고송장 조회에 재발급 번호가 먼저 뜨면 그걸로도 잡힙니다.</div></div></div>';
+  h += '<div class="card" style="margin-top:14px"><div class="hd"><h3>고객사 링크</h3>' + (m.csPublic ? '<span class="pill p-green">주소만으로 접속</span>' : '<span class="pill p-gray">접속 키 필요</span>') + '</div><div class="bd"><div class="row">' +
+    '<span class="mono small">' + esc(location.origin + location.pathname.replace(/[^\/]*$/, '') + 'cs.html') + '</span><button class="btn sm" data-act="csPublic">' + (m.csPublic ? '끄기 (키 필요하게)' : '주소만으로 열리게') + '</button>' +
+    '<span class="small muted">켜 두면 이 주소를 아는 사람은 누구나 고객사 화면(보기 전용)을 볼 수 있어요.</span></div></div></div>';
   h += '<div class="card" style="margin-top:14px"><div class="hd"><h3>추적 기준일</h3><span class="muted small">봇 알림과 대시보드·출고·회수·회수분 검사 목록이 함께 따르는 기준</span></div><div class="bd">' +
     '<div class="row"><input class="inp" id="trackFromIn" type="date" value="' + esc(trackFrom()) + '" style="width:auto"><button class="btn" data-act="saveTrackFrom">저장</button>' +
     '<span class="small muted">이 날짜 이후 출고분(+ 이후 재접수·바코드 스캔한 건)만 처리할 일로 보여요. 불량 분석·검사 결과는 전체 기간 그대로.</span></div></div></div>';
@@ -2231,6 +2236,7 @@ var ACT = {
   allCases: function () { S.allCases = !S.allCases; render(); },
   resF: function (d) { S.resF = d.v; render(); },
   resCsv: function () { resCsv_(); },
+  csPublic: function (d, b) { var on = !S.data.meta.csPublic; run('saveSetting', { key: 'CS_PUBLIC', value: on ? 'Y' : 'N' }, on ? '고객사 링크를 주소만으로 열 수 있게 했습니다.' : '고객사 링크에 다시 접속 키가 필요합니다.', b); },
   saveTrackFrom: function (d, b) { run('saveSetting', { key: 'TRACK_FROM', value: $('#trackFromIn').value }, '추적 기준일을 저장했습니다.', b); },
   slkBig: function (d) { slackBig(d.id, +d.k); },
   scanClear: function () { S.scan = []; render(); },
