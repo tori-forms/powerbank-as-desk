@@ -1508,7 +1508,7 @@ function judgePanel_(q) {
     '<span class="muted small">검사중 ' + q.length + '개 · 오늘 판정 ' + recent.length + '개</span></div>' +
     '<div class="split"><div class="card list">' + (q.length ? q.map(function (x) {
       var c = IDX.caseById[x.caseId] || {};
-      var hrs = x.recvAt ? Math.max(0, Math.round((Date.now() - new Date(x.recvAt).getTime()) / 3600000)) : null;
+      var r0 = recvTs_(x), hrs = r0 ? Math.max(0, Math.round((Date.now() - r0) / 3600000)) : null;
       return '<div class="li ' + (S.inspSel === x.id ? 'on' : '') + '" data-act="inspSel" data-id="' + esc(x.id) + '"><div class="r1"><b class="mono">' + esc(x.recvSn || x.origSn || '(S/N 없음)') + '</b>' + mtag(x.model || caseModel(c)) +
         (hrs !== null ? '<span class="small ' + (hrs >= 48 ? 'hl' : 'muted') + '" style="margin-left:auto">' + (hrs < 24 ? hrs + '시간째' : Math.floor(hrs / 24) + '일째') + '</span>' : '') + '</div>' +
         '<div class="r2"><span>' + esc(c.store) + '</span><span>입고 ' + md(x.recvAt || c.recvDate) + '</span><span>불량 접수: ' + esc(c.reasonCode || '-') + '</span>' +
@@ -1663,6 +1663,7 @@ function leadHrs_(u) {
   var h = (new Date(b) - new Date(a)) / 3600000;
   return isNaN(h) || h < 0 ? null : h;
 }
+function recvTs_(u) { var c = IDX.caseById[u.caseId] || {}; var s = u.recvAt || (c.recvDate ? d10(c.recvDate) + 'T09:00:00' : ''); var t = s ? new Date(s).getTime() : NaN; return isNaN(t) ? 0 : t; }
 function fmtLead_(h) { return h === null || h === undefined ? '-' : h < 24 ? Math.round(h) + '시간' : (Math.round(h / 24 * 10) / 10) + '일'; }
 function inspLeadCard_(tested) {
   var real = [], old = [];
@@ -1684,7 +1685,7 @@ function inspLeadCard_(tested) {
       }).join('') + '</tbody></table></div>' : '<div class="empty">아직 데이터가 없습니다.</div>') + '</div>';
   };
   var all = grp(function () { return '전체'; })[0];
-  var wait = inspectQueue(), late = wait.filter(function (u) { return u.recvAt && (Date.now() - new Date(u.recvAt)) / 3600000 >= LIM; }).length;
+  var wait = inspectQueue(), late = wait.filter(function (u) { var r0 = recvTs_(u); return r0 && (Date.now() - r0) / 3600000 >= LIM; }).length;
   var oldAvg = old.length ? old.reduce(function (p, q) { return p + q.h; }, 0) / old.length : null;
   var kpi = function (l, v, d) { return '<div><div class="small muted">' + l + '</div><b style="font-size:22px">' + v + '</b>' + (d ? '<div class="small muted">' + d + '</div>' : '') + '</div>'; };
   return '<div class="card" style="margin-top:14px"><div class="hd"><h3>검사 리드타임</h3><span class="muted small">회수 처리(입고 확인) → 판정까지 걸린 시간 · 사내 전용</span></div><div class="bd">' +
