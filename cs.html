@@ -53,6 +53,7 @@ main{flex:1;min-width:0;display:flex;flex-direction:column}
 .card .bd{padding:12px 14px}
 .grid{display:grid;gap:14px}
 .kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;margin-bottom:16px}
+.kpis.k7{grid-template-columns:repeat(7,minmax(0,1fr))}
 .kpi{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;cursor:pointer;box-shadow:var(--sh);position:relative;overflow:hidden}
 .kpi:hover{border-color:#c6cec8}
 .kpi .l{font-size:12px;color:var(--ink2);font-weight:600}
@@ -175,7 +176,7 @@ textarea.inp{width:100%;resize:vertical}
 .thread{border-left:3px solid var(--line);padding-left:10px;margin-top:8px}
 .thread .m{padding:6px 0;border-bottom:1px dashed var(--line2)}
 .thread .m b{font-size:12.5px}.thread .m .t{white-space:pre-wrap;font-size:12.5px;color:var(--ink2)}
-@media (max-width:1100px){.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.three{grid-template-columns:1fr}}
+@media (max-width:1100px){.kpis,.kpis.k7{grid-template-columns:repeat(3,minmax(0,1fr))}.three{grid-template-columns:1fr}}
 @media (max-width:860px){
   #app{flex-direction:column}
   .side{width:auto;height:auto;position:static;flex-direction:row;align-items:center;overflow-x:auto}
@@ -721,16 +722,29 @@ function cstate(c) {
   if (st.out === 'expired') st.out = 'done';
   if (st.ret === 'before' && st.retDays !== null && st.retDays > (S.data.meta.returnFailBizDays || 2)) st.ret = 'fail';
   st.trk = inTrack(c, us);
+  st.chk = us.filter(unitChk);
   if (c.closed === 'Y') st.b = 'closed';
   else if (!c.outDate && st.out === 'none') st.b = 'ship_wait';
   else if (st.ret === 'none') st.b = st.out === 'done' ? 'ret_need' : 'shipping';
   else if (st.ret === 'fail' || (st.ret !== 'done' && (IDX.req[c.id] || []).some(function (q) { return q.kind === 'recollect'; }))) st.b = 'ret_fail';
   else if (st.ret !== 'done') st.b = 'ret_doing';
-  else if (open.some(function (u) { return !u.recvSn; })) st.b = 'ret_short';
+  else if (open.some(function (u) { return !u.recvSn; }) || st.chk.length) st.b = 'ret_short';
   else if (open.some(function (u) { return !u.verdict; })) st.b = 'judge';
   else if (open.length) st.b = 'dispose';
   else st.b = 'done';
   return st;
+}
+function unitChk(u) { return u.disposition !== '미회수' && (/^S\/N 상이\(/.test(u.flags || '') || u.flags === '추가 회수'); }
+function chkLines(st, short) {
+  var miss = st.units.filter(function (u) { return !u.recvSn && !u.disposition; });
+  var out = [];
+  if (miss.length) out.push('<div><span class="pill p-red">수량 부족 ' + miss.length + 'EA</span> <span class="mono small">' + miss.map(function (u) { return esc(u.origSn || '(S/N 미상)'); }).join(', ') + '</span></div>');
+  st.chk.forEach(function (u) {
+    var m = /접수 ([A-Z0-9]+)/.exec(u.flags || '');
+    out.push(u.flags === '추가 회수' ? '<div><span class="pill p-ship">접수에 없는 S/N</span> <span class="mono small">' + esc(u.recvSn) + '</span></div>'
+      : '<div><span class="pill p-ship">S/N 불일치</span> <span class="mono small">접수 ' + esc(m ? m[1] : u.origSn) + ' → 회수 ' + esc(u.recvSn) + '</span></div>');
+  });
+  return short ? out.slice(0, 2).join('') + (out.length > 2 ? '<div class="small muted">외 ' + (out.length - 2) + '건</div>' : '') : out.join('');
 }
 function trackFrom() { return (S.data && S.data.meta && S.data.meta.trackFrom) || '2026-09-28'; }
 function inTrack(c, us) {
@@ -750,7 +764,7 @@ function scopeBar(hidden) {
 }
 var BUCKET = {
   ship_wait: ['출고 대기', 'p-ship'], shipping: ['배송 중', 'p-blue'], ret_need: ['회수 필요', 'p-retreq'],
-  ret_doing: ['회수 진행중', 'p-returning'], ret_fail: ['회수 실패', 'p-red'], ret_short: ['회수 부족', 'p-partial'],
+  ret_doing: ['회수 진행중', 'p-returning'], ret_fail: ['회수 실패', 'p-red'], ret_short: ['확인 필요', 'p-partial'],
   judge: ['판정 대기', 'p-inspect'], dispose: ['처분 대기', 'p-dispose'], done: ['완료', 'p-done'], closed: ['종결', 'p-closed']
 };
 var OUT_LABEL = { none: ['송장 없음', 'p-gray'], before: ['배송 전', 'p-gray'], moving: ['배송 중', 'p-blue'], done: ['도착 완료', 'p-green'], expired: ['조회 기간 만료', 'p-gray'] };
@@ -889,14 +903,15 @@ function vHomeCs() {
   var kp = function (label, v, unit, desc, color, act) {
     return '<div class="kpi" data-act="' + act[0] + '" data-v="' + (act[1] || '') + '"><div class="bar" style="background:' + color + '"></div><div class="l">' + label + '</div><div class="v">' + v + '<small>' + unit + '</small></div><div class="d">' + desc + '</div></div>';
   };
-  var html = '<div class="kpis">' +
+  var html = '<div class="kpis k7">' +
     kp('배송 중', k.shipping, '건', '교환품 출고 · 도착 전', '#3182f6', ['ship', 'moving']) +
     kp('회수 진행중', k.ret_doing, '건', '반품 송장 발행 · 수거 대기', '#7b61ff', ['ret', 'doing']) +
     kp('회수 실패', k.ret_fail, '건', k.ret_fail ? '<b style="color:var(--red)">재접수 진행</b>' : '정상', '#f04452', ['ret', 'fail']) +
+    kp('확인 필요', k.ret_short, '건', k.ret_short ? '<b style="color:var(--red)">수량 부족 · S/N 불일치</b>' : '없음', '#ff7a45', ['ret', 'short']) +
     kp('회수 완료', retDone, '건', '회수 입고 완료', '#ff8a00', ['ret', 'done']) +
     kp('검사 완료', res.length, '개', '최근 30일 · 불량 ' + nb + ' · 정상 ' + nn, '#191f28', ['go', 'results']) +
-    kp('CS 방어율', res.length ? Math.round((res.length - nn - nw) / res.length * 1000) / 10 : 0, '%', '최근 30일 검사 ' + res.length + '개 중 방어 실패 ' + (nn + nw) + '개', '#3182f6', ['go', 'analysis']) + '</div>';
-  var fail = b(['ret_fail']);
+    (function () { var d = csDef_(since, function () { return true; }); return kp('CS 방어율', d.rate, '%', '최근 30일 인입 ' + d.inN + '건 중 출고 ' + d.outN + '건 · 방어 실패 ' + nn + '개', '#3182f6', ['go', 'analysis']); })() + '</div>';
+  var fail = b(['ret_fail', 'ret_short']);
   var recent = S.data.units.filter(function (u) { return u.verdict; }).sort(function (a, c) { return resDate_(c).localeCompare(resDate_(a)); }).slice(0, 8);
   var vp = function (v) { return '<span class="pill ' + (v === '불량' ? 'p-red' : v === '정상' ? 'p-green' : 'p-ship') + '">' + esc(v) + '</span>'; };
   html += '<div class="split home"><div class="card"><div class="hd"><h3>최근 검사 결과</h3><span style="flex:1"></span><button class="btn sm" data-act="go" data-v="results">전체 보기</button></div>' +
@@ -905,10 +920,12 @@ function vHomeCs() {
       return '<tr class="click" data-act="case" data-id="' + esc(c.id || '') + '"><td class="nowrap">' + esc(resDate_(u).slice(2).replace(/-/g, '.')) + '</td><td><b>' + esc(c.store || u.store || '') + '</b></td>' +
         '<td class="mono small">' + esc(u.recvSn || u.origSn || '-') + '</td><td>' + vp(u.verdict) + '</td><td class="small">' + esc(cz(u.cause) || u.testSymptom || '-') + '</td></tr>';
     }).join('') + '</tbody></table></div>' : '<div class="empty">아직 검사 결과가 없습니다.</div>') + '</div>' +
-    '<div class="card"><div class="hd"><h3>회수 실패 · 재접수</h3><span class="muted small">' + fail.length + '건</span></div>' +
-    (fail.length ? fail.slice(0, 10).map(function (c) {
-      return '<div class="li" data-act="case" data-id="' + esc(c.id) + '"><div class="r1"><b>' + esc(c.store) + '</b><span class="muted mono small">' + esc(cid(c)) + '</span></div><div class="r2"><span>출고 ' + md(c.outDate) + '</span><span>' + IDX.st[c.id].expected + 'EA</span></div></div>';
-    }).join('') : '<div class="empty">회수 실패 건이 없습니다.</div>') + '</div></div>';
+    '<div class="card"><div class="hd"><h3>회수 실패 · 확인 필요</h3><span class="muted small">' + fail.length + '건</span></div>' +
+    (fail.length ? fail.slice(0, 12).map(function (c) {
+      var st = IDX.st[c.id];
+      return '<div class="li" data-act="case" data-id="' + esc(c.id) + '"><div class="r1"><b>' + esc(c.store) + '</b><span class="muted mono small">' + esc(cid(c)) + '</span>' + bpill(c) + '</div>' +
+        (st.b === 'ret_short' ? '<div style="margin-top:4px;line-height:1.9">' + chkLines(st, true) + '</div>' : '<div class="r2"><span>출고 ' + md(c.outDate) + '</span><span>' + st.expected + 'EA</span></div>') + '</div>';
+    }).join('') : '<div class="empty">회수 실패·확인 필요 건이 없습니다.</div>') + '</div></div>';
   return html;
 }
 function todoOpenList() { return (S.data.todos || []).filter(function (t) { return t.status !== 'done'; }).sort(function (a, b) { return (+a.no || 0) - (+b.no || 0); }); }
@@ -1155,9 +1172,9 @@ function vReturn() {
   var byB = function (b) { return all.filter(function (c) { return IDX.st[c.id].b === b; }); };
   var sets = { need: byB('ret_need'), doing: byB('ret_doing'), fail: byB('ret_fail'), short: byB('ret_short'), done: all.filter(function (c) { return ['judge', 'dispose', 'done'].indexOf(IDX.st[c.id].b) >= 0; }) };
   var f = S.retF || (sets.fail.length ? 'fail' : sets.need.length && !CS() ? 'need' : 'doing');
-  if (CS() && (f === 'need' || f === 'short')) f = 'doing';
-  var tabs = [['fail', '회수 실패·재접수'], ['need', '회수 필요'], ['doing', '회수 진행중'], ['short', '회수 부족'], ['done', '회수 완료']]
-    .filter(function (t) { return !(CS() && (t[0] === 'need' || t[0] === 'short')); }).map(function (t) { return '<button class="' + (f === t[0] ? 'on' : '') + '" data-act="ret" data-v="' + t[0] + '">' + t[1] + '<span class="n">' + sets[t[0]].length + '</span></button>'; }).join('');
+  if (CS() && f === 'need') f = 'doing';
+  var tabs = [['fail', '회수 실패·재접수'], ['need', '회수 필요'], ['doing', '회수 진행중'], ['short', '확인 필요'], ['done', '회수 완료']]
+    .filter(function (t) { return !(CS() && t[0] === 'need'); }).map(function (t) { return '<button class="' + (f === t[0] ? 'on' : '') + '" data-act="ret" data-v="' + t[0] + '">' + t[1] + '<span class="n">' + sets[t[0]].length + '</span></button>'; }).join('');
   var OLD = 120;
   var isOld = function (c) { var dd = days(c.outDoneAt || c.outDate); return dd !== null && dd > OLD; };
   var raw = (sets[f] || []).slice().sort(function (a, b) { return String(a.outDate).localeCompare(String(b.outDate)); });
@@ -1189,15 +1206,18 @@ function vReturn() {
         '<button class="btn sm red" data-act="writeOff" data-id="' + esc(c.id) + '" title="회수를 포기하고 손망실로 확정">손망실</button></div></td></tr>';
     }).join('');
   } else if (f === 'short') {
-    head = '<tr><th>번호</th><th>매장</th><th>미회수 S/N</th><th>진행</th><th>입고일</th><th></th></tr>';
+    head = '<tr><th>번호</th><th>매장</th><th>확인 내용</th><th>진행</th><th>입고일</th>' + (CS() ? '' : '<th></th>') + '</tr>';
     rows = list.map(function (c) {
       var st = IDX.st[c.id];
       var miss = st.units.filter(function (u) { return !u.recvSn && !u.disposition; });
       return '<tr><td class="nowrap mono click" data-act="case" data-id="' + esc(c.id) + '">' + esc(cid(c)) + '</td>' +
         '<td class="click" data-act="case" data-id="' + esc(c.id) + '"><b>' + esc(c.store) + '</b></td>' +
-        '<td class="mono small" style="color:var(--red)">' + miss.map(function (u) { return esc(u.origSn || '(S/N 미상)'); }).join('<br>') + '</td>' +
+        '<td style="line-height:1.9">' + chkLines(st) + '</td>' +
         '<td>' + progTag(st) + '</td><td class="nowrap">' + md(c.recvDate) + '</td>' +
-        '<td><button class="btn sm red" data-act="markMissing" data-id="' + esc(c.id) + '">미회수로 확정</button></td></tr>';
+        (CS() ? '' : '<td><div class="row">' +
+          (miss.length ? '<input class="inp mono sm" id="rt_' + esc(c.id) + '" placeholder="재회수 송장" style="width:120px"><button class="btn sm" data-act="quickReturn" data-id="' + esc(c.id) + '">재회수</button>' +
+            '<button class="btn sm red" data-act="markMissing" data-id="' + esc(c.id) + '">미회수로 확정</button>' : '') +
+          (st.chk.length ? '<button class="btn sm pri" data-act="checkOk" data-id="' + esc(c.id) + '">S/N 확인 완료</button>' : '') + '</div></td>') + '</tr>';
     }).join('');
   } else {
     head = '<tr><th>번호</th><th>매장</th><th>수량</th><th>회수 입고일</th><th>회수 S/N</th><th>단계</th><th></th></tr>';
@@ -1213,7 +1233,7 @@ function vReturn() {
     need: '출고 송장이 <b>도착 완료</b>로 확인된 건입니다. 반품 송장을 등록하면 회수 진행중으로 넘어갑니다.',
     doing: '반품 송장이 발행된 건입니다. 집화가 되면 <b>회수 중</b>, 배송완료되면 <b>회수 완료</b>로 자동으로 바뀝니다.',
     fail: '반품 송장 등록 후 ' + (S.data.meta.returnFailBizDays || 2) + '영업일(주말·공휴일 제외)이 지나도 <b>조회내역이 없는</b> 건과, <b>Slack으로 재회수 요청이 들어온</b> 건입니다. 굵게 표시된 송장이 집화가 안 된 송장입니다. 매장에 확인 후 <b>재접수</b>해 주세요.',
-    short: '회수 스캔 결과 수량이 모자란 건입니다. 미회수로 확정하면 완료 처리됩니다.',
+    short: '회수했는데 <b>수량이 모자라거나</b>, 들어온 S/N이 <b>불량 접수한 S/N과 다른</b> 건입니다. 모자란 건은 재회수 송장을 넣거나 미회수로 확정하고, S/N이 다른 건은 실물 확인 후 확인 완료를 눌러 주세요.',
     done: '회수가 끝난 건입니다. 더 추적할 필요가 없으면 종결하세요.' }[f];
   var oldBtn = oldOnes.length ? '<div class="oldtog">' + (S.showOld
     ? '출고 후 ' + OLD + '일 지난 ' + oldOnes.length + '건 포함해서 보는 중<button data-act="toggleOld">다시 숨기기</button>'
@@ -1470,11 +1490,11 @@ function vAnalysis() {
   var exSub = QM.length > 1
     ? QM.map(function (q) { return q.m + ' 실제 불량 <b style="color:var(--red)">' + pct(q.bp, q.tp) + '%</b>'; }).join(' · ')
     : qty + 'EA · 그중 실제 불량 <b style="color:var(--red)">' + pct(bad.length, tested.length) + '%</b>';
-  h += '<div class="kpis" style="grid-template-columns:repeat(' + (CS() ? 4 : 5) + ',minmax(0,1fr))">' +
+  h += '<div class="kpis" style="grid-template-columns:repeat(5,minmax(0,1fr))">' +
     kp('교환 출고', cases.length + '<small>건</small>' + (QM.length > 1 ? ' <small>' + qty + 'EA</small>' : ''), exSub) +
     kp('회수 검사', tested.length + '<small>EA</small>', '불량 ' + bad.length + ' · 정상 ' + ok.length) +
     kp('정상 비율', pct(ok.length, tested.length) + '<small>%</small>', '교환했지만 검사해 보니 정상') +
-    (CS() ? '' : kp('우리 쪽 반려율', pct(defended, inb.length) + '<small>%</small>', 'Slack 인입 ' + inb.length + '건 중 ' + defended)) + kp('회수 리드타임', (med === null ? '-' : med) + '<small>일</small>', '출고→회수 입고 중앙값') + '</div>';
+    kp('CS 방어율', pct(defended, inb.length) + '<small>%</small>', '인입 ' + inb.length + '건 중 출고 ' + (inb.length - defended) + '건') + kp('회수 리드타임', (med === null ? '-' : med) + '<small>일</small>', '출고→회수 입고 중앙값') + '</div>';
   var ms = months || monthsBack(12);
   var byM = function (arr, keyFn, filt) { var o = {}; arr.forEach(function (x) { if (filt && !filt(x)) return; var k = String(keyFn(x) || '').slice(0, 7); o[k] = (o[k] || 0) + 1; }); return o; };
   var allUnits = S.data.units;
@@ -1568,30 +1588,30 @@ function resCsv_() {
   toast(list.length + '개를 내려받았습니다.');
 }
 
-function defenseCard_(ms, since, mOk) {
-  var cs = CS();
-  var pct = function (a, b) { return b ? Math.round(a / b * 1000) / 10 : 0; };
-  var eaOf = function (i) { return jparse(i.sns, []).length || +i.reqQty || 1; };
+function csDef_(since, mOk) {
   var inbM = function (i) { var c = i.caseId && IDX.caseById[i.caseId]; return mOk(i.model || (c && c.model)); };
-  var dec = cs ? [] : S.data.inbox.filter(function (i) { return (i.status === '확정' || i.status === '방어') && d10(i.postedAt) >= since && inbM(i); });
-  var def = dec.filter(function (i) { return i.status === '방어'; });
-  var defEa = def.reduce(function (n, i) { return n + eaOf(i); }, 0);
+  var dec = S.data.inbox.filter(function (i) { return (i.status === '확정' || i.status === '방어') && d10(i.postedAt) >= since && inbM(i); });
+  var outN = dec.filter(function (i) { return i.status === '확정'; }).length;
+  return { dec: dec, inN: dec.length, outN: outN, defN: dec.length - outN, rate: dec.length ? Math.round((dec.length - outN) / dec.length * 1000) / 10 : 0, outRate: dec.length ? Math.round(outN / dec.length * 1000) / 10 : 0 };
+}
+function defenseCard_(ms, since, mOk) {
+  var pct = function (a, b) { return b ? Math.round(a / b * 1000) / 10 : 0; };
+  var D = csDef_(since, mOk);
   var tu = S.data.units.filter(function (u) { var c = IDX.caseById[u.caseId] || {}; return u.verdict && d10(u.testDate) >= since && mOk(u.model || c.model); });
-  var non = function (arr) { return arr.filter(function (u) { return u.verdict === '정상' || u.verdict === '외력/사용자 과실'; }); };
-  var nN = tu.filter(function (u) { return u.verdict === '정상'; }).length, nW = tu.filter(function (u) { return u.verdict === '외력/사용자 과실'; }).length;
+  var nN = tu.filter(function (u) { return u.verdict === '정상'; }).length;
   var stat = function (l, v, d, col) { return '<div style="flex:1;min-width:120px"><div class="small muted">' + l + '</div><div style="font-size:26px;font-weight:800;line-height:1.2' + (col ? ';color:' + col : '') + '">' + v + '</div><div class="small muted">' + d + '</div></div>'; };
   var rows = ms.slice().reverse().map(function (m) {
-    var t1 = tu.filter(function (u) { return d10(u.testDate).slice(0, 7) === m; }), n1 = non(t1).length;
-    var d1 = dec.filter(function (i) { return d10(i.postedAt).slice(0, 7) === m; }), f1 = d1.filter(function (i) { return i.status === '방어'; }).length;
-    if (!t1.length && !d1.length) return '';
-    return '<tr><td class="nowrap">' + m.slice(2).replace('-', '.') + '</td>' + (cs ? '' : '<td>' + (d1.length ? pct(f1, d1.length) + '%' : '-') + '</td>') +
-      '<td>' + t1.length + '</td><td><b>' + (t1.length ? pct(t1.length - n1, t1.length) + '%' : '-') + '</b></td><td style="color:#ff7a45">' + n1 + '</td></tr>';
+    var d1 = D.dec.filter(function (i) { return d10(i.postedAt).slice(0, 7) === m; }), o1 = d1.filter(function (i) { return i.status === '확정'; }).length;
+    var t1 = tu.filter(function (u) { return d10(u.testDate).slice(0, 7) === m; }), n1 = t1.filter(function (u) { return u.verdict === '정상'; }).length;
+    if (!d1.length && !t1.length) return '';
+    return '<tr><td class="nowrap">' + m.slice(2).replace('-', '.') + '</td><td>' + d1.length + '</td><td>' + o1 + '</td><td><b>' + (d1.length ? pct(d1.length - o1, d1.length) + '%' : '-') + '</b></td>' +
+      '<td>' + t1.length + '</td><td style="color:#ff7a45">' + n1 + '</td></tr>';
   }).filter(String).slice(0, 6).join('');
-  return '<div class="card"><div class="hd"><h3>CS 방어율</h3><span class="muted small">교환출고 중 실제 불량 비율</span></div><div class="bd">' +
+  return '<div class="card"><div class="hd"><h3>CS 방어율</h3></div><div class="bd">' +
     '<div class="row" style="gap:16px;align-items:flex-start;margin-bottom:10px">' +
-    (cs ? '' : stat('우리 쪽 반려 (인입 방어)', pct(def.length, dec.length) + '<small style="font-size:14px">%</small>', '인입 ' + dec.length + '건 중 방어 ' + def.length + '건 (' + defEa + 'EA)')) +
-    stat('CS 방어율', (tu.length ? pct(tu.length - nN - nW, tu.length) : 0) + '<small style="font-size:14px">%</small>', '검사 ' + tu.length + 'EA 중 불량 ' + (tu.length - nN - nW) + ' · 방어 실패 ' + (nN + nW) + 'EA (정상 ' + nN + (nW ? ' · 외력/과실 ' + nW : '') + ')', '#3182f6') + '</div>' +
-    (rows ? '<div class="tw"><table class="t"><thead><tr><th>월</th>' + (cs ? '' : '<th>우리 반려</th>') + '<th>검사</th><th>CS 방어율</th><th>방어 실패</th></tr></thead><tbody>' + rows + '</tbody></table></div>' : '') + '</div></div>';
+    stat('CS 방어율', D.rate + '<small style="font-size:14px">%</small>', '인입 ' + D.inN + '건 중 출고 ' + D.outN + '건 (출고율 ' + D.outRate + '%)', '#3182f6') +
+    stat('방어 실패', nN + '<small style="font-size:14px">EA</small>', '검사 결과 정상인데 출고된 수량 · 검사 ' + tu.length + 'EA 중 ' + pct(nN, tu.length) + '%', '#ff7a45') + '</div>' +
+    (rows ? '<div class="tw"><table class="t"><thead><tr><th>월</th><th>인입</th><th>출고</th><th>CS 방어율</th><th>검사</th><th>방어 실패</th></tr></thead><tbody>' + rows + '</tbody></table></div>' : '') + '</div></div>';
 }
 
 function lotNextName() {
@@ -2252,6 +2272,12 @@ var ACT = {
     var r = prompt(c.store + ' — 회수를 포기하고 손망실로 확정합니다.\n사유를 적어 주세요 (예: 매장 분실, 회수 포기)', '회수 포기');
     if (r === null) return;
     run('writeOff', { caseId: d.id, reason: r }, function (x) { return '손망실 ' + x.count + 'EA 확정 · 건 종결'; }, b);
+  },
+  checkOk: function (d, b) {
+    var c = IDX.caseById[d.id]; if (!c) return;
+    var ids = IDX.st[c.id].chk.map(function (u) { return u.id; });
+    if (!ids.length) return;
+    run('checkOk', { unitIds: ids }, 'S/N 확인 완료 처리했습니다.', b);
   },
   markMissing: function (d, b) {
     var c = IDX.caseById[d.id]; if (!c) return;
