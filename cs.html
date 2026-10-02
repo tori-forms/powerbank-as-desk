@@ -484,13 +484,15 @@ function call(action, payload) {
   if (DEMO_MODE) return demoCall_(action, payload);
   if (EXT && !ls(KEY_NAME) && window.AS_PAGE !== 'cs') { cacheClear_(); gate(); return Promise.reject(new Error('접속 키가 필요합니다.')); }
   var body = { action: action, payload: payload || {}, actor: me(), page: window.AS_PAGE || '' };
+  if (S.pin) body.pin = S.pin;
   if (action !== 'bootstrap') body.rid = Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
   return new Promise(function (res, rej) {
     var ok = function (s) {
       var r = typeof s === 'string' ? JSON.parse(s) : s;
       if (r.ok) return res(r.data);
       if (r.needKey) { var oldKey = ls(KEY_NAME) || '', hadKey = !!oldKey; try { ls(KEY_NAME, ''); } catch (e) { } if (!hadKey) { cacheClear_(); gate(); return rej(new Error('접속 키가 필요합니다.')); } cacheClear_().then(function () { location.reload(); }, function () { location.reload(); }); return; }
-      if (r.needAdmin) { adminPrompt_(); return rej(new Error('관리자 전용 기능입니다. 관리자 키를 넣은 뒤 다시 눌러 주세요.')); }
+      if (r.badPin) { S.pin = ''; S.setOk = false; }
+      if (r.needAdmin) { adminPrompt_(); return rej(new Error('관리자 전용 기능입니다. 관리자 비밀번호를 넣은 뒤 다시 눌러 주세요.')); }
       rej(new Error(r.error));
     };
     if (!EXT && window.google && google.script && google.script.run) return google.script.run.withSuccessHandler(ok).withFailureHandler(function (e) { rej(e); }).api(JSON.stringify(body));
@@ -602,8 +604,8 @@ function gate(msg) {
   };
 }
 function adminPrompt_() {
-  modal('관리자 키', '<div class="small muted" style="margin-bottom:8px">토큰 저장·티오더 시트 반영·Slack 발송 같은 관리 기능은 관리자 키가 필요합니다. 한 번 넣으면 이 브라우저에 저장됩니다.</div>' +
-    '<input class="inp mono" id="admKey" placeholder="관리자 키" style="width:100%">',
+  modal('관리자 비밀번호', '<div class="small muted" style="margin-bottom:8px">설정·토큰 저장·티오더 시트 반영·Slack 발송 같은 관리 기능은 관리자 비밀번호가 필요해요. 새로고침하면 다시 물어봐요.</div>' +
+    '<input class="inp mono" id="admKey" type="password" placeholder="관리자 비밀번호" style="width:100%">',
     '<button class="btn" data-act="closeModal">닫기</button><button class="btn pri" data-act="admSave">저장</button>');
   setTimeout(function () { var k = $('#admKey'); if (k) k.focus(); }, 50);
 }
@@ -2094,7 +2096,7 @@ function vSettings() {
   h += '<div class="card" style="margin-top:14px"><div class="hd"><h3>접속 정보</h3>' + (m.admin ? '<span class="pill p-green">관리자</span>' : '<span class="pill p-gray">일반</span>') + '</div><div class="bd"><div class="row">' +
     '<span class="small">공유 주소 <span class="mono">' + esc(pub) + '</span> <span class="muted">(누구나 이 주소만 열면 바로 사용)</span></span>' +
     '<span class="small">내 이름 <b>' + esc(ls('me') || '(미입력)') + '</b> <button class="btn sm" data-act="setMe">변경</button></span>' +
-    (m.admin ? '<span class="small">관리자 키 <span class="mono">' + esc(m.appKey || '-') + '</span> <span class="muted">(관리 기능용 — 내부 관리자만)</span></span><button class="btn sm" data-act="admOut">관리자 해제</button>'
+    (m.admin ? '<span class="small">관리자 키 <span class="mono">' + esc(m.appKey || '-') + '</span> <span class="muted">(관리 기능용 — 내부 관리자만)</span></span><button class="btn sm" data-act="admOut">설정 잠그기</button>'
       : '<button class="btn sm" data-act="admPrompt">관리자 키 입력</button><span class="small muted">토큰 저장·티오더 시트 반영·Slack 발송은 관리자만</span>') +
     (EXT ? '<span class="small muted">통신 방식 ' + (ls('noPost') === '1' ? 'JSONP(GET)' : 'POST') + '</span><button class="btn sm" data-act="resetConn">이 브라우저 연결 정보 지우기</button>' : '') + '</div>' +
     '<div class="row" style="margin-top:8px"><button class="btn sm" data-act="rebuildShips">송장 다시 정리</button>' +
@@ -2215,13 +2217,20 @@ var ACT = {
   admSave: function () {
     var v = ($('#admKey').value || '').trim().replace(/^.*[#&]k=/, ''); if (!v) return toast('관리자 비밀번호를 입력해 주세요.', true);
     if (DEMO_MODE) { ls(KEY_NAME, v); location.reload(); return; }
+    if (v.length < 12) {
+      S.pin = v; closeModal(); cacheClear_();
+      return load(true).then(function () {
+        if (S.data.meta.pinOk) { S.setOk = true; render(); toast('관리자로 확인했습니다.'); }
+        else { S.pin = ''; S.setOk = false; render(); }
+      }, function (e) { S.pin = ''; S.setOk = false; toast(e.message || '관리자 비밀번호가 맞지 않습니다.', true); load(true); });
+    }
     var prev = ls(KEY_NAME) || ''; ls(KEY_NAME, v); closeModal(); cacheClear_();
     load(true).then(function () {
       if (S.data.meta.admin) { S.setOk = true; render(); toast('관리자로 확인했습니다.'); }
       else { ls(KEY_NAME, prev); S.setOk = false; toast('관리자 비밀번호가 맞지 않습니다.', true); if (prev) load(true); }
     });
   },
-  admOut: function () { S.setOk = false; ls(KEY_NAME, ''); cacheClear_(); load(true).then(function () { toast('관리자 연결을 해제했습니다.'); }); },
+  admOut: function () { S.setOk = false; S.pin = ''; cacheClear_(); load(true).then(function () { toast('설정 화면을 잠갔어요.'); }); },
   setMe: function () { var nm = window.prompt('기록에 남길 이름(소속)', ls('me') || ''); if (nm !== null) { ls('me', nm.trim().slice(0, 20)); render(); } },
   searchStore: function (d) { S.view = 'ship'; S.shipF = 'all'; S.q = d.v; render(); },
   anModel: function (d) { S.an.model = d.v; render(); },
