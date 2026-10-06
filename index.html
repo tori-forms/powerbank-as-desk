@@ -1437,12 +1437,13 @@ function caseDrawer(c) {
 function vInspect() {
   var q = inspectQueue();
   var qAll = S.data.units.filter(function (u) { var c = IDX.caseById[u.caseId]; return c && c.closed !== 'Y' && !u.verdict && !u.disposition && u.recvSn; });
-  var rw = byBucket('recv_wait');
+  var rw = byBucket('recv_wait'), nShort = byBucket('ret_short').length + orphOpen_().length;
   var sub = S.insp === 'scan' ? 'recv' : S.insp || (rw.length || !q.length ? 'recv' : 'judge');
   var tabs = '<div class="tabs">' +
     '<button class="' + (sub === 'recv' ? 'on' : '') + '" data-act="inspTab" data-v="recv">① 회수 예정 · 회수 처리<span class="n">' + rw.length + '</span></button>' +
-    '<button class="' + (sub === 'judge' ? 'on' : '') + '" data-act="inspTab" data-v="judge">② 검사중<span class="n">' + q.length + '</span></button></div>';
-  return tabs + scopeBar(qAll.length - q.length).replace('건 숨김', '개 숨김 · 이전 건도 바코드를 찍으면 다시 여기에 떠요') + (sub === 'recv' ? scanPanel_(rw) : judgePanel_(q));
+    '<button class="' + (sub === 'judge' ? 'on' : '') + '" data-act="inspTab" data-v="judge">② 검사중<span class="n">' + q.length + '</span></button>' +
+    '<button class="' + (sub === 'short' ? 'on' : '') + '" data-act="inspTab" data-v="short">③ 확인 필요<span class="n"' + (nShort ? ' style="background:var(--red);color:#fff"' : '') + '>' + nShort + '</span></button></div>';
+  return tabs + scopeBar(qAll.length - q.length).replace('건 숨김', '개 숨김 · 이전 건도 바코드를 찍으면 다시 여기에 떠요') + (sub === 'recv' ? scanPanel_(rw) : sub === 'short' ? shortPanel_() : judgePanel_(q));
 }
 function recvCard_(c) {
   var st = IDX.st[c.id], us = st.open, on = S.recvOpen === c.id;
@@ -1552,7 +1553,7 @@ function batchCard_() {
 function orphOpen_() { return (S.data.orphans || []).filter(function (o) { return o.status === 'open'; }).sort(function (a, b) { return String(b.at).localeCompare(String(a.at)); }); }
 function orphAskTag_(o) {
   if (o.kind === 'inbox') return '<span class="pill p-ship">AS 건 생성 전 — ' + esc(o.store || '') + ' 접수(교환 확정 전)</span>';
-  return '<span class="pill p-red">매장 출처 확인 불가 — 고객사 확인 필요</span>';
+  return '<span class="pill p-red">' + (CS() ? '매장 확인 필요' : '매장 출처 확인 불가 — 고객사 확인 필요') + '</span>';
 }
 function orphRow_(o) {
   return '<div class="li" style="cursor:default"><div class="r1"><b class="mono">' + esc(o.sn) + '</b>' + mtag(o.model || modelOfSn(o.sn)) + lotTag(o.sn) + '<span class="muted small" style="margin-left:auto">' + md(o.at) + ' ' + esc(String(o.at || '').slice(11, 16)) + ' 회수</span></div>' +
@@ -1566,8 +1567,25 @@ function orphRow_(o) {
 function orphCard_() {
   var orph = orphOpen_(); if (!orph.length) return '';
   return '<div class="card" style="margin-bottom:12px;border:2px solid var(--red)"><div class="hd"><h3 style="color:var(--red)">⚠️ 매장 출처 확인 불가 회수분 · ' + orph.length + '개</h3></div>' +
-    '<div class="bd small muted" style="padding-top:0">어느 매장 AS 건인지 알 수 없는 S/N이에요. <b>임의로 넣지 말고</b> 고객사(티오더)에 매장 확인을 요청한 뒤, 답변을 받으면 그 AS 건에 배정해 주세요.</div>' +
+    '<div class="bd small muted" style="padding-top:0">' + (CS() ? '회수품 중 어느 매장에서 온 것인지 확인되지 않은 S/N입니다. <b>매장을 알려주시면</b> 해당 AS 건으로 처리하겠습니다.' : '어느 매장 AS 건인지 알 수 없는 S/N이에요. <b>임의로 넣지 말고</b> 고객사(티오더)에 매장 확인을 요청한 뒤, 답변을 받으면 그 AS 건에 배정해 주세요.') + '</div>' +
     '<div class="list" style="max-height:52vh">' + orph.map(orphRow_).join('') + '</div></div>';
+}
+function shortPanel_() {
+  var shortCases = S.data.cases.filter(function (c) { return IDX.st[c.id].b === 'ret_short' && tracked_(c); })
+    .sort(function (a, b) { return String(a.recvDate).localeCompare(String(b.recvDate)); });
+  var right = '<div class="card"><div class="hd"><h3>확인 필요 — 수량 부족 · S/N 불일치</h3><span class="muted small">' + shortCases.length + '건</span></div>' +
+    (shortCases.length ? shortCases.map(function (c) {
+      var us = unitsOf(c), sc = us.filter(gotRecv).length;
+      var miss = us.filter(isMiss);
+      return '<div class="li"><div class="r1"><b>' + esc(c.store) + '</b><span class="muted mono small">' + esc(cid(c)) + '</span>' +
+        '<span class="prog short" style="margin-left:auto">' + sc + '/' + us.length + '</span></div>' +
+        '<div class="r2"><span>출고 ' + md(c.outDate) + '</span><span>입고 ' + md(c.recvDate) + '</span></div>' +
+        (miss.length ? '<div class="small" style="margin:4px 0;color:var(--red);font-weight:600">회수 부족 ' + miss.length + '개 (' + us.length + '개 중 ' + sc + '개 회수)</div><div class="small" style="margin:0 0 4px;color:var(--ink2)">회수 안 된 S/N: <span class="mono">' + miss.map(function (u) { return esc(missSn(u)); }).join(', ') + '</span></div>' : '<div style="margin:4px 0;line-height:1.9">' + chkLines(IDX.st[c.id], true) + '</div>') +
+        '<div class="row"><button class="btn sm" data-act="case" data-id="' + esc(c.id) + '">AS 건 열기</button>' +
+        '<button class="btn sm" data-act="csHoldOpen" data-id="' + esc(c.id) + '">CS팀 확인중</button>' +
+        (miss.length ? '<button class="btn sm red" data-act="writeOff" data-id="' + esc(c.id) + '" title="안 들어온 것만 손망실(회수 포기) — 회수된 것은 검사 계속">회수 포기</button>' : '') + '</div></div>';
+    }).join('') : '<div class="empty">부족한 건이 없습니다.</div>') + '</div>';
+  return '<div class="split" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><div>' + right + '</div><div>' + (orphCard_() || '<div class="card"><div class="hd"><h3>매장 출처 확인 불가 회수분</h3></div><div class="empty">없습니다.</div></div>') + '</div></div>';
 }
 function scanPanel_(rw) {
   rw = (rw || []).slice().sort(function (a, b) { return String(a.returnDoneAt || a.outDate).localeCompare(String(b.returnDoneAt || b.outDate)); });
@@ -1597,20 +1615,9 @@ function scanPanel_(rw) {
         (full ? '' : '<div class="small" style="color:var(--ink2)">회수 안 된 S/N: <span class="mono">' + miss.map(function (u) { return esc(missSn(u)); }).join(', ') + '</span></div>') +
         '<div class="small muted">이번에 찍은 S/N ' + grp[id].length + '개 · ' + esc(c.reasonCode || '') + ' · 출고 ' + md(c.outDate) + '</div></div>';
     }).join('') + '</div></div>';
-  var orphCard = orphCard_();
-  var right = '<div class="card"><div class="hd"><h3>확인 필요 — 수량 부족 · S/N 불일치</h3><span class="muted small">' + shortCases.length + '건</span></div>' +
-    (shortCases.length ? shortCases.map(function (c) {
-      var us = unitsOf(c), sc = us.filter(gotRecv).length;
-      var miss = us.filter(isMiss);
-      return '<div class="li"><div class="r1"><b>' + esc(c.store) + '</b><span class="muted mono small">' + esc(cid(c)) + '</span>' +
-        '<span class="prog short" style="margin-left:auto">' + sc + '/' + us.length + '</span></div>' +
-        '<div class="r2"><span>출고 ' + md(c.outDate) + '</span><span>입고 ' + md(c.recvDate) + '</span></div>' +
-        (miss.length ? '<div class="small" style="margin:4px 0;color:var(--red);font-weight:600">회수 부족 ' + miss.length + '개 (' + us.length + '개 중 ' + sc + '개 회수)</div><div class="small" style="margin:0 0 4px;color:var(--ink2)">회수 안 된 S/N: <span class="mono">' + miss.map(function (u) { return esc(missSn(u)); }).join(', ') + '</span></div>' : '<div style="margin:4px 0;line-height:1.9">' + chkLines(IDX.st[c.id], true) + '</div>') +
-        '<div class="row"><button class="btn sm" data-act="case" data-id="' + esc(c.id) + '">AS 건 열기</button>' +
-        '<button class="btn sm" data-act="csHoldOpen" data-id="' + esc(c.id) + '">CS팀 확인중</button>' +
-        (miss.length ? '<button class="btn sm red" data-act="writeOff" data-id="' + esc(c.id) + '" title="안 들어온 것만 손망실(회수 포기) — 회수된 것은 검사 계속">회수 포기</button>' : '') + '</div></div>';
-    }).join('') : '<div class="empty">부족한 건이 없습니다.</div>') + '</div>';
-  return scanBar + '<div class="split" style="grid-template-columns:minmax(0,1fr) 380px"><div>' + expect + '</div><div>' + orphCard + left + right + '</div></div>' +
+  var nShort = shortCases.length + orphOpen_().length;
+  var shortHint = nShort ? '<div class="card" style="margin-bottom:12px;border:1.5px solid var(--red)"><div class="bd" style="display:flex;align-items:center;gap:8px"><b style="color:var(--red)">⚠️ 확인 필요 ' + nShort + '건</b><span class="small muted">수량 부족 · S/N 불일치 · 매장 출처 확인 불가</span><span style="flex:1"></span><button class="btn sm" data-act="inspTab" data-v="short">③ 확인 필요 보기</button></div></div>' : '';
+  return scanBar + '<div class="split" style="grid-template-columns:minmax(0,1fr) 380px"><div>' + expect + '</div><div>' + shortHint + left + '</div></div>' +
     '<div class="note" style="margin-top:12px">반품이 도착하면 <b>회수 예정</b>에 기종·S/N별로 올라옵니다. 실물을 확인하고 <b>회수 처리</b>를 누르면 <b>② 검사중</b>으로 넘어가요. 예정보다 적게 들어왔거나 접수 S/N과 다르면 오른쪽 <b>확인 필요</b>로 바로 넘어갑니다.</div>';
 }
 function judgePanel_(q) {
@@ -1676,6 +1683,12 @@ function inspectForm(u, many) {
   var sibs = unitsOf(c);
   var inbox = c.inboxId ? IDX.inboxById[c.inboxId] : null;
   var autoLot = many ? null : lotOf(u.recvSn || u.origSn), lotV = u.lot || (autoLot ? autoLot.name : '');
+  var manyLot = '';
+  if (many) {
+    var lc = {}; many.forEach(function (x) { var l = x.lot || (lotOf(x.recvSn || x.origSn) || {}).name || '구간 없음'; lc[l] = (lc[l] || 0) + 1; });
+    var ks = Object.keys(lc);
+    manyLot = ks.length === 1 ? (ks[0] === '구간 없음' ? '등록 구간 없음 (' + many.length + '개) — 필요하면 선택' : ks[0] + ' (S/N 자동 · ' + many.length + '개 모두)') : 'S/N별 자동 (' + ks.map(function (k) { return k + ' ' + lc[k] + '개'; }).join(' · ') + ')';
+  }
   var lotChoices = [''].concat((S.data.lots || []).filter(function (l) { return !autoLot || l.prefix === autoLot.prefix; }).map(function (l) { return l.name; }));
   if (lotChoices.length === 1) lotChoices = lotChoices.concat(['1차', '2차', '3차', '4차']);
   if (lotV && lotChoices.indexOf(lotV) < 0) lotChoices.push(lotV);
@@ -1686,7 +1699,7 @@ function inspectForm(u, many) {
     (S.view === 'inspect' ? '' : '<div class="note" style="margin-bottom:12px"><b>' + esc(c.store) + '</b> · <b>불량 인입 사유 ' + esc(c.reasonCode || '-') + '</b>' + ' · 출고 ' + md(c.outDate) + ' · 입고 ' + md(c.recvDate) + (sibs.length > 1 ? ' · 동일 건 ' + sibs.length + 'EA' : '') +
     (c.symptom || (inbox && inbox.symptom) ? '<div style="margin-top:6px;white-space:pre-wrap;max-height:90px;overflow:auto">' + esc(String(c.symptom || inbox.symptom).slice(0, 400)) + '</div>' : '') + '</div>') +
     '<div class="fld"><span>최종 판정 (불량 / 정상)</span>' + chips('verdict', L.VERDICTS, u.verdict, vcls) + '</div>' +
-    '<div class="row" style="margin:12px 0"><label class="fld"><span>양산 차수 ' + (many ? '<b style="color:var(--green)">· 비워두면 S/N별 자동</b>' : autoLot ? '<b style="color:var(--green)">· S/N 자동</b>' : '<b style="color:var(--amber)">· 등록 구간 없음</b>') + '</span><select class="inp" id="in_lot">' + lotChoices.map(function (l) { return '<option ' + (l === lotV ? 'selected' : '') + '>' + esc(l) + '</option>'; }).join('') + '</select></label>' +
+    '<div class="row" style="margin:12px 0"><label class="fld"><span>양산 차수 ' + (many ? '<b style="color:var(--green)">· S/N별 자동</b>' : autoLot ? '<b style="color:var(--green)">· S/N 자동</b>' : '<b style="color:var(--amber)">· 등록 구간 없음</b>') + '</span><select class="inp" id="in_lot">' + (many ? '<option value="" selected>' + esc(manyLot) + '</option>' : '') + lotChoices.filter(function (l) { return !many || l; }).map(function (l) { return '<option ' + (!many && l === lotV ? 'selected' : '') + '>' + esc(l) + '</option>'; }).join('') + '</select></label>' +
     '<label class="fld"><span>측정 용량 (정격 대비 %)</span><input class="inp" id="in_cap" type="number" min="0" max="120" step="1" value="' + esc(u.capPct || '') + '" style="width:110px" placeholder="예: 76"></label>' +
     '<label class="fld"><span>검사일</span><input class="inp" type="date" id="in_date" value="' + esc(u.testDate || today()) + '"></label></div>' +
     '<div class="fld"><span>불량 증상 (검사 기준)</span>' + chips('testSymptom', L.TEST_SYMPTOMS, u.testSymptom) + '</div>' +
@@ -2773,7 +2786,7 @@ var ACT = {
     el.value = ''; render();
     var m = batchMatch_(S.scanBatch.sns), un = m.unknown.filter(function (x) { return !(S.data.orphans || []).some(function (o) { return o.sn === x.sn && o.status === 'open'; }); });
     if (un.length) call('orphanAdd', { items: un.map(function (x) { return { sn: x.sn, kind: x.inbox ? 'inbox' : 'unknown', inboxId: x.inbox ? x.inbox.id : '', store: x.inbox ? x.inbox.store : '', msg: x.inbox ? '' : '접수된 AS 건에 없는 S/N' }; }) }).then(function () { return load(true); }).catch(function () { });
-    toast(sns.length + '개 확인 — 일치 ' + m.matchedN + '개 · 이미 처리됨 ' + m.dup.length + '개 · 매칭 안 됨 ' + m.unknown.length + '개');
+    toast(sns.length + '개 확인 — 일치 ' + m.matchedN + '개 · 이미 처리됨 ' + m.dup.length + '개' + (m.unknown.length ? ' · 매장 출처 확인 불가 ' + m.unknown.length + '개 (③ 확인 필요 탭)' : ''));
     var r2 = $('#rvScan'); if (r2) r2.focus();
   },
   rvClear: function () { var el = $('#rvScan'); if (el) el.value = ''; var c = $('#rvCnt'); if (c) c.textContent = ''; },
@@ -2868,7 +2881,7 @@ var ACT = {
     if (!sns.length) return toast('바코드를 찍거나 S/N을 입력해 주세요.', true);
     run('scanReturns', { sns: sns }, function (r) {
       var ok = r.results.filter(function (x) { return x.status === 'ok'; }).length, un = r.results.filter(function (x) { return x.status === 'unknown' || x.status === 'inbox'; }).length, dup = r.results.filter(function (x) { return x.status === 'dup'; }).length;
-      return '회수 처리 ' + ok + '개' + (dup ? ' · 이미 처리된 S/N ' + dup + '개' : '') + (un ? ' · ⚠️ AS 인입건 매칭 안 됨 ' + un + '개 (오른쪽 빨간 칸)' : '');
+      return '회수 처리 ' + ok + '개' + (dup ? ' · 이미 처리된 S/N ' + dup + '개' : '') + (un ? ' · ⚠️ 매장 출처 확인 불가 ' + un + '개 (③ 확인 필요 탭)' : '');
     }, b).then(function (r) {
       S.scan = (r.results || []).reverse().concat(S.scan || []).slice(0, 200);
       S.insp = 'recv'; render();
