@@ -699,11 +699,12 @@ function shipsOf(c, type) { return (IDX.ships[c.id] || []).filter(function (x) {
 function cstate(c) {
   var us = unitsOf(c), outs = shipsOf(c, 'out'), retsAll = shipsOf(c, 'return');
   var rets = retsAll.filter(function (x) { return x.stage !== 'replaced'; });
+  markPhantom_(us);
   var open = us.filter(function (u) { return !u.disposition || u.disposition === '미회수'; });
   var st = { outs: outs, rets: rets, retsAll: retsAll, units: us, open: open };
   st.reissued = rets.filter(function (x) { return x.reissueOf; });
   st.expected = us.length;
-  st.scanned = us.filter(function (u) { return u.recvSn; }).length;
+  st.scanned = us.filter(gotRecv).length;
   st.short = Math.max(st.expected - st.scanned, 0);
   st.out = !outs.length
     ? (c.outDoneAt || c.recvDate ? 'done' : c.outTracking ? 'before' : 'none')
@@ -759,13 +760,25 @@ function cstate(c) {
   return st;
 }
 function unitChk(u) { return u.disposition !== '미회수' && (/^S\/N 상이\(/.test(u.flags || '') || u.flags === '추가 회수'); }
-function isMiss(u) { return !u.recvSn && (!u.disposition || u.disposition === '미회수'); }
+function markPhantom_(us) {
+  var by = {};
+  us.forEach(function (u) { u._ph = false; if (u.recvSn && u.recvSn !== 'S/N 미식별') (by[u.recvSn] = by[u.recvSn] || []).push(u); });
+  Object.keys(by).forEach(function (sn) {
+    var g = by[sn]; if (g.length < 2) return;
+    var score = function (u) { return (u.recvAt ? 4 : 0) + (u.origSn === sn ? 2 : 0) + (u.disposition === '미회수' ? 0 : 1); };
+    g.sort(function (a, b) { return score(b) - score(a); }).slice(1).forEach(function (u) { u._ph = true; });
+  });
+}
+function gotRecv(u) { return u.recvSn && !u._ph; }
+function missSn(u) { return u._ph ? (u.origSn && u.origSn !== u.recvSn ? u.origSn : '(S/N 미상)') : (u.origSn || '(S/N 미상)'); }
+function isMiss(u) { return (!u.recvSn || u._ph) && (!u.disposition || u.disposition === '미회수'); }
 function expUnits(us) { return us.filter(function (u) { return u.recvSn || !u.disposition || u.disposition === '미회수'; }); }
 function chkLines(st, short) {
   var miss = st.units.filter(isMiss);
   var out = [];
   if (st.ret === 'part' && st.left) out.push('<div><span class="pill p-blue">남은 반품 송장 회수 대기</span> <span class="mono small">' + st.left.map(function (x) { return esc(x.no); }).join(', ') + '</span></div>');
-  if (miss.length) out.push('<div><span class="pill p-red">회수 부족 ' + miss.length + '개 (' + st.units.length + '개 중 ' + st.scanned + '개 회수)</span> <span class="small">회수 안 된 S/N</span> <span class="mono small">' + miss.map(function (u) { return esc(u.origSn || '(S/N 미상)'); }).join(', ') + '</span></div>');
+  if (miss.length) out.push('<div><span class="pill p-red">회수 부족 ' + miss.length + '개 (' + st.units.length + '개 중 ' + st.scanned + '개 회수)</span> <span class="small">회수 안 된 S/N</span> <span class="mono small">' + miss.map(function (u) { return esc(missSn(u)); }).join(', ') + '</span></div>');
+  st.units.filter(function (u) { return u._ph; }).forEach(function (u) { out.push('<div><span class="pill p-red">전산 중복 기록</span> <span class="small">회수 S/N <span class="mono">' + esc(u.recvSn) + '</span>이 두 칸에 기록됨 (실제 회수 아님 · 정리 필요)</span></div>'); });
   st.chk.forEach(function (u) {
     var m = /접수 ([A-Z0-9]+)/.exec(u.flags || '');
     out.push(u.flags === '추가 회수' ? '<div><span class="pill p-ship">접수에 없는 S/N</span> <span class="mono small">' + esc(u.recvSn) + '</span></div>'
@@ -824,7 +837,7 @@ function caseModel(c) {
 function inspectQueue() {
   return S.data.units.filter(function (u) {
     var c = IDX.caseById[u.caseId]; if (!c || c.closed === 'Y' || !tracked_(c)) return false;
-    return !u.verdict && !u.disposition && u.recvSn;
+    return !u.verdict && !u.disposition && u.recvSn && !u._ph;
   });
 }
 function byBucket(b) { return S.data.cases.filter(function (c) { return (IDX.st[c.id] || {}).b === b && tracked_(c); }); }
@@ -937,7 +950,7 @@ function vHomeCs() {
     kp('배송 중', k.shipping, '건', '교환품 출고 · 도착 전', '#3182f6', ['ship', 'moving']) +
     kp('회수 진행중', k.ret_doing, '건', '반품 송장 발행 · 수거 대기', '#7b61ff', ['ret', 'doing']) +
     kp('회수 실패', k.ret_fail, '건', k.ret_fail ? '<b style="color:var(--red)">재접수 진행</b>' : '정상', '#f04452', ['ret', 'fail']) +
-    kp('확인 필요', k.ret_short, '건', k.ret_short ? '<b style="color:var(--red)">수량 부족 · S/N 불일치</b>' : '없음', '#ff7a45', ['ret', 'short']) +
+    kp('확인 필요', k.ret_short, '건', (k.ret_short ? '<b style="color:var(--red)">수량 부족 · S/N 불일치</b>' : '없음') + (orphOpen_().length ? '<br><b style="color:var(--red)">출처 미상 회수분 ' + orphOpen_().length + '개 · 고객사 확인</b>' : ''), '#ff7a45', ['ret', 'short']) +
     kp('회수 완료', retDone, '건', '회수 입고 완료', '#ff8a00', ['ret', 'done']) +
     kp('검사 완료', res.length, '개', '최근 30일 · 불량 ' + nb + ' · 정상 ' + nn, '#191f28', ['go', 'results']) +
     (function () { var d = csDef_(since, function () { return true; }); return kp('CS 방어율', d.rate, '%', '최근 30일 인입 ' + d.inN + '건 중 출고 ' + d.outN + '건 · 방어 실패 ' + nn + '개', '#3182f6', ['go', 'analysis']); })() + '</div>';
@@ -1244,7 +1257,7 @@ function vReturn() {
   var f = S.retF || (sets.fail.length ? 'fail' : sets.need.length && !CS() ? 'need' : 'doing');
   if (CS() && f === 'need') f = 'doing';
   var tabs = [['fail', '회수 실패·재접수'], ['hold', 'CS팀 확인중'], ['need', '회수 필요'], ['doing', '회수 진행중'], ['short', '확인 필요'], ['done', '회수 완료']]
-    .filter(function (t) { return !(CS() && t[0] === 'need') && !(t[0] === 'hold' && !sets.hold.length && f !== 'hold'); }).map(function (t) { return '<button class="' + (f === t[0] ? 'on' : '') + '" data-act="ret" data-v="' + t[0] + '">' + t[1] + '<span class="n">' + sets[t[0]].length + '</span></button>'; }).join('');
+    .filter(function (t) { return !(CS() && t[0] === 'need') && !(t[0] === 'hold' && !sets.hold.length && f !== 'hold'); }).map(function (t) { return '<button class="' + (f === t[0] ? 'on' : '') + '" data-act="ret" data-v="' + t[0] + '">' + t[1] + '<span class="n">' + (sets[t[0]].length + (t[0] === 'short' ? orphOpen_().length : 0)) + '</span></button>'; }).join('');
   var OLD = 120;
   var isOld = function (c) { var dd = days(c.outDoneAt || c.outDate); return dd !== null && dd > OLD; };
   var raw = (sets[f] || []).slice().sort(function (a, b) { return String(a.outDate).localeCompare(String(b.outDate)); });
@@ -1327,7 +1340,7 @@ function vReturn() {
   var oldBtn = oldOnes.length ? '<div class="oldtog">' + (S.showOld
     ? '출고 후 ' + OLD + '일 지난 ' + oldOnes.length + '건 포함해서 보는 중<button data-act="toggleOld">다시 숨기기</button>'
     : '출고 후 ' + OLD + '일 지난 ' + oldOnes.length + '건은 목록에서 숨겨져 있어요<button data-act="toggleOld">보기</button>') + '</div>' : '';
-  return '<div class="tabs">' + tabs + '</div>' + scopeBar(all0.length - all.length) + oldBtn + toolbar('회수') +
+  return '<div class="tabs">' + tabs + '</div>' + scopeBar(all0.length - all.length) + oldBtn + toolbar('회수') + (f === 'short' ? orphCard_() : '') +
     '<div class="card"><div class="tw"><table class="t"><thead>' + head + '</thead><tbody>' +
     (rows || '<tr><td colspan="8"><div class="empty">해당 건이 없습니다.</div></td></tr>') + '</tbody></table></div></div>' +
     (CS() && f !== 'short' ? '' : '<div class="note" style="margin-top:12px">' + note + (oldOnes.length && !S.showOld ? ' <b>출고 후 ' + OLD + '일이 지난 ' + oldOnes.length + '건은 숨겨져 있습니다.</b> 대부분 회수를 포기했거나 기록이 끝난 건이니, 확인 후 [손망실]로 정리하시면 목록이 깔끔해집니다.' : '') + '</div>');
@@ -1494,8 +1507,8 @@ function batchMatch_(sns) {
   var open = {}, got = {}, inb = {};
   S.data.units.forEach(function (u) {
     var c = IDX.caseById[u.caseId]; if (!c || c.closed === 'Y') return;
-    if (u.recvSn) { got[u.recvSn] = u; return; }
-    if (u.origSn && isMiss(u)) (open[u.origSn] = open[u.origSn] || []).push(u);
+    if (u.recvSn && !u._ph) { got[u.recvSn] = u; return; }
+    if (u.origSn && isMiss(u) && !(u._ph && u.origSn === u.recvSn)) (open[u.origSn] = open[u.origSn] || []).push(u);
   });
   S.data.inbox.forEach(function (i) { if (!i.caseId) jparse(i.sns, []).forEach(function (sn) { inb[sn] = i; }); });
   var groups = {}, order = [], dup = [], unknown = [], matchedN = 0;
@@ -1519,7 +1532,7 @@ function batchCard_() {
       '<span class="prog ' + (full ? 'full' : 'short') + '" style="margin-left:auto">' + gotN + '/' + us.length + '</span></div>' +
       '<div class="small" style="margin:3px 0;font-weight:600;color:' + (full ? 'var(--green)' : 'var(--red)') + '">' + (full ? '✅ 회수 예정 ' + us.length + '개 모두 일치' : '⚠️ ' + us.length + '개 중 ' + gotN + '개 회수 · ' + miss.length + '개 부족 → 확인 필요로 넘어가요') + '</div>' +
       '<div style="display:flex;flex-wrap:wrap;gap:4px;margin:4px 0">' + x.hits.map(function (h) { return '<span class="pill p-green mono">✓ ' + esc(h.sn) + '</span>'; }).join('') + '</div>' +
-      (full ? '' : '<div class="small" style="color:var(--ink2)">회수 안 된 S/N: <span class="mono">' + miss.map(function (u) { return esc(u.origSn || '(S/N 미상)'); }).join(', ') + '</span></div>') +
+      (full ? '' : '<div class="small" style="color:var(--ink2)">회수 안 된 S/N: <span class="mono">' + miss.map(function (u) { return esc(missSn(u)); }).join(', ') + '</span></div>') +
       '<div class="row" style="margin-top:6px"><button class="btn sm pri" data-act="batchGo" data-id="' + esc(x.c.id) + '">' + (full ? '검사중으로 넘기기' : '회수 처리 → 확인 필요 (' + x.hits.length + '개 검사중)') + '</button><button class="btn sm" data-act="case" data-id="' + esc(x.c.id) + '">AS 건 열기</button></div></div>';
   };
   var blanks = byBucket('recv_wait').filter(function (c) { return IDX.st[c.id].open.some(function (u) { return !u.recvSn && (!u.origSn || !modelOfSn(u.origSn)); }); });
@@ -1530,6 +1543,29 @@ function batchCard_() {
       '<div class="mono small" style="margin:4px 0;word-break:break-all">' + m.unknown.map(function (x) { return esc(x.sn) + (x.inbox ? ' (' + esc(x.inbox.store) + ' 접수 · 확정 전)' : ''); }).join(', ') + '</div>' +
       (blanks.length ? '<div class="row">' + blanks.map(function (c) { var n = IDX.st[c.id].open.filter(function (u) { return !u.recvSn && (!u.origSn || !modelOfSn(u.origSn)); }).length; return '<button class="btn sm" data-act="batchBlank" data-id="' + esc(c.id) + '">' + esc(c.store) + ' S/N 미상 ' + n + '칸에 넣기</button>'; }).join('') + '</div>' : '') + '</div>' : '') +
     (m.dup.length ? '<div class="li" style="cursor:default"><div class="small muted">이미 회수 처리된 S/N ' + m.dup.length + '개: ' + m.dup.slice(0, 20).map(function (x) { var c = IDX.caseById[x.u.caseId] || {}; return '<span class="mono">' + esc(x.sn) + '</span>(' + esc(c.store || '') + ')'; }).join(', ') + (m.dup.length > 20 ? ' 외' : '') + '</div></div>' : '') + '</div>';
+}
+function orphOpen_() { return (S.data.orphans || []).filter(function (o) { return o.status === 'open'; }).sort(function (a, b) { return String(b.at).localeCompare(String(a.at)); }); }
+function orphAskTag_(o) {
+  if (o.kind === 'inbox') return '<span class="pill p-ship">AS 건 생성 전 — ' + esc(o.store || '') + ' 접수(교환 확정 전)</span>';
+  return o.askAt ? '<span class="pill p-partial">고객사 확인 요청함 ' + md(o.askAt) + ' · ' + (function (n) { return n > 0 ? n + '영업일째 답변 대기' : '답변 대기'; })(bizDays(String(o.askAt).slice(0, 10)) || 0) + '</span>'
+    : '<span class="pill p-red">매장 출처 확인 불가 — 고객사 확인 요청 필요</span>';
+}
+function orphRow_(o) {
+  return '<div class="li" style="cursor:default"><div class="r1"><b class="mono">' + esc(o.sn) + '</b>' + mtag(o.model || modelOfSn(o.sn)) + lotTag(o.sn) + '<span class="muted small" style="margin-left:auto">' + md(o.at) + ' ' + esc(String(o.at || '').slice(11, 16)) + ' 회수</span></div>' +
+    '<div style="margin:4px 0">' + orphAskTag_(o) + '</div>' +
+    (o.note ? '<div class="small">💬 ' + esc(o.note) + '</div>' : '') +
+    (CS() ? '' : '<div class="row" style="margin-top:4px">' +
+      (o.kind !== 'inbox' ? (o.askAt ? '<button class="btn sm" data-act="orphAsk" data-sn="' + esc(o.sn) + '" data-v="off">요청 취소</button>' : '<button class="btn sm red" data-act="orphAsk" data-sn="' + esc(o.sn) + '">고객사에 확인 요청함</button>') : '') +
+      '<button class="btn sm pri" data-act="assignOpen" data-sn="' + esc(o.sn) + '" title="고객사가 매장을 알려주면 그 AS 건에 넣어요">답변 받음 → AS 건에 배정</button>' +
+      (o.inboxId ? '<button class="btn sm" data-act="inboxSel" data-id="' + esc(o.inboxId) + '">인입함에서 열기</button>' : '') +
+      '<button class="btn sm" data-act="orphNote" data-sn="' + esc(o.sn) + '">메모</button><button class="btn sm" data-act="orphDismiss" data-sn="' + esc(o.sn) + '" title="잘못 찍은 것 등 — 목록에서 뺌">무시</button></div>') + '</div>';
+}
+function orphCard_() {
+  var orph = orphOpen_(); if (!orph.length) return '';
+  var need = orph.filter(function (o) { return o.kind !== 'inbox' && !o.askAt; }).length;
+  return '<div class="card" style="margin-bottom:12px;border:2px solid var(--red)"><div class="hd"><h3 style="color:var(--red)">⚠️ 매장 출처 확인 불가 회수분 · ' + orph.length + '개</h3>' + (need ? '<span class="pill p-red">확인 요청 필요 ' + need + '</span>' : '') + '</div>' +
+    '<div class="bd small muted" style="padding-top:0">어느 매장 AS 건인지 알 수 없는 S/N이에요. <b>임의로 넣지 말고</b> 고객사(티오더)에 매장 확인을 요청한 뒤, 답변을 받으면 그 AS 건에 배정해 주세요.</div>' +
+    '<div class="list" style="max-height:52vh">' + orph.map(orphRow_).join('') + '</div></div>';
 }
 function scanPanel_(rw) {
   rw = (rw || []).slice().sort(function (a, b) { return String(a.returnDoneAt || a.outDate).localeCompare(String(b.returnDoneAt || b.outDate)); });
@@ -1551,33 +1587,23 @@ function scanPanel_(rw) {
   res.forEach(function (r) { if ((r.status === 'ok' || r.status === 'dup') && r.caseId) { if (!grp[r.caseId]) { grp[r.caseId] = []; gOrder.push(r.caseId); } if (grp[r.caseId].indexOf(r.sn) < 0) grp[r.caseId].push(r.sn); } });
   var left = !gOrder.length ? '' : '<div class="card" style="margin-bottom:12px"><div class="hd"><h3>이번에 스캔한 건</h3><span class="muted small">' + gOrder.length + '건</span><span style="flex:1"></span><button class="btn sm" data-act="scanClear">지우기</button></div>' +
     '<div class="list" style="max-height:52vh">' + gOrder.map(function (id) {
-      var c = IDX.caseById[id] || {}, us = unitsOf(c), got = us.filter(function (u) { return u.recvSn; }).length, n = us.length;
+      var c = IDX.caseById[id] || {}, us = unitsOf(c), got = us.filter(gotRecv).length, n = us.length;
       var miss = us.filter(isMiss), full = !miss.length;
       return '<div class="li" data-act="case" data-id="' + esc(id) + '" style="cursor:pointer"><div class="r1"><b>' + esc(c.store || '') + '</b><span class="muted mono small">' + esc(cid(c)) + '</span>' +
         '<span class="prog ' + (full ? 'full' : 'short') + '" style="margin-left:auto">' + got + '/' + n + '</span></div>' +
         '<div class="small" style="margin:3px 0;font-weight:600;color:' + (full ? 'var(--green)' : 'var(--red)') + '">' + (full ? '✅ 전량 회수 완료 → 검사중' : '⏳ 회수 부족 ' + miss.length + '개 (' + n + '개 중 ' + got + '개 회수)') + '</div>' +
-        (full ? '' : '<div class="small" style="color:var(--ink2)">회수 안 된 S/N: <span class="mono">' + miss.map(function (u) { return esc(u.origSn || '(S/N 미상)'); }).join(', ') + '</span></div>') +
+        (full ? '' : '<div class="small" style="color:var(--ink2)">회수 안 된 S/N: <span class="mono">' + miss.map(function (u) { return esc(missSn(u)); }).join(', ') + '</span></div>') +
         '<div class="small muted">이번에 찍은 S/N ' + grp[id].length + '개 · ' + esc(c.reasonCode || '') + ' · 출고 ' + md(c.outDate) + '</div></div>';
     }).join('') + '</div></div>';
-  var orph = (S.data.orphans || []).filter(function (o) { return o.status === 'open'; }).sort(function (a, b) { return String(b.at).localeCompare(String(a.at)); });
-  var orphCard = !orph.length ? '' : '<div class="card" style="margin-bottom:12px;border:2px solid var(--red)"><div class="hd"><h3 style="color:var(--red)">⚠️ AS 인입건 매칭 안 됨 · ' + orph.length + '개</h3></div>' +
-    '<div class="bd small muted" style="padding-top:0">찍었는데 어느 AS 접수 건인지 못 찾은 S/N이에요. 매장을 확인해서 배정해 주세요.</div>' +
-    '<div class="list" style="max-height:52vh">' + orph.map(function (o) {
-      return '<div class="li" style="cursor:default"><div class="r1"><b class="mono">' + esc(o.sn) + '</b>' + mtag(o.model || modelOfSn(o.sn)) + lotTag(o.sn) + '<span class="muted small" style="margin-left:auto">' + md(o.at) + ' ' + esc(String(o.at || '').slice(11, 16)) + '</span></div>' +
-        '<div class="small" style="margin:3px 0">' + (o.kind === 'inbox' ? '<b style="color:var(--amber)">AS 건 생성 전</b> — ' + esc(o.store || '') + ' 접수에는 있지만 교환 확정 전이에요' : esc(o.msg || '접수된 AS 건에 없는 S/N')) + '</div>' +
-        (o.note ? '<div class="small">💬 ' + esc(o.note) + '</div>' : '') +
-        '<div class="row" style="margin-top:4px"><button class="btn sm pri" data-act="assignOpen" data-sn="' + esc(o.sn) + '">AS 건에 배정</button>' +
-        (o.inboxId ? '<button class="btn sm" data-act="inboxSel" data-id="' + esc(o.inboxId) + '">인입함에서 열기</button>' : '') +
-        '<button class="btn sm" data-act="orphNote" data-sn="' + esc(o.sn) + '">메모</button><button class="btn sm" data-act="orphDismiss" data-sn="' + esc(o.sn) + '" title="잘못 찍은 것 등 — 목록에서 뺌">무시</button></div></div>';
-    }).join('') + '</div></div>';
+  var orphCard = orphCard_();
   var right = '<div class="card"><div class="hd"><h3>확인 필요 — 수량 부족 · S/N 불일치</h3><span class="muted small">' + shortCases.length + '건</span></div>' +
     (shortCases.length ? shortCases.map(function (c) {
-      var us = unitsOf(c), sc = us.filter(function (u) { return u.recvSn; }).length;
+      var us = unitsOf(c), sc = us.filter(gotRecv).length;
       var miss = us.filter(isMiss);
       return '<div class="li"><div class="r1"><b>' + esc(c.store) + '</b><span class="muted mono small">' + esc(cid(c)) + '</span>' +
         '<span class="prog short" style="margin-left:auto">' + sc + '/' + us.length + '</span></div>' +
         '<div class="r2"><span>출고 ' + md(c.outDate) + '</span><span>입고 ' + md(c.recvDate) + '</span></div>' +
-        (miss.length ? '<div class="small" style="margin:4px 0;color:var(--red);font-weight:600">회수 부족 ' + miss.length + '개 (' + us.length + '개 중 ' + sc + '개 회수)</div><div class="small" style="margin:0 0 4px;color:var(--ink2)">회수 안 된 S/N: <span class="mono">' + miss.map(function (u) { return esc(u.origSn || '(S/N 미상)'); }).join(', ') + '</span></div>' : '<div style="margin:4px 0;line-height:1.9">' + chkLines(IDX.st[c.id], true) + '</div>') +
+        (miss.length ? '<div class="small" style="margin:4px 0;color:var(--red);font-weight:600">회수 부족 ' + miss.length + '개 (' + us.length + '개 중 ' + sc + '개 회수)</div><div class="small" style="margin:0 0 4px;color:var(--ink2)">회수 안 된 S/N: <span class="mono">' + miss.map(function (u) { return esc(missSn(u)); }).join(', ') + '</span></div>' : '<div style="margin:4px 0;line-height:1.9">' + chkLines(IDX.st[c.id], true) + '</div>') +
         '<div class="row"><button class="btn sm" data-act="case" data-id="' + esc(c.id) + '">AS 건 열기</button>' +
         '<button class="btn sm" data-act="csHoldOpen" data-id="' + esc(c.id) + '">CS팀 확인중</button>' +
         (miss.length ? '<button class="btn sm red" data-act="writeOff" data-id="' + esc(c.id) + '" title="안 들어온 것만 손망실(회수 포기) — 회수된 것은 검사 계속">회수 포기</button>' : '') + '</div></div>';
@@ -2694,6 +2720,11 @@ var ACT = {
     });
   },
   inspTab: function (d) { S.insp = d.v; render(); },
+  orphAsk: function (d, b) {
+    var off = d.v === 'off';
+    if (!off && !confirm(d.sn + ' — 고객사에 매장 출처 확인을 요청한 것으로 표시할까요?')) return;
+    run('orphanUpdate', { sn: d.sn, ask: !off, unask: off }, off ? '확인 요청 표시를 취소했습니다.' : '고객사 확인 요청함으로 표시했습니다.', b);
+  },
   orphNote: function (d, b) { var o = (S.data.orphans || []).filter(function (x) { return x.sn === d.sn; })[0] || {}; var v = window.prompt(d.sn + ' 메모 (예: 매장 확인 중, 접수 누락)', o.note || ''); if (v === null) return; run('orphanUpdate', { sn: d.sn, note: v }, '메모를 남겼어요.', b); },
   orphDismiss: function (d, b) { if (!confirm(d.sn + ' — 매칭 안 됨 목록에서 뺄까요? (잘못 찍은 경우 등)')) return; run('orphanUpdate', { sn: d.sn, dismiss: true }, '목록에서 뺐어요.', b); },
   rvGo: function () {
@@ -2816,7 +2847,7 @@ var ACT = {
       '<div class="small muted" style="margin-bottom:8px">이 S/N을 어느 AS 건의 회수분으로 기록할지 선택해 주세요.</div>' +
       '<input class="inp" id="asgQ" placeholder="매장명 · 출고 송장 · 문의번호로 검색 (진행 중인 AS 건 ' + list.length + '건)" style="width:100%;margin-bottom:8px">' +
       '<div class="list" id="asgList" style="max-height:340px">' + list.map(function (c) {
-        var us = unitsOf(c), sc = us.filter(function (u) { return u.recvSn; }).length;
+        var us = unitsOf(c), sc = us.filter(gotRecv).length;
         return '<div class="li" data-act="assignGo" data-id="' + esc(c.id) + '" data-sn="' + esc(d.sn) + '" data-store="' + esc(c.store) + '">' +
           '<div class="r1"><b>' + esc(c.store) + '</b><span class="muted mono small">' + esc(cid(c)) + '</span><span class="prog ' + (sc >= us.length ? 'full' : 'short') + '" style="margin-left:auto">' + sc + '/' + us.length + '</span></div>' +
           '<div class="r2"><span>출고 ' + md(c.outDate) + '</span><span>' + esc(c.reasonCode || '') + '</span>' + bpill(c) + '<span class="mono" style="display:none">' + esc([c.outTracking, c.returnTracking, c.inquiryNo, c.torderNo].join(' ')) + '</span></div></div>';
