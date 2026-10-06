@@ -1470,7 +1470,20 @@ function rvScan_(raw) {
     if (c) { S.recvOpen = c.id; render(); rcPut_(sn); var el = $('#rc_' + c.id); if (el) el.scrollIntoView({ block: 'center' }); toast(c.store + ' 회수 예정 건을 열었어요 — ' + sn + ' ✓'); return; }
     rest.push(sn);
   });
-  if (rest.length) { $('#scanIn').value = rest.join('\n'); ACT.scanGo({}, null); }
+  if (!rest.length) return;
+  var blank = rw.filter(function (c) { return IDX.st[c.id].open.some(function (u) { return !u.origSn || !modelOfSn(u.origSn); }); });
+  var known = function (sn) { return S.data.units.some(function (u) { return u.origSn === sn || u.recvSn === sn; }); };
+  var ask = rest.filter(function (sn) { return !known(sn); });
+  if (blank.length && ask.length) {
+    S.rvPend = { ask: ask, other: rest.filter(function (sn) { return ask.indexOf(sn) < 0; }) };
+    modal('어느 건의 회수분인가요? — ' + ask.length + '개',
+      '<div class="mono small" style="margin-bottom:10px;word-break:break-all">' + ask.map(esc).join(', ') + '</div>' +
+      '<div class="small muted" style="margin-bottom:8px">AS 건에 없는 S/N이에요. 접수 S/N이 비어 있는 회수 예정 건에 넣거나, 전체 AS 건에서 찾아볼 수 있어요.</div>' +
+      blank.map(function (c) { var n = IDX.st[c.id].open.filter(function (u) { return !u.origSn || !modelOfSn(u.origSn); }).length; return '<button class="btn" style="width:100%;margin-bottom:6px;justify-content:flex-start" data-act="rvPick" data-id="' + esc(c.id) + '"><b>' + esc(c.store) + '</b>&nbsp;<span class="muted small">S/N 미상 ' + n + '개 · ' + esc(cid(c)) + '</span></button>'; }).join(''),
+      '<button class="btn" data-act="closeModal">취소</button><button class="btn" data-act="rvPick" data-id="">전체 AS 건에서 찾기</button>');
+    return;
+  }
+  $('#scanIn').value = rest.join('\n'); ACT.scanGo({}, null);
 }
 function scanPanel_(rw) {
   rw = (rw || []).slice().sort(function (a, b) { return String(a.returnDoneAt || a.outDate).localeCompare(String(b.returnDoneAt || b.outDate)); });
@@ -1482,7 +1495,7 @@ function scanPanel_(rw) {
     .sort(function (a, b) { return String(a.recvDate).localeCompare(String(b.recvDate)); });
   var icon = { ok: '✅', dup: '⚠️', unknown: '❌', inbox: '📨' };
   var scanBar = '<div class="card" style="margin-bottom:12px"><div class="bd"><div class="row" style="align-items:center"><b style="font-size:16px">📦 바코드 스캔</b><span class="muted small">회수 예정 건이면 그 건을 열어 체크하고, 없으면 전체 AS 건에서 찾아 바로 회수 처리해요</span></div>' +
-    '<input class="inp mono bigscan" id="rvScan" style="width:100%;margin-top:8px;font-size:20px;padding:16px" placeholder="여기에 바코드를 찍으세요 (Enter)" autofocus><input type="hidden" id="scanIn"></div></div>';
+    '<div class="row" style="margin-top:8px;flex-wrap:nowrap"><input class="inp mono bigscan" id="rvScan" style="flex:1;min-width:0;font-size:20px;padding:16px" placeholder="여기에 바코드를 찍으세요 — 찍으면 바로 처리돼요" autocomplete="off" autofocus><button class="btn pri" data-act="rvGo" style="padding:16px 22px">확인</button></div><input type="hidden" id="scanIn"></div></div>';
   var expect = '<div class="card" style="margin-bottom:12px"><div class="hd"><h3>회수 예정</h3><span class="muted small">반품이 도착했고 아직 회수 처리 전 · ' + rw.length + '건</span></div>' +
     (rw.length ? rw.map(recvCard_).join('') : '<div class="empty">도착한 회수분이 없습니다.' + (moving ? '<br><span class="small">반품 배송 중 ' + moving + '건 — 도착하면 여기에 올라와요.</span>' : '') + '</div>') +
     (rw.length && moving ? '<div class="small muted" style="padding:8px 14px">반품 배송 중 ' + moving + '건은 도착하면 여기에 올라와요.</div>' : '') + '</div>';
@@ -2626,6 +2639,16 @@ var ACT = {
     });
   },
   inspTab: function (d) { S.insp = d.v; render(); },
+  rvGo: function () { var el = $('#rvScan'); if (!el) return; var v = el.value; el.value = ''; if (!v.trim()) return toast('바코드를 찍거나 S/N을 입력해 주세요.', true); rvScan_(v); var r2 = $('#rvScan'); if (r2) r2.focus(); },
+  rvPick: function (d) {
+    var p = S.rvPend; S.rvPend = null; closeModal(); if (!p) return;
+    if (!d.id) { $('#scanIn').value = p.ask.concat(p.other).join('\n'); return ACT.scanGo({}, null); }
+    S.recvOpen = d.id; render();
+    p.ask.forEach(function (sn) { rcPut_(sn); });
+    var el = $('#rc_' + d.id); if (el) el.scrollIntoView({ block: 'center' });
+    toast(p.ask.length + '개를 ' + (IDX.caseById[d.id] || {}).store + ' 회수 처리 칸에 넣었어요. 확인 후 [회수 처리 → 검사중]을 눌러 주세요.');
+    if (p.other.length) { $('#scanIn').value = p.other.join('\n'); ACT.scanGo({}, null); }
+  },
   recvOpen: function (d) { S.recvOpen = d.id || null; render(); var s = $('#rcScan'); if (s) s.focus(); },
   recvGo: function (d, b) {
     var c = IDX.caseById[d.id]; if (!c) return;
@@ -2819,6 +2842,14 @@ document.addEventListener('click', function (e) {
 });
 window.addEventListener('unhandledrejection', function (e) { e.preventDefault(); });
 var qTimer;
+var RV_T = null;
+document.addEventListener('input', function (e) {
+  if (e.target.id !== 'rvScan') return;
+  clearTimeout(RV_T);
+  var v = e.target.value, toks = (v.toUpperCase().match(/[A-Z0-9]{6,}/g) || []);
+  if (!toks.length || !toks.every(function (t) { return modelOfSn(t) && t.length >= 12; })) return;
+  RV_T = setTimeout(function () { var el = $('#rvScan'); if (el && el.value === v) ACT.rvGo(); }, 600);
+});
 document.addEventListener('input', function (e) {
   if (e.target.id === 'qcRejSns' && S.qcOpen) {
     var r0 = (S.data.stock || []).filter(function (x) { return x.id === S.qcOpen.id; })[0], pv0 = $('#qcRejPrev');
@@ -2853,6 +2884,7 @@ document.addEventListener('keydown', function (e) {
   if (e.key === 'Escape') { if ($('#mbg')) closeModal(); else if (S.caseSel) closeDrawer(); }
   if (e.target.id === 'admKey' && e.key === 'Enter') { e.preventDefault(); ACT.admSave(); return; }
   if (e.target.id === 'scanIn' && e.key === 'Enter') { e.preventDefault(); ACT.scanGo({}, $('[data-act=scanGo]')); return; }
+  if (e.target.id === 'rvScan' && e.key === 'Tab') { e.preventDefault(); ACT.rvGo(); return; }
   if (e.target.id === 'rvScan' && e.key === 'Enter') { e.preventDefault(); var vv = e.target.value; e.target.value = ''; rvScan_(vv); var r2 = $('#rvScan'); if (r2) r2.focus(); return; }
   if (e.target.id === 'rcScan' && e.key === 'Enter') {
     e.preventDefault();
