@@ -1485,6 +1485,48 @@ function rvScan_(raw) {
   }
   $('#scanIn').value = rest.join('\n'); ACT.scanGo({}, null);
 }
+function nowHm_() { var d = new Date(); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
+function batchMatch_(sns) {
+  var open = {}, got = {}, inb = {};
+  S.data.units.forEach(function (u) {
+    var c = IDX.caseById[u.caseId]; if (!c || c.closed === 'Y') return;
+    if (u.recvSn) { got[u.recvSn] = u; return; }
+    if (u.origSn && !u.disposition) (open[u.origSn] = open[u.origSn] || []).push(u);
+  });
+  S.data.inbox.forEach(function (i) { if (!i.caseId) jparse(i.sns, []).forEach(function (sn) { inb[sn] = i; }); });
+  var groups = {}, order = [], dup = [], unknown = [], matchedN = 0;
+  sns.forEach(function (sn) {
+    if (got[sn]) { dup.push({ sn: sn, u: got[sn] }); return; }
+    var cand = (open[sn] || []).slice().sort(function (a, b) { var ra = IDX.st[a.caseId].b === 'recv_wait' ? 0 : 1, rb = IDX.st[b.caseId].b === 'recv_wait' ? 0 : 1; return ra - rb || String((IDX.caseById[b.caseId] || {}).outDate).localeCompare(String((IDX.caseById[a.caseId] || {}).outDate)); });
+    var u = cand[0];
+    if (!u) { unknown.push({ sn: sn, inbox: inb[sn] || null }); return; }
+    if (!groups[u.caseId]) { groups[u.caseId] = { c: IDX.caseById[u.caseId], hits: [] }; order.push(u.caseId); }
+    groups[u.caseId].hits.push({ sn: sn, u: u }); matchedN++;
+  });
+  return { groups: order.map(function (id) { return groups[id]; }), dup: dup, unknown: unknown, matchedN: matchedN };
+}
+function batchCard_() {
+  var B = S.scanBatch; if (!B || !B.sns.length) return '';
+  var m = batchMatch_(B.sns);
+  var g = function (x) {
+    var st = IDX.st[x.c.id], us = st.open, hitIds = x.hits.map(function (h) { return h.u.id; });
+    var miss = us.filter(function (u) { return !u.recvSn && hitIds.indexOf(u.id) < 0; }), full = !miss.length;
+    return '<div class="li" style="cursor:default"><div class="r1"><input type="checkbox" class="bmChk" value="' + esc(x.c.id) + '" checked style="margin-right:6px"><b>' + esc(x.c.store) + '</b><span class="muted mono small">' + esc(cid(x.c)) + '</span>' + bpill(x.c) +
+      '<span class="prog ' + (full ? 'full' : 'short') + '" style="margin-left:auto">' + x.hits.length + '/' + us.length + '</span></div>' +
+      '<div class="small" style="margin:3px 0;font-weight:600;color:' + (full ? 'var(--green)' : 'var(--red)') + '">' + (full ? '✅ 회수 예정 ' + us.length + '개 모두 일치' : '⏳ ' + us.length + '개 중 ' + x.hits.length + '개 일치 · 회수 부족 ' + miss.length + '개') + '</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:4px;margin:4px 0">' + x.hits.map(function (h) { return '<span class="pill p-green mono">✓ ' + esc(h.sn) + '</span>'; }).join('') + '</div>' +
+      (full ? '' : '<div class="small" style="color:var(--ink2)">회수 안 된 S/N: <span class="mono">' + miss.map(function (u) { return esc(u.origSn || '(S/N 미상)'); }).join(', ') + '</span></div>') +
+      '<div class="row" style="margin-top:6px"><button class="btn sm pri" data-act="batchGo" data-id="' + esc(x.c.id) + '">' + (full ? '검사중으로 넘기기' : x.hits.length + '개만 검사중으로 (나머지 확인 필요)') + '</button><button class="btn sm" data-act="case" data-id="' + esc(x.c.id) + '">AS 건 열기</button></div></div>';
+  };
+  var blanks = byBucket('recv_wait').filter(function (c) { return IDX.st[c.id].open.some(function (u) { return !u.recvSn && (!u.origSn || !modelOfSn(u.origSn)); }); });
+  return '<div class="card" style="margin-bottom:12px;border:2px solid var(--blue)"><div class="hd"><h3>스캔 결과 · ' + B.sns.length + '개</h3><span class="muted small">' + esc(B.at) + ' · 일치 ' + m.matchedN + ' · 이미 처리 ' + m.dup.length + ' · 매칭 안 됨 ' + m.unknown.length + '</span><span style="flex:1"></span>' +
+    (m.groups.length ? '<button class="btn pri" data-act="batchGo" data-id="">선택한 ' + m.groups.length + '건 검사중으로</button>' : '') + '<button class="btn sm" data-act="batchClear">닫기</button></div>' +
+    (m.groups.length ? m.groups.map(g).join('') : '') +
+    (m.unknown.length ? '<div class="li" style="cursor:default;background:var(--redSoft)"><div class="r1"><b style="color:var(--red)">⚠️ AS 인입건 매칭 안 됨 ' + m.unknown.length + '개</b><span class="muted small" style="margin-left:6px">오른쪽 빨간 칸에 저장해서 따로 챙겨요</span></div>' +
+      '<div class="mono small" style="margin:4px 0;word-break:break-all">' + m.unknown.map(function (x) { return esc(x.sn) + (x.inbox ? ' (' + esc(x.inbox.store) + ' 접수 · 확정 전)' : ''); }).join(', ') + '</div>' +
+      (blanks.length ? '<div class="row">' + blanks.map(function (c) { var n = IDX.st[c.id].open.filter(function (u) { return !u.recvSn && (!u.origSn || !modelOfSn(u.origSn)); }).length; return '<button class="btn sm" data-act="batchBlank" data-id="' + esc(c.id) + '">' + esc(c.store) + ' S/N 미상 ' + n + '칸에 넣기</button>'; }).join('') + '</div>' : '') + '</div>' : '') +
+    (m.dup.length ? '<div class="li" style="cursor:default"><div class="small muted">이미 회수 처리된 S/N ' + m.dup.length + '개: ' + m.dup.slice(0, 20).map(function (x) { var c = IDX.caseById[x.u.caseId] || {}; return '<span class="mono">' + esc(x.sn) + '</span>(' + esc(c.store || '') + ')'; }).join(', ') + (m.dup.length > 20 ? ' 외' : '') + '</div></div>' : '') + '</div>';
+}
 function scanPanel_(rw) {
   rw = (rw || []).slice().sort(function (a, b) { return String(a.returnDoneAt || a.outDate).localeCompare(String(b.returnDoneAt || b.outDate)); });
   var moving = byBucket('ret_doing').filter(function (c) { return IDX.st[c.id].ret === 'moving'; }).length;
@@ -1494,8 +1536,10 @@ function scanPanel_(rw) {
   var shortCases = S.data.cases.filter(function (c) { return IDX.st[c.id].b === 'ret_short' && tracked_(c); })
     .sort(function (a, b) { return String(a.recvDate).localeCompare(String(b.recvDate)); });
   var icon = { ok: '✅', dup: '⚠️', unknown: '❌', inbox: '📨' };
-  var scanBar = '<div class="card" style="margin-bottom:12px"><div class="bd"><div class="row" style="align-items:center"><b style="font-size:16px">📦 바코드 스캔</b><span class="muted small">회수 예정 건이면 그 건을 열어 체크하고, 없으면 전체 AS 건에서 찾아 바로 회수 처리해요</span></div>' +
-    '<div class="row" style="margin-top:8px;flex-wrap:nowrap"><input class="inp mono bigscan" id="rvScan" style="flex:1;min-width:0;font-size:20px;padding:16px" placeholder="여기에 바코드를 찍으세요 — 찍으면 바로 처리돼요" autocomplete="off" autofocus><button class="btn pri" data-act="rvGo" style="padding:16px 22px">확인</button></div><input type="hidden" id="scanIn"></div></div>';
+  var scanBar = '<div class="card" style="margin-bottom:12px"><div class="bd"><div class="row" style="align-items:center"><b style="font-size:16px">📦 바코드 스캔</b><span class="muted small">박스에서 꺼내며 한 번에 쭉 찍고(50개·100개도 OK) <b>[확인]</b>을 누르면, 회수 예정 건과 맞춰서 보여드려요</span></div>' +
+    '<div class="row" style="margin-top:8px;flex-wrap:nowrap;align-items:stretch"><textarea class="inp mono bigscan" id="rvScan" rows="3" style="flex:1;min-width:0;font-size:16px;padding:12px;resize:vertical" placeholder="여기에 바코드를 찍으세요 (여러 개 계속 찍어도 돼요)" autocomplete="off" autofocus></textarea>' +
+    '<div style="display:flex;flex-direction:column;gap:6px"><button class="btn pri" data-act="rvGo" style="padding:14px 22px;flex:1">확인</button><button class="btn sm" data-act="rvClear">지우기</button></div></div>' +
+    '<div class="small muted" id="rvCnt" style="margin-top:4px"></div><input type="hidden" id="scanIn"></div></div>' + batchCard_();
   var expect = '<div class="card" style="margin-bottom:12px"><div class="hd"><h3>회수 예정</h3><span class="muted small">반품이 도착했고 아직 회수 처리 전 · ' + rw.length + '건</span></div>' +
     (rw.length ? rw.map(recvCard_).join('') : '<div class="empty">도착한 회수분이 없습니다.' + (moving ? '<br><span class="small">반품 배송 중 ' + moving + '건 — 도착하면 여기에 올라와요.</span>' : '') + '</div>') +
     (rw.length && moving ? '<div class="small muted" style="padding:8px 14px">반품 배송 중 ' + moving + '건은 도착하면 여기에 올라와요.</div>' : '') + '</div>';
@@ -1537,19 +1581,20 @@ function scanPanel_(rw) {
     '<div class="note" style="margin-top:12px">반품이 도착하면 <b>회수 예정</b>에 기종·S/N별로 올라옵니다. 실물을 확인하고 <b>회수 처리</b>를 누르면 <b>② 검사중</b>으로 넘어가요. 예정보다 적게 들어왔거나 접수 S/N과 다르면 오른쪽 <b>확인 필요</b>로 바로 넘어갑니다.</div>';
 }
 function judgePanel_(q) {
-  q = q.sort(function (a, b) { return String((IDX.caseById[a.caseId] || {}).recvDate).localeCompare(String((IDX.caseById[b.caseId] || {}).recvDate)); });
+  q = q.sort(function (a, b) { var ca = IDX.caseById[a.caseId] || {}, cb = IDX.caseById[b.caseId] || {}; return String(ca.recvDate).localeCompare(String(cb.recvDate)) || String(ca.store).localeCompare(String(cb.store)) || String(a.caseId).localeCompare(String(b.caseId)) || String(a.recvSn).localeCompare(String(b.recvSn)); });
   if (S.inspSel && !IDX.unitById[S.inspSel]) S.inspSel = null;
   if (!S.inspSel && q.length) S.inspSel = q[0].id;
   var u = IDX.unitById[S.inspSel];
   var recent = S.data.units.filter(function (x) { return x.verdict && x.testDate === today(); });
   return '<div class="tool"><input class="inp mono" id="scan" placeholder="S/N으로 찾기 (Enter)" style="width:280px">' +
     '<span class="muted small">검사중 ' + q.length + '개 · 오늘 판정 ' + recent.length + '개</span></div>' +
-    '<div class="split"><div class="card list">' + (q.length ? q.map(function (x) {
-      var c = IDX.caseById[x.caseId] || {};
+    '<div class="split"><div class="card list">' + (q.length ? q.map(function (x, i) {
+      var c = IDX.caseById[x.caseId] || {}, first = i === 0 || q[i - 1].caseId !== x.caseId, cnt = q.filter(function (y) { return y.caseId === x.caseId; }).length;
+      var head = first ? '<div style="padding:10px 14px;background:var(--line2);display:flex;gap:8px;align-items:center;position:sticky;top:0;z-index:1"><b>' + esc(c.store || '') + '</b><span class="muted mono small">' + esc(cid(c)) + '</span><span class="small muted">불량 접수: ' + esc(c.reasonCode || '-') + '</span><span class="pill p-inspect" style="margin-left:auto">' + cnt + '개 검사중</span></div>' : '';
       var r0 = recvTs_(x), hrs = r0 ? Math.max(0, Math.round((Date.now() - r0) / 3600000)) : null;
-      return '<div class="li ' + (S.inspSel === x.id ? 'on' : '') + '" data-act="inspSel" data-id="' + esc(x.id) + '"><div class="r1"><b class="mono">' + esc(x.recvSn || x.origSn || '(S/N 없음)') + '</b>' + mtag(x.model || caseModel(c)) +
+      return head + '<div class="li ' + (S.inspSel === x.id ? 'on' : '') + '" data-act="inspSel" data-id="' + esc(x.id) + '" style="padding-left:24px"><div class="r1"><b class="mono">' + esc(x.recvSn || x.origSn || '(S/N 없음)') + '</b>' + mtag(x.model || caseModel(c)) +
         (hrs !== null ? '<span class="small ' + (hrs >= 48 ? 'hl' : 'muted') + '" style="margin-left:auto">' + (hrs < 24 ? hrs + '시간째' : Math.floor(hrs / 24) + '일째') + '</span>' : '') + '</div>' +
-        '<div class="r2"><span>' + esc(c.store) + '</span><span>입고 ' + md(x.recvAt || c.recvDate) + '</span><span>불량 접수: ' + esc(c.reasonCode || '-') + '</span>' +
+        '<div class="r2"><span>입고 ' + md(x.recvAt || c.recvDate) + '</span>' +
         (/^S\/N (정정|미식별)/.test(x.flags || '') ? '<span class="pill p-ship">' + esc(x.flags) + '</span>' : '') + '</div></div>';
     }).join('') : '<div class="empty">검사중인 제품이 없습니다. ① 회수 예정에서 회수 처리하면 여기에 올라와요.</div>') + '</div><div>' + (u ? inspectForm(u) : '<div class="card"><div class="empty">유닛을 선택하거나 S/N을 입력해 주세요.</div></div>') + '</div></div>';
 }
@@ -2646,7 +2691,56 @@ var ACT = {
   inspTab: function (d) { S.insp = d.v; render(); },
   orphNote: function (d, b) { var o = (S.data.orphans || []).filter(function (x) { return x.sn === d.sn; })[0] || {}; var v = window.prompt(d.sn + ' 메모 (예: 매장 확인 중, 접수 누락)', o.note || ''); if (v === null) return; run('orphanUpdate', { sn: d.sn, note: v }, '메모를 남겼어요.', b); },
   orphDismiss: function (d, b) { if (!confirm(d.sn + ' — 매칭 안 됨 목록에서 뺄까요? (잘못 찍은 경우 등)')) return; run('orphanUpdate', { sn: d.sn, dismiss: true }, '목록에서 뺐어요.', b); },
-  rvGo: function () { var el = $('#rvScan'); if (!el) return; var v = el.value; el.value = ''; if (!v.trim()) return toast('바코드를 찍거나 S/N을 입력해 주세요.', true); rvScan_(v); var r2 = $('#rvScan'); if (r2) r2.focus(); },
+  rvGo: function () {
+    var el = $('#rvScan'); if (!el) return;
+    var sns = (el.value.toUpperCase().match(/[A-Z0-9]{8,}/g) || []).filter(function (x, i, a) { return a.indexOf(x) === i; });
+    if (!sns.length) return toast('바코드를 찍거나 S/N을 입력해 주세요.', true);
+    if (sns.length > 300) return toast('한 번에 300개까지 확인할 수 있어요. 나눠서 확인해 주세요.', true);
+    var prev = S.scanBatch ? S.scanBatch.sns : [];
+    S.scanBatch = { sns: prev.concat(sns.filter(function (x) { return prev.indexOf(x) < 0; })), at: nowHm_() };
+    el.value = ''; render();
+    var m = batchMatch_(S.scanBatch.sns), un = m.unknown.filter(function (x) { return !(S.data.orphans || []).some(function (o) { return o.sn === x.sn && o.status === 'open'; }); });
+    if (un.length) call('orphanAdd', { items: un.map(function (x) { return { sn: x.sn, kind: x.inbox ? 'inbox' : 'unknown', inboxId: x.inbox ? x.inbox.id : '', store: x.inbox ? x.inbox.store : '', msg: x.inbox ? '' : '접수된 AS 건에 없는 S/N' }; }) }).then(function () { return load(true); }).catch(function () { });
+    toast(sns.length + '개 확인 — 일치 ' + m.matchedN + '개 · 이미 처리됨 ' + m.dup.length + '개 · 매칭 안 됨 ' + m.unknown.length + '개');
+    var r2 = $('#rvScan'); if (r2) r2.focus();
+  },
+  rvClear: function () { var el = $('#rvScan'); if (el) el.value = ''; var c = $('#rvCnt'); if (c) c.textContent = ''; },
+  batchClear: function () { S.scanBatch = null; render(); },
+  batchGo: function (d, b) {
+    var m = batchMatch_((S.scanBatch || {}).sns || []), ids = d.id ? [d.id] : $$('.bmChk').filter(function (x) { return x.checked; }).map(function (x) { return x.value; });
+    var list = m.groups.filter(function (g) { return ids.indexOf(g.c.id) >= 0; }).map(function (g) { return { caseId: g.c.id, items: g.hits.map(function (h) { return { unitId: h.u.id, sn: h.sn }; }) }; });
+    if (!list.length) return toast('검사중으로 넘길 건을 골라 주세요.', true);
+    if (S.busy) return;
+    if (!(ls('me') || '').trim()) { var nm = window.prompt('기록에 남길 이름을 입력해 주세요.'); if (!nm || !nm.trim()) return; ls('me', nm.trim().slice(0, 20)); }
+    var chunks = []; for (var i = 0; i < list.length; i += 10) chunks.push(list.slice(i, i + 10));
+    var done = {}, okN = 0, bad = [], orig = b ? b.innerHTML : '';
+    S.busy = true; if (b) { b.disabled = true; }
+    var step = function (k) {
+      if (k >= chunks.length) return Promise.resolve();
+      if (b) b.innerHTML = '<span class="spin"></span> ' + Math.min((k + 1) * 10, list.length) + '/' + list.length + '건 처리 중';
+      return call('receiveBatch', { list: chunks[k], recvDate: today() }).then(function (r) {
+        okN += r.ok; r.results.forEach(function (y) { if (!y.ok) bad.push(y); else chunks[k].filter(function (x) { return x.caseId === y.caseId; }).forEach(function (x) { x.items.forEach(function (it) { done[it.sn] = 1; }); }); });
+        return step(k + 1);
+      });
+    };
+    step(0).then(function () {
+      S.scanBatch.sns = S.scanBatch.sns.filter(function (x) { return !done[x]; });
+      toast(okN + '건 · ' + Object.keys(done).length + '개 검사중으로 넘겼어요 · 회수 S/N은 티오더 시트에도 기록돼요' + (bad.length ? ' · 실패 ' + bad.length + '건: ' + bad[0].error : ''), !!bad.length);
+      return load(true);
+    }).catch(function (e) { toast(e.message || String(e), true); return load(true); })
+      .then(function () { S.busy = false; if (b && document.body.contains(b)) { b.disabled = false; b.innerHTML = orig; } render(); });
+  },
+  batchBlank: function (d, b) {
+    var c = IDX.caseById[d.id], m = batchMatch_((S.scanBatch || {}).sns || []); if (!c) return;
+    var slots = IDX.st[c.id].open.filter(function (u) { return !u.recvSn && (!u.origSn || !modelOfSn(u.origSn)); });
+    var sns = m.unknown.map(function (x) { return x.sn; }).slice(0, slots.length);
+    if (!sns.length) return;
+    if (!confirm(c.store + '의 S/N 미상 ' + slots.length + '칸에 매칭 안 된 S/N ' + sns.length + '개를 넣고 검사중으로 넘길까요?')) return;
+    run('receiveBatch', { list: [{ caseId: c.id, items: sns.map(function (sn, i) { return { unitId: slots[i].id, sn: sn }; }) }], recvDate: today() }, function (r) {
+      S.scanBatch.sns = S.scanBatch.sns.filter(function (x) { return sns.indexOf(x) < 0; });
+      return c.store + ' — ' + sns.length + '개 검사중으로 넘겼어요' + sheetMsg_(r);
+    }, b);
+  },
   rvPick: function (d) {
     var p = S.rvPend; S.rvPend = null; closeModal(); if (!p) return;
     if (!d.id) { $('#scanIn').value = p.ask.concat(p.other).join('\n'); return ACT.scanGo({}, null); }
@@ -2710,16 +2804,17 @@ var ACT = {
     });
   },
   assignOpen: function (d) {
-    var list = S.data.cases.filter(function (c) { return ['ret_need', 'ret_doing', 'ret_fail', 'ret_short', 'recv_wait', 'judge'].indexOf(IDX.st[c.id].b) >= 0; })
-      .sort(function (a, b) { return String(b.outDate).localeCompare(String(a.outDate)); }).slice(0, 80);
+    var PRI = ['recv_wait', 'ret_short', 'ret_doing', 'ret_fail', 'cs_hold', 'ret_need'];
+    var list = S.data.cases.filter(function (c) { return c.closed !== 'Y'; })
+      .sort(function (a, b) { var ra = PRI.indexOf(IDX.st[a.id].b) >= 0 ? 0 : 1, rb = PRI.indexOf(IDX.st[b.id].b) >= 0 ? 0 : 1; return ra - rb || String(b.outDate).localeCompare(String(a.outDate)); });
     modal('회수품 배정 — ' + d.sn,
       '<div class="small muted" style="margin-bottom:8px">이 S/N을 어느 AS 건의 회수분으로 기록할지 선택해 주세요.</div>' +
-      '<input class="inp" id="asgQ" placeholder="매장 검색" style="width:100%;margin-bottom:8px">' +
+      '<input class="inp" id="asgQ" placeholder="매장명 · 출고 송장 · 문의번호로 검색 (진행 중인 AS 건 ' + list.length + '건)" style="width:100%;margin-bottom:8px">' +
       '<div class="list" id="asgList" style="max-height:340px">' + list.map(function (c) {
         var us = unitsOf(c), sc = us.filter(function (u) { return u.recvSn; }).length;
         return '<div class="li" data-act="assignGo" data-id="' + esc(c.id) + '" data-sn="' + esc(d.sn) + '" data-store="' + esc(c.store) + '">' +
           '<div class="r1"><b>' + esc(c.store) + '</b><span class="muted mono small">' + esc(cid(c)) + '</span><span class="prog ' + (sc >= us.length ? 'full' : 'short') + '" style="margin-left:auto">' + sc + '/' + us.length + '</span></div>' +
-          '<div class="r2"><span>출고 ' + md(c.outDate) + '</span><span>' + esc(c.reasonCode || '') + '</span>' + (c.returnTracking ? '<span class="mono">' + esc(trk(c.returnTracking).slice(-1)[0]) + '</span>' : '') + '</div></div>';
+          '<div class="r2"><span>출고 ' + md(c.outDate) + '</span><span>' + esc(c.reasonCode || '') + '</span>' + bpill(c) + '<span class="mono" style="display:none">' + esc([c.outTracking, c.returnTracking, c.inquiryNo, c.torderNo].join(' ')) + '</span></div></div>';
       }).join('') + '</div>', '<button class="btn" data-act="closeModal">취소</button>');
   },
   assignGo: function (d, el) {
@@ -2849,13 +2944,10 @@ document.addEventListener('click', function (e) {
 });
 window.addEventListener('unhandledrejection', function (e) { e.preventDefault(); });
 var qTimer;
-var RV_T = null;
 document.addEventListener('input', function (e) {
   if (e.target.id !== 'rvScan') return;
-  clearTimeout(RV_T);
-  var v = e.target.value, toks = (v.toUpperCase().match(/[A-Z0-9]{6,}/g) || []);
-  if (!toks.length || !toks.every(function (t) { return modelOfSn(t) && t.length >= 12; })) return;
-  RV_T = setTimeout(function () { var el = $('#rvScan'); if (el && el.value === v) ACT.rvGo(); }, 600);
+  var n = (e.target.value.toUpperCase().match(/[A-Z0-9]{8,}/g) || []).filter(function (x, i, a) { return a.indexOf(x) === i; }).length, el = $('#rvCnt');
+  if (el) el.textContent = n ? n + '개 입력됨 — 다 찍었으면 [확인]' : '';
 });
 document.addEventListener('input', function (e) {
   if (e.target.id === 'qcRejSns' && S.qcOpen) {
@@ -2891,8 +2983,7 @@ document.addEventListener('keydown', function (e) {
   if (e.key === 'Escape') { if ($('#mbg')) closeModal(); else if (S.caseSel) closeDrawer(); }
   if (e.target.id === 'admKey' && e.key === 'Enter') { e.preventDefault(); ACT.admSave(); return; }
   if (e.target.id === 'scanIn' && e.key === 'Enter') { e.preventDefault(); ACT.scanGo({}, $('[data-act=scanGo]')); return; }
-  if (e.target.id === 'rvScan' && e.key === 'Tab') { e.preventDefault(); ACT.rvGo(); return; }
-  if (e.target.id === 'rvScan' && e.key === 'Enter') { e.preventDefault(); var vv = e.target.value; e.target.value = ''; rvScan_(vv); var r2 = $('#rvScan'); if (r2) r2.focus(); return; }
+  if (e.target.id === 'rvScan' && e.key === 'Tab') { e.preventDefault(); e.target.value += '\n'; return; }
   if (e.target.id === 'rcScan' && e.key === 'Enter') {
     e.preventDefault();
     (e.target.value.toUpperCase().match(/[A-Z0-9]{6,}/g) || []).forEach(function (sn) {
