@@ -776,6 +776,11 @@ function markPhantom_(us) {
 }
 function gotRecv(u) { return u.recvSn && !u._ph; }
 function missSn(u) { return u._ph ? (u.origSn && u.origSn !== u.recvSn ? u.origSn : '(S/N 미상)') : (u.origSn || '(S/N 미상)'); }
+function phFixBtn_(c) {
+  if (CS()) return '';
+  var ph = unitsOf(c).filter(function (u) { return u._ph; });
+  return ph.length ? '<button class="btn sm" data-act="clearPhantom" data-id="' + esc(c.id) + '" title="예전 시트 가져오기 오류로 같은 회수 S/N이 두 칸에 적혀 있어요. 실물에는 영향 없고, 전산 기록만 \'회수 안 됨\'으로 바로잡아요.">전산 기록 정리 (' + ph.length + ')</button>' : '';
+}
 function isMiss(u) { return (!u.recvSn || u._ph) && (!u.disposition || u.disposition === '미회수'); }
 function expUnits(us) { return us.filter(function (u) { return u.recvSn || !u.disposition || u.disposition === '미회수'; }); }
 function chkLines(st, short) {
@@ -783,7 +788,6 @@ function chkLines(st, short) {
   var out = [];
   if (st.ret === 'part' && st.left) out.push('<div><span class="pill p-blue">남은 반품 송장 회수 대기</span> <span class="mono small">' + st.left.map(function (x) { return esc(x.no); }).join(', ') + '</span></div>');
   if (miss.length) out.push('<div><span class="pill p-red">회수 부족 ' + miss.length + '개 (' + st.units.length + '개 중 ' + st.scanned + '개 회수)</span> <span class="small">회수 안 된 S/N</span> <span class="mono small">' + miss.map(function (u) { return esc(missSn(u)); }).join(', ') + '</span></div>');
-  st.units.filter(function (u) { return u._ph; }).forEach(function (u) { out.push('<div><span class="pill p-red">전산 중복 기록</span> <span class="small">회수 S/N <span class="mono">' + esc(u.recvSn) + '</span>이 두 칸에 기록됨 (실제 회수 아님 · 정리 필요)</span></div>'); });
   st.chk.forEach(function (u) {
     var m = /접수 ([A-Z0-9]+)/.exec(u.flags || '');
     out.push(u.flags === '추가 회수' ? '<div><span class="pill p-ship">접수에 없는 S/N</span> <span class="mono small">' + esc(u.recvSn) + '</span></div>'
@@ -1323,7 +1327,7 @@ function vReturn() {
             (missNew.length ? '<button class="btn sm" data-act="markMissing" data-id="' + esc(c.id) + '" title="시트 특이사항에 미회수로 기록 (건은 확인 필요에 남음)">미회수 기록</button>' : '') +
             '<button class="btn sm" data-act="csHoldOpen" data-id="' + esc(c.id) + '" title="CS팀이 매장에 확인 중 — 기한까지 따로 모음">CS팀 확인중</button>' +
             '<button class="btn sm red" data-act="writeOff" data-id="' + esc(c.id) + '" title="안 들어온 ' + miss.length + '개만 손망실(회수 포기)로 확정 — 회수된 것은 검사 계속">회수 포기</button>' : '') +
-          (st.chk.length ? '<button class="btn sm pri" data-act="checkOk" data-id="' + esc(c.id) + '">S/N 확인 완료</button>' : '') + '</div></td>') + '</tr>';
+          (st.chk.length ? '<button class="btn sm pri" data-act="checkOk" data-id="' + esc(c.id) + '">S/N 확인 완료</button>' : '') + phFixBtn_(c) + '</div></td>') + '</tr>';
     }).join('');
   } else {
     head = '<tr><th>번호</th><th>매장</th><th>수량</th><th>회수 입고일</th><th>회수 S/N</th><th>단계</th><th></th></tr>';
@@ -1566,7 +1570,7 @@ function orphRow_(o) {
 }
 function orphCard_() {
   var orph = orphOpen_(); if (!orph.length) return '';
-  return '<div class="card" style="margin-bottom:12px;border:2px solid var(--red)"><div class="hd"><h3 style="color:var(--red)">⚠️ 매장 출처 확인 불가 회수분 · ' + orph.length + '개</h3></div>' +
+  return '<div class="card" style="margin-bottom:12px;border:2px solid var(--red);overflow:hidden"><div class="hd"><h3 style="color:var(--red)">⚠️ ' + (CS() ? '매장 확인이 필요한 회수분 · ' : '매장 출처 확인 불가 회수분 · ') + orph.length + '개</h3></div>' +
     '<div class="bd small muted" style="padding-top:0">' + (CS() ? '회수품 중 어느 매장에서 온 것인지 확인되지 않은 S/N입니다. <b>매장을 알려주시면</b> 해당 AS 건으로 처리하겠습니다.' : '어느 매장 AS 건인지 알 수 없는 S/N이에요. <b>임의로 넣지 말고</b> 고객사(티오더)에 매장 확인을 요청한 뒤, 답변을 받으면 그 AS 건에 배정해 주세요.') + '</div>' +
     '<div class="list" style="max-height:52vh">' + orph.map(orphRow_).join('') + '</div></div>';
 }
@@ -1582,7 +1586,7 @@ function shortPanel_() {
         '<div class="r2"><span>출고 ' + md(c.outDate) + '</span><span>입고 ' + md(c.recvDate) + '</span></div>' +
         (miss.length ? '<div class="small" style="margin:4px 0;color:var(--red);font-weight:600">회수 부족 ' + miss.length + '개 (' + us.length + '개 중 ' + sc + '개 회수)</div><div class="small" style="margin:0 0 4px;color:var(--ink2)">회수 안 된 S/N: <span class="mono">' + miss.map(function (u) { return esc(missSn(u)); }).join(', ') + '</span></div>' : '<div style="margin:4px 0;line-height:1.9">' + chkLines(IDX.st[c.id], true) + '</div>') +
         '<div class="row"><button class="btn sm" data-act="case" data-id="' + esc(c.id) + '">AS 건 열기</button>' +
-        '<button class="btn sm" data-act="csHoldOpen" data-id="' + esc(c.id) + '">CS팀 확인중</button>' +
+        '<button class="btn sm" data-act="csHoldOpen" data-id="' + esc(c.id) + '">CS팀 확인중</button>' + phFixBtn_(c) +
         (miss.length ? '<button class="btn sm red" data-act="writeOff" data-id="' + esc(c.id) + '" title="안 들어온 것만 손망실(회수 포기) — 회수된 것은 검사 계속">회수 포기</button>' : '') + '</div></div>';
     }).join('') : '<div class="empty">부족한 건이 없습니다.</div>') + '</div>';
   return '<div class="split" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><div>' + right + '</div><div>' + (orphCard_() || '<div class="card"><div class="hd"><h3>매장 출처 확인 불가 회수분</h3></div><div class="empty">없습니다.</div></div>') + '</div></div>';
@@ -2774,6 +2778,12 @@ var ACT = {
     });
   },
   inspTab: function (d) { S.insp = d.v; render(); },
+  clearPhantom: function (d, b) {
+    var c = IDX.caseById[d.id]; if (!c) return;
+    var ph = unitsOf(c).filter(function (u) { return u._ph; });
+    if (!confirm(c.store + ' — 전산에 같은 회수 S/N이 두 번 적힌 칸 ' + ph.length + '개를 \'회수 안 됨\'으로 바로잡을까요?\n(' + ph.map(function (u) { return '접수 ' + (u.origSn && u.origSn !== u.recvSn ? u.origSn : 'S/N 미상') + ' 칸에 적힌 ' + u.recvSn; }).join(', ') + ')\n실물·시트에는 영향 없습니다.')) return;
+    run('clearPhantom', { caseId: c.id }, function (r) { return '전산 기록 ' + r.count + '칸 정리 — 회수 안 된 것으로 표시했어요.'; }, b);
+  },
   orphNote: function (d, b) { var o = (S.data.orphans || []).filter(function (x) { return x.sn === d.sn; })[0] || {}; var v = window.prompt(d.sn + ' 메모 (예: 매장 확인 중, 접수 누락)', o.note || ''); if (v === null) return; run('orphanUpdate', { sn: d.sn, note: v }, '메모를 남겼어요.', b); },
   orphDismiss: function (d, b) { if (!confirm(d.sn + ' — 매칭 안 됨 목록에서 뺄까요? (잘못 찍은 경우 등)')) return; run('orphanUpdate', { sn: d.sn, dismiss: true }, '목록에서 뺐어요.', b); },
   rvGo: function () {
