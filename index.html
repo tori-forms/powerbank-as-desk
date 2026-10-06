@@ -108,7 +108,12 @@ textarea.inp{width:100%;resize:vertical}
 .list{display:flex;flex-direction:column;max-height:calc(100vh - 190px);overflow:auto}
 .li{padding:11px 14px;border-bottom:1px solid var(--line2);cursor:pointer}
 .li:hover{background:#f8faf7} .li.on{background:var(--brandSoft);box-shadow:inset 3px 0 0 var(--brand)}
-.li .r1{display:flex;gap:8px;align-items:center} .li .r1 b{font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.snpicks{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px}
+.snpick{display:flex;align-items:center;gap:6px;padding:7px 10px;border:1.5px solid var(--line);border-radius:10px;cursor:pointer;background:var(--card);font-size:13.5px;user-select:none}
+.snpick:hover{border-color:var(--blue)} .snpick.on{border-color:var(--blue);background:var(--blueSoft,#eaf2ff)} .snpick.done{opacity:.75}
+.snpick .ck{width:16px;height:16px;border:1.5px solid var(--line);border-radius:4px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;color:#fff;flex-shrink:0}
+.snpick.on .ck{background:var(--blue);border-color:var(--blue)} .snpick .pill{margin-left:auto}
+.li .r1{display:flex;gap:8px;align-items:center;flex-wrap:wrap;row-gap:4px} .li .r1 b{font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap} .li .r1 b.mono{flex-shrink:0;overflow:visible;text-overflow:clip}
 .li .r2{font-size:12px;color:var(--ink3);margin-top:2px;display:flex;gap:8px;flex-wrap:wrap}
 .kv{display:grid;grid-template-columns:96px minmax(0,1fr);gap:6px 12px;font-size:13px}
 .kv dt{color:var(--ink3)} .kv dd{margin:0;word-break:break-all}
@@ -1547,23 +1552,20 @@ function batchCard_() {
 function orphOpen_() { return (S.data.orphans || []).filter(function (o) { return o.status === 'open'; }).sort(function (a, b) { return String(b.at).localeCompare(String(a.at)); }); }
 function orphAskTag_(o) {
   if (o.kind === 'inbox') return '<span class="pill p-ship">AS 건 생성 전 — ' + esc(o.store || '') + ' 접수(교환 확정 전)</span>';
-  return o.askAt ? '<span class="pill p-partial">고객사 확인 요청함 ' + md(o.askAt) + ' · ' + (function (n) { return n > 0 ? n + '영업일째 답변 대기' : '답변 대기'; })(bizDays(String(o.askAt).slice(0, 10)) || 0) + '</span>'
-    : '<span class="pill p-red">매장 출처 확인 불가 — 고객사 확인 요청 필요</span>';
+  return '<span class="pill p-red">매장 출처 확인 불가 — 고객사 확인 필요</span>';
 }
 function orphRow_(o) {
   return '<div class="li" style="cursor:default"><div class="r1"><b class="mono">' + esc(o.sn) + '</b>' + mtag(o.model || modelOfSn(o.sn)) + lotTag(o.sn) + '<span class="muted small" style="margin-left:auto">' + md(o.at) + ' ' + esc(String(o.at || '').slice(11, 16)) + ' 회수</span></div>' +
     '<div style="margin:4px 0">' + orphAskTag_(o) + '</div>' +
     (o.note ? '<div class="small">💬 ' + esc(o.note) + '</div>' : '') +
     (CS() ? '' : '<div class="row" style="margin-top:4px">' +
-      (o.kind !== 'inbox' ? (o.askAt ? '<button class="btn sm" data-act="orphAsk" data-sn="' + esc(o.sn) + '" data-v="off">요청 취소</button>' : '<button class="btn sm red" data-act="orphAsk" data-sn="' + esc(o.sn) + '">고객사에 확인 요청함</button>') : '') +
       '<button class="btn sm pri" data-act="assignOpen" data-sn="' + esc(o.sn) + '" title="고객사가 매장을 알려주면 그 AS 건에 넣어요">답변 받음 → AS 건에 배정</button>' +
       (o.inboxId ? '<button class="btn sm" data-act="inboxSel" data-id="' + esc(o.inboxId) + '">인입함에서 열기</button>' : '') +
       '<button class="btn sm" data-act="orphNote" data-sn="' + esc(o.sn) + '">메모</button><button class="btn sm" data-act="orphDismiss" data-sn="' + esc(o.sn) + '" title="잘못 찍은 것 등 — 목록에서 뺌">무시</button></div>') + '</div>';
 }
 function orphCard_() {
   var orph = orphOpen_(); if (!orph.length) return '';
-  var need = orph.filter(function (o) { return o.kind !== 'inbox' && !o.askAt; }).length;
-  return '<div class="card" style="margin-bottom:12px;border:2px solid var(--red)"><div class="hd"><h3 style="color:var(--red)">⚠️ 매장 출처 확인 불가 회수분 · ' + orph.length + '개</h3>' + (need ? '<span class="pill p-red">확인 요청 필요 ' + need + '</span>' : '') + '</div>' +
+  return '<div class="card" style="margin-bottom:12px;border:2px solid var(--red)"><div class="hd"><h3 style="color:var(--red)">⚠️ 매장 출처 확인 불가 회수분 · ' + orph.length + '개</h3></div>' +
     '<div class="bd small muted" style="padding-top:0">어느 매장 AS 건인지 알 수 없는 S/N이에요. <b>임의로 넣지 말고</b> 고객사(티오더)에 매장 확인을 요청한 뒤, 답변을 받으면 그 AS 건에 배정해 주세요.</div>' +
     '<div class="list" style="max-height:52vh">' + orph.map(orphRow_).join('') + '</div></div>';
 }
@@ -1612,40 +1614,79 @@ function scanPanel_(rw) {
     '<div class="note" style="margin-top:12px">반품이 도착하면 <b>회수 예정</b>에 기종·S/N별로 올라옵니다. 실물을 확인하고 <b>회수 처리</b>를 누르면 <b>② 검사중</b>으로 넘어가요. 예정보다 적게 들어왔거나 접수 S/N과 다르면 오른쪽 <b>확인 필요</b>로 바로 넘어갑니다.</div>';
 }
 function judgePanel_(q) {
-  q = q.sort(function (a, b) { var ca = IDX.caseById[a.caseId] || {}, cb = IDX.caseById[b.caseId] || {}; return String(ca.recvDate).localeCompare(String(cb.recvDate)) || String(ca.store).localeCompare(String(cb.store)) || String(a.caseId).localeCompare(String(b.caseId)) || String(a.recvSn).localeCompare(String(b.recvSn)); });
-  if (S.inspSel && !IDX.unitById[S.inspSel]) S.inspSel = null;
-  if (!S.inspSel && q.length) S.inspSel = q[0].id;
-  var u = IDX.unitById[S.inspSel];
+  var by = {}, order = [];
+  q.forEach(function (u) { if (!by[u.caseId]) { by[u.caseId] = []; order.push(u.caseId); } by[u.caseId].push(u); });
+  var oldest = function (id) { return by[id].map(function (u) { return recvTs_(u) || Infinity; }).reduce(function (a, b) { return Math.min(a, b); }, Infinity); };
+  order.sort(function (a, b) { return oldest(a) - oldest(b) || String((IDX.caseById[a] || {}).store).localeCompare(String((IDX.caseById[b] || {}).store)); });
+  var f = String(S.inspQ || '').trim().toUpperCase();
+  var shown = !f ? order : order.filter(function (id) { var c = IDX.caseById[id] || {}; return String(c.store || '').toUpperCase().indexOf(f) >= 0 || cid(c).indexOf(f) >= 0 || by[id].some(function (u) { return String(u.recvSn || '').indexOf(f) >= 0; }); });
+  if (S.inspStore && !IDX.caseById[S.inspStore]) S.inspStore = null;
+  if (!S.inspStore && shown.length) S.inspStore = shown[0];
   var recent = S.data.units.filter(function (x) { return x.verdict && x.testDate === today(); });
-  return '<div class="tool"><input class="inp mono" id="scan" placeholder="S/N으로 찾기 (Enter)" style="width:280px">' +
-    '<span class="muted small">검사중 ' + q.length + '개 · 오늘 판정 ' + recent.length + '개</span></div>' +
-    '<div class="split"><div class="card list">' + (q.length ? q.map(function (x, i) {
-      var c = IDX.caseById[x.caseId] || {}, first = i === 0 || q[i - 1].caseId !== x.caseId, cnt = q.filter(function (y) { return y.caseId === x.caseId; }).length;
-      var head = first ? '<div style="padding:10px 14px;background:var(--line2);display:flex;gap:8px;align-items:center;position:sticky;top:0;z-index:1"><b>' + esc(c.store || '') + '</b><span class="muted mono small">' + esc(cid(c)) + '</span><span class="small muted">불량 접수: ' + esc(c.reasonCode || '-') + '</span>' + (function () { var mi = unitsOf(c).filter(isMiss).length; return mi ? '<span class="pill p-red" title="확인 필요 탭에서 함께 관리돼요">⚠️ 미회수 ' + mi + '개 · 확인 필요</span>' : ''; })() + '<span class="pill p-inspect" style="margin-left:auto">' + cnt + '개 검사중</span></div>' : '';
-      var r0 = recvTs_(x), hrs = r0 ? Math.max(0, Math.round((Date.now() - r0) / 3600000)) : null;
-      return head + '<div class="li ' + (S.inspSel === x.id ? 'on' : '') + '" data-act="inspSel" data-id="' + esc(x.id) + '" style="padding-left:24px"><div class="r1"><b class="mono">' + esc(x.recvSn || x.origSn || '(S/N 없음)') + '</b>' + mtag(x.model || caseModel(c)) +
-        (hrs !== null ? '<span class="small ' + (hrs >= 48 ? 'hl' : 'muted') + '" style="margin-left:auto">' + (hrs < 24 ? hrs + '시간째' : Math.floor(hrs / 24) + '일째') + '</span>' : '') + '</div>' +
-        '<div class="r2"><span>입고 ' + md(x.recvAt || c.recvDate) + '</span>' +
-        (/^S\/N (정정|미식별)/.test(x.flags || '') ? '<span class="pill p-ship">' + esc(x.flags) + '</span>' : '') + '</div></div>';
-    }).join('') : '<div class="empty">검사중인 제품이 없습니다. ① 회수 예정에서 회수 처리하면 여기에 올라와요.</div>') + '</div><div>' + (u ? inspectForm(u) : '<div class="card"><div class="empty">유닛을 선택하거나 S/N을 입력해 주세요.</div></div>') + '</div></div>';
+  var list = shown.map(function (id) {
+    var c = IDX.caseById[id] || {}, us = by[id], mi = unitsOf(c).filter(isMiss).length, t0 = oldest(id);
+    var hrs = t0 < Infinity ? Math.max(0, Math.round((Date.now() - t0) / 3600000)) : null;
+    return '<div class="li ' + (S.inspStore === id ? 'on' : '') + '" data-act="inspStore" data-id="' + esc(id) + '"><div class="r1"><b>' + esc(c.store || '') + '</b><span class="muted mono small">' + esc(cid(c)) + '</span>' +
+      '<span class="pill p-inspect" style="margin-left:auto">' + us.length + '개</span></div>' +
+      '<div class="r2"><span>불량 접수: ' + esc(c.reasonCode || '-') + '</span><span>입고 ' + md(c.recvDate) + '</span>' +
+      (hrs !== null ? '<span class="' + (hrs >= 48 ? 'hl' : '') + '">' + (hrs < 24 ? hrs + '시간째' : Math.floor(hrs / 24) + '일째') + '</span>' : '') +
+      (mi ? '<span class="pill p-red">미회수 ' + mi + '개 · 확인 필요</span>' : '') + '</div></div>';
+  }).join('');
+  return '<div class="tool"><input class="inp" id="inspQ" placeholder="매장명 · S/N 검색 (S/N 찍고 Enter)" value="' + esc(S.inspQ || '') + '" style="width:300px">' +
+    '<span class="muted small">검사중 ' + order.length + '개 매장 · ' + q.length + '개 · 오늘 판정 ' + recent.length + '개</span></div>' +
+    '<div class="split" style="grid-template-columns:340px minmax(0,1fr)"><div class="card list">' +
+    (list || '<div class="empty">' + (q.length ? '검색 결과가 없습니다.' : '검사중인 제품이 없습니다. ① 회수 예정에서 회수 처리하면 여기에 올라와요.') + '</div>') +
+    '</div><div>' + (S.inspStore ? storeInspect_(S.inspStore, by[S.inspStore] || []) : '<div class="card"><div class="empty">왼쪽에서 매장을 선택해 주세요.</div></div>') + '</div></div>';
 }
-function inspectForm(u) {
+function storeInspect_(caseId, pend) {
+  var c = IDX.caseById[caseId] || {};
+  var done = unitsOf(c).filter(function (u) { return u.verdict && u.recvSn && !u._ph; });
+  var all = pend.concat(done), ids = all.map(function (u) { return u.id; });
+  S.inspPick = (S.inspPick || []).filter(function (id) { return ids.indexOf(id) >= 0; });
+  if (!S.inspPick.length && pend.length === 1) S.inspPick = [pend[0].id];
+  var pick = S.inspPick, inbox = c.inboxId ? IDX.inboxById[c.inboxId] : null, mi = unitsOf(c).filter(isMiss);
+  var chip = function (u) {
+    var on = pick.indexOf(u.id) >= 0, v = u.verdict;
+    return '<span class="snpick' + (on ? ' on' : '') + (v ? ' done' : '') + '" data-act="inspPick" data-id="' + esc(u.id) + '" title="' + (v ? '판정: ' + esc(v) + (u.cause ? ' / ' + esc(u.cause) : '') + ' — 눌러서 수정' : '눌러서 선택') + '">' +
+      '<span class="ck">' + (on ? '✓' : '') + '</span><span class="mono">' + esc(u.recvSn) + '</span>' +
+      (v ? '<span class="pill ' + (v === '불량' ? 'p-red' : v === '정상' ? 'p-green' : 'p-partial') + '">' + esc(v) + '</span>' : '') + '</span>';
+  };
+  var head = '<div class="card" style="margin-bottom:12px"><div class="hd"><h3>' + esc(c.store || '') + '</h3><span class="muted mono small">' + esc(cid(c)) + '</span>' +
+    '<span style="flex:1"></span><button class="btn sm" data-act="case" data-id="' + esc(c.id) + '">AS 건 열기</button></div><div class="bd" style="padding-top:0">' +
+    '<div class="note" style="margin-bottom:10px"><b>불량 인입 사유 ' + esc(c.reasonCode || '-') + '</b> · 출고 ' + md(c.outDate) + ' · 입고 ' + md(c.recvDate) + ' · 접수 ' + unitsOf(c).length + 'EA' +
+    (mi.length ? ' · <b style="color:var(--red)">미회수 ' + mi.length + '개(확인 필요)</b>' : '') +
+    (c.symptom || (inbox && inbox.symptom) ? '<div style="margin-top:6px;white-space:pre-wrap;max-height:80px;overflow:auto">' + esc(String(c.symptom || inbox.symptom).slice(0, 400)) + '</div>' : '') + '</div>' +
+    '<div class="row" style="align-items:center;margin-bottom:6px"><b>검사할 S/N ' + pend.length + '개</b><span class="muted small">눌러서 고르면 아래에서 한 번에 판정해요</span><span style="flex:1"></span>' +
+    (pend.length ? '<button class="btn sm" data-act="inspPickAll">검사중 전체 선택</button>' : '') + (pick.length ? '<button class="btn sm" data-act="inspPickNone">선택 해제</button>' : '') + '</div>' +
+    (pend.length ? '<div class="snpicks">' + pend.map(chip).join('') + '</div>' : '<div class="small muted">이 매장은 검사할 S/N이 모두 판정됐어요.</div>') +
+    (done.length ? '<div class="small muted" style="margin:10px 0 4px">판정 완료 ' + done.length + '개 — 눌러서 수정</div><div class="snpicks">' + done.map(chip).join('') + '</div>' : '') +
+    '</div></div>';
+  var units = pick.map(function (id) { return IDX.unitById[id]; }).filter(Boolean);
+  return head + (units.length ? inspectForm(units[0], units) : '<div class="card"><div class="empty">위에서 S/N을 골라 주세요. 같은 판정이면 여러 개를 한 번에 고르면 돼요.</div></div>');
+}
+function inspectForm(u, many) {
   var c = IDX.caseById[u.caseId] || {};
+  many = many && many.length > 1 ? many : null;
+  if (many) {
+    var same = function (k) { var v = many[0][k] || ''; return many.every(function (x) { return (x[k] || '') === v; }) ? v : ''; };
+    u = { id: u.id, caseId: u.caseId, model: u.model, recvSn: '', verdict: same('verdict'), testSymptom: same('testSymptom'), cause: same('cause'), opinion: same('opinion'), capPct: same('capPct'), testDate: same('testDate'), disposition: same('disposition'), lot: '' };
+  }
   var chips = function (name, arr, cur, cls) { return '<div class="chips" data-name="' + name + '">' + arr.map(function (v) { return '<span class="chip ' + (cls ? cls(v) : '') + (v === cur ? ' on' : '') + '" data-act="chip" data-v="' + esc(v) + '">' + esc(cz(v)) + '</span>'; }).join('') + '</div>'; };
   var vcls = function (v) { return v === '불량' ? 'r' : v === '정상' ? 'g' : 'a'; };
   var sibs = unitsOf(c);
   var inbox = c.inboxId ? IDX.inboxById[c.inboxId] : null;
-  var autoLot = lotOf(u.recvSn || u.origSn), lotV = u.lot || (autoLot ? autoLot.name : '');
+  var autoLot = many ? null : lotOf(u.recvSn || u.origSn), lotV = u.lot || (autoLot ? autoLot.name : '');
   var lotChoices = [''].concat((S.data.lots || []).filter(function (l) { return !autoLot || l.prefix === autoLot.prefix; }).map(function (l) { return l.name; }));
   if (lotChoices.length === 1) lotChoices = lotChoices.concat(['1차', '2차', '3차', '4차']);
   if (lotV && lotChoices.indexOf(lotV) < 0) lotChoices.push(lotV);
   lotChoices = lotChoices.filter(function (x, i, a) { return a.indexOf(x) === i; });
-  return '<div class="card" id="inspCard" data-id="' + esc(u.id) + '"><div class="hd"><h3 class="mono">' + esc(u.recvSn || u.origSn || '(S/N 없음)') + '</h3>' + mtag(u.model || caseModel(c)) +
-    '<span style="flex:1"></span><button class="btn sm" data-act="case" data-id="' + esc(c.id) + '">AS 건 ' + esc(cid(c)) + '</button></div><div class="bd">' +
-    '<div class="note" style="margin-bottom:12px"><b>' + esc(c.store) + '</b> · <b>불량 인입 사유 ' + esc(c.reasonCode || '-') + '</b>' + ' · 출고 ' + md(c.outDate) + ' · 입고 ' + md(c.recvDate) + (sibs.length > 1 ? ' · 동일 건 ' + sibs.length + 'EA' : '') +
-    (c.symptom || (inbox && inbox.symptom) ? '<div style="margin-top:6px;white-space:pre-wrap;max-height:90px;overflow:auto">' + esc(String(c.symptom || inbox.symptom).slice(0, 400)) + '</div>' : '') + '</div>' +
+  var ids = many ? many.map(function (x) { return x.id; }) : [u.id];
+  return '<div class="card" id="inspCard" data-id="' + esc(u.id) + '" data-ids="' + esc(ids.join(',')) + '"><div class="hd"><h3' + (many ? '' : ' class="mono"') + '>' + (many ? '선택한 ' + many.length + '개 한 번에 판정' : esc(u.recvSn || u.origSn || '(S/N 없음)')) + '</h3>' + mtag(u.model || caseModel(c)) +
+    '<span style="flex:1"></span>' + (S.view === 'inspect' ? '' : '<button class="btn sm" data-act="case" data-id="' + esc(c.id) + '">AS 건 ' + esc(cid(c)) + '</button>') + '</div><div class="bd">' +
+    (S.view === 'inspect' ? '' : '<div class="note" style="margin-bottom:12px"><b>' + esc(c.store) + '</b> · <b>불량 인입 사유 ' + esc(c.reasonCode || '-') + '</b>' + ' · 출고 ' + md(c.outDate) + ' · 입고 ' + md(c.recvDate) + (sibs.length > 1 ? ' · 동일 건 ' + sibs.length + 'EA' : '') +
+    (c.symptom || (inbox && inbox.symptom) ? '<div style="margin-top:6px;white-space:pre-wrap;max-height:90px;overflow:auto">' + esc(String(c.symptom || inbox.symptom).slice(0, 400)) + '</div>' : '') + '</div>') +
     '<div class="fld"><span>최종 판정 (불량 / 정상)</span>' + chips('verdict', L.VERDICTS, u.verdict, vcls) + '</div>' +
-    '<div class="row" style="margin:12px 0"><label class="fld"><span>양산 차수 ' + (autoLot ? '<b style="color:var(--green)">· S/N 자동</b>' : '<b style="color:var(--amber)">· 등록 구간 없음</b>') + '</span><select class="inp" id="in_lot">' + lotChoices.map(function (l) { return '<option ' + (l === lotV ? 'selected' : '') + '>' + esc(l) + '</option>'; }).join('') + '</select></label>' +
+    '<div class="row" style="margin:12px 0"><label class="fld"><span>양산 차수 ' + (many ? '<b style="color:var(--green)">· 비워두면 S/N별 자동</b>' : autoLot ? '<b style="color:var(--green)">· S/N 자동</b>' : '<b style="color:var(--amber)">· 등록 구간 없음</b>') + '</span><select class="inp" id="in_lot">' + lotChoices.map(function (l) { return '<option ' + (l === lotV ? 'selected' : '') + '>' + esc(l) + '</option>'; }).join('') + '</select></label>' +
     '<label class="fld"><span>측정 용량 (정격 대비 %)</span><input class="inp" id="in_cap" type="number" min="0" max="120" step="1" value="' + esc(u.capPct || '') + '" style="width:110px" placeholder="예: 76"></label>' +
     '<label class="fld"><span>검사일</span><input class="inp" type="date" id="in_date" value="' + esc(u.testDate || today()) + '"></label></div>' +
     '<div class="fld"><span>불량 증상 (검사 기준)</span>' + chips('testSymptom', L.TEST_SYMPTOMS, u.testSymptom) + '</div>' +
@@ -1654,7 +1695,7 @@ function inspectForm(u) {
     OPINION_TPL.map(function (t, i) { return '<span class="chip" data-act="tpl" data-i="' + i + '" title="' + esc(t[0]) + '">' + esc(t[0].slice(0, 22)) + '…</span>'; }).join('') + '</div>' +
     '<textarea class="inp" id="in_op" rows="3">' + esc(u.opinion || '') + '</textarea></div>' +
     '<div class="fld" style="margin-top:12px"><span>처리 (어떻게 했는지)</span>' + chips('disposition', L.DISPOSITIONS.filter(function (x) { return ['미회수', '회수불가', '분실', '고객 폐기', '손망실(회수 포기)'].indexOf(x) < 0 || x === u.disposition; }), u.disposition) + '</div>' +
-    '<div class="row" style="margin-top:16px"><button class="btn pri" data-act="saveInspect">저장 후 다음 ▶</button><span class="muted small">원인은 판정에 따라 자동 추천됩니다 (정상 → 재현 안 됨, 용량 80% 미만 → 셀 용량 저하)</span></div></div></div>';
+    '<div class="row" style="margin-top:16px"><button class="btn pri" data-act="saveInspect">' + (many ? '선택한 ' + many.length + '개 저장' : '저장') + '</button><span class="muted small">원인은 판정에 따라 자동 추천됩니다 (정상 → 재현 안 됨, 용량 80% 미만 → 셀 용량 저하)</span></div></div></div>';
 }
 function chipVal(name) { var el = $('#inspCard .chips[data-name="' + name + '"] .chip.on'); return el ? el.getAttribute('data-v') : ''; }
 function setChip(name, v) { $$('#inspCard .chips[data-name="' + name + '"] .chip').forEach(function (x) { x.classList.toggle('on', x.getAttribute('data-v') === v); }); }
@@ -2703,7 +2744,7 @@ var ACT = {
   dispose: function (d, b) { var ids = selSns('uSel'); if (!ids.length) return toast('유닛을 선택해 주세요.', true); run('dispose', { unitIds: ids, disposition: $('#dispSel').value }, '처분을 기록했습니다.', b); },
   closeCase: function (d, b) { run('closeCase', { caseId: d.id, reason: $('#closeReason').value || '종결' }, '종결했습니다.', b); },
   reopenCase: function (d, b) { run('closeCase', { caseId: d.id, reopen: true }, '재개했습니다.', b); },
-  inspectUnit: function (d) { S.inspSel = d.id; S.view = 'inspect'; closeDrawer(); render(); },
+  inspectUnit: function (d) { var u = IDX.unitById[d.id]; S.inspSel = d.id; if (u) { S.inspStore = u.caseId; S.inspPick = [u.id]; S.insp = 'judge'; } S.view = 'inspect'; closeDrawer(); render(); },
   trackOne: function (d, b) {
     b.disabled = true;
     call('trackOne', { no: d.no }).then(function (r) { toast(r.ok ? r.no + ' · ' + r.status + ' ' + String(r.at || '').slice(5, 16) + (r.ori ? ' · 원송장 ' + r.ori : '') : '조회 실패: ' + r.msg, !r.ok); }).catch(function (e) { toast(e.message, true); }).finally(function () { b.disabled = false; });
@@ -2720,11 +2761,6 @@ var ACT = {
     });
   },
   inspTab: function (d) { S.insp = d.v; render(); },
-  orphAsk: function (d, b) {
-    var off = d.v === 'off';
-    if (!off && !confirm(d.sn + ' — 고객사에 매장 출처 확인을 요청한 것으로 표시할까요?')) return;
-    run('orphanUpdate', { sn: d.sn, ask: !off, unask: off }, off ? '확인 요청 표시를 취소했습니다.' : '고객사 확인 요청함으로 표시했습니다.', b);
-  },
   orphNote: function (d, b) { var o = (S.data.orphans || []).filter(function (x) { return x.sn === d.sn; })[0] || {}; var v = window.prompt(d.sn + ' 메모 (예: 매장 확인 중, 접수 누락)', o.note || ''); if (v === null) return; run('orphanUpdate', { sn: d.sn, note: v }, '메모를 남겼어요.', b); },
   orphDismiss: function (d, b) { if (!confirm(d.sn + ' — 매칭 안 됨 목록에서 뺄까요? (잘못 찍은 경우 등)')) return; run('orphanUpdate', { sn: d.sn, dismiss: true }, '목록에서 뺐어요.', b); },
   rvGo: function () {
@@ -2897,16 +2933,31 @@ var ACT = {
     if (!chipVal('disposition')) setChip('disposition', DEFAULT_DISP[t[1]]);
   },
   saveInspect: function (d, b) {
-    var id = $('#inspCard').getAttribute('data-id');
+    var card = $('#inspCard'), id = card.getAttribute('data-id'), ids = (card.getAttribute('data-ids') || id).split(',').filter(String);
     var cap = $('#in_cap').value;
     var verdict = chipVal('verdict'), cause = chipVal('cause');
     if (cap !== '' && +cap < 80 && !verdict) { verdict = '불량'; }
     if (cap !== '' && +cap < 80 && !cause) cause = '셀 용량 저하(80% 미만)';
     if (!verdict) return toast('판정을 선택해 주세요.', true);
-    var next = inspectQueue().filter(function (u) { return u.id !== id; })[0];
-    run('inspect', { unitId: id, verdict: verdict, testSymptom: chipVal('testSymptom'), cause: cause, opinion: $('#in_op').value, lot: $('#in_lot').value, capPct: cap, testDate: $('#in_date').value, disposition: chipVal('disposition') }, function (r) { return '검사 결과를 저장했습니다' + sheetMsg_(r); }, b)
-      .then(function () { S.inspSel = next ? next.id : null; render(); var s = $('#scan'); if (s) s.focus(); });
+    var body = { verdict: verdict, testSymptom: chipVal('testSymptom'), cause: cause, opinion: $('#in_op').value, lot: $('#in_lot').value, capPct: cap, testDate: $('#in_date').value, disposition: chipVal('disposition') };
+    var after = function () {
+      S.inspPick = [];
+      if (S.view === 'inspect') { var left = inspectQueue().filter(function (u) { return u.caseId === S.inspStore; }); if (left.length === 1) S.inspPick = [left[0].id]; }
+      else { var next = inspectQueue().filter(function (u) { return ids.indexOf(u.id) < 0; })[0]; S.inspSel = next ? next.id : null; }
+      render();
+    };
+    if (ids.length > 1) {
+      if (!confirm(ids.length + '개를 모두 [' + verdict + (cause ? ' / ' + cause : '') + ']로 저장할까요?')) return;
+      body.unitIds = ids;
+      return run('inspectBatch', body, function (r) { return r.count + '개 판정 저장' + (r.failed && r.failed.length ? ' · 실패 ' + r.failed.length + '개' : '') + sheetMsg_(r); }, b).then(after);
+    }
+    body.unitId = ids[0];
+    run('inspect', body, function (r) { return '검사 결과를 저장했습니다' + sheetMsg_(r); }, b).then(after);
   },
+  inspStore: function (d) { S.inspStore = d.id; S.inspPick = []; render(); },
+  inspPick: function (d) { var p = S.inspPick || [], k = p.indexOf(d.id); if (k >= 0) p.splice(k, 1); else p.push(d.id); S.inspPick = p; render(); },
+  inspPickAll: function () { S.inspPick = inspectQueue().filter(function (u) { return u.caseId === S.inspStore; }).map(function (u) { return u.id; }); render(); },
+  inspPickNone: function () { S.inspPick = []; render(); },
   backfill: function (d, b) { run('backfillSlack', { days: 150 }, function (r) { return '과거 ' + r.matched + '건 확인 · 사진 ' + r.files + '건 · 답글 ' + r.threads + '건 보강'; }, b); },
   fillSn: function (d, b) { run('fillSnFromInbox', {}, function (r) { return 'AS 건 ' + r.cases + '건 · S/N ' + r.units + '개 채움'; }, b); },
   repairUnits: function (d, b) { run('repairUnits', {}, function (r) { return '중복 유닛 ' + r.merged + '개 병합 · ' + r.removed + '행 정리'; }, b); },
@@ -3005,6 +3056,7 @@ document.addEventListener('input', function (e) {
     var rg = snRangesTxt(e.target.value, e.target.id === 'soSns' ? ($('#soModel') || {}).value : (SN_PRODS()[0] || {}).id), pv2 = $(e.target.id === 'soSns' ? '#soPrev' : '#cntPrev'), n = 0;
     if (pv2) { if (typeof rg === 'string') pv2.innerHTML = '<span style="color:var(--red)">' + esc(rg) + '</span>'; else { rg.forEach(function (x) { n += x.hi - x.lo + 1; }); pv2.innerHTML = n ? '<b>' + n.toLocaleString() + '개</b>' : ''; } }
   }
+  if (e.target.id === 'inspQ') { clearTimeout(qTimer); var iv = e.target.value; qTimer = setTimeout(function () { S.inspQ = iv; render(); var q3 = $('#inspQ'); if (q3) { q3.focus(); q3.setSelectionRange(iv.length, iv.length); } }, 250); }
   if (e.target.id === 'q') { clearTimeout(qTimer); var v = e.target.value; qTimer = setTimeout(function () { S.q = v; render(); var q = $('#q'); if (q) { q.focus(); q.setSelectionRange(v.length, v.length); } }, 250); }
 });
 document.addEventListener('change', function (e) {
@@ -3029,6 +3081,12 @@ document.addEventListener('keydown', function (e) {
       else { var ex = $('#rcExtra'); if ((ex.value || '').indexOf(sn) < 0) ex.value = (ex.value ? ex.value.replace(/\s*$/, '') + '\n' : '') + sn; toast(sn + ' — 예정 목록에 없는 S/N이라 아래 칸에 넣었어요.', true); }
     });
     e.target.value = ''; return;
+  }
+  if (e.target.id === 'inspQ' && e.key === 'Enter') {
+    var sv = e.target.value.toUpperCase().replace(/\s/g, '').replace(/^P20BPTA/, 'P20BOTA');
+    var hu = inspectQueue().filter(function (u) { return u.recvSn === sv; })[0] || S.data.units.filter(function (u) { return u.recvSn === sv && u.verdict; })[0];
+    if (hu) { S.inspStore = hu.caseId; S.inspPick = [hu.id]; S.inspQ = ''; render(); toast(sv + ' 선택'); var q2 = $('#inspQ'); if (q2) q2.focus(); }
+    return;
   }
   if (e.target.id === 'scan' && e.key === 'Enter') {
     var v = e.target.value.toUpperCase().replace(/\s/g, '').replace(/^P20BPTA/, 'P20BOTA');
