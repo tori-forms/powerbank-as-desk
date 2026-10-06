@@ -754,6 +754,8 @@ function cstate(c) {
   else if (open.some(function (u) { return !u.verdict; })) st.b = 'judge';
   else if (open.length) st.b = 'dispose';
   else st.b = 'done';
+  st.held = !!(c.csHoldUntil && d10(c.csHoldUntil) >= today());
+  if (st.held && (st.b === 'ret_fail' || st.b === 'ret_need' || (st.b === 'ret_doing' && st.ret === 'req'))) st.b = 'cs_hold';
   return st;
 }
 function unitChk(u) { return u.disposition !== '미회수' && (/^S\/N 상이\(/.test(u.flags || '') || u.flags === '추가 회수'); }
@@ -788,7 +790,7 @@ function scopeBar(hidden) {
 }
 var BUCKET = {
   ship_wait: ['출고 대기', 'p-ship'], shipping: ['배송 중', 'p-blue'], ret_need: ['회수 필요', 'p-retreq'],
-  ret_doing: ['회수 진행중', 'p-returning'], ret_fail: ['회수 실패', 'p-red'], ret_short: ['확인 필요', 'p-partial'],
+  ret_doing: ['회수 진행중', 'p-returning'], ret_fail: ['회수 실패', 'p-red'], cs_hold: ['CS팀 확인중', 'p-new'], ret_short: ['확인 필요', 'p-partial'],
   recv_wait: ['회수 도착', 'p-violet'], judge: ['검사중', 'p-inspect'], dispose: ['처분 대기', 'p-dispose'], done: ['완료', 'p-done'], closed: ['종결', 'p-closed']
 };
 var OUT_LABEL = { none: ['송장 없음', 'p-gray'], before: ['배송 전', 'p-gray'], moving: ['배송 중', 'p-blue'], done: ['도착 완료', 'p-green'], expired: ['조회 기간 만료', 'p-gray'] };
@@ -824,7 +826,7 @@ function inspectQueue() {
 }
 function byBucket(b) { return S.data.cases.filter(function (c) { return (IDX.st[c.id] || {}).b === b && tracked_(c); }); }
 function counts() {
-  var k = { ship_wait: 0, shipping: 0, ret_need: 0, ret_doing: 0, ret_fail: 0, ret_short: 0, recv_wait: 0, judge: 0, dispose: 0, done: 0, closed: 0 };
+  var k = { ship_wait: 0, shipping: 0, ret_need: 0, ret_doing: 0, ret_fail: 0, ret_short: 0, cs_hold: 0, recv_wait: 0, judge: 0, dispose: 0, done: 0, closed: 0 };
   S.data.cases.forEach(function (c) { var b = (IDX.st[c.id] || {}).b; if (k[b] !== undefined && tracked_(c)) k[b]++; });
   k.inboxNew = S.data.inbox.filter(ibOpen).length;
   k.inboxTodo = S.data.inbox.filter(function (i) {
@@ -899,7 +901,7 @@ function vHome() {
     kp('출고 대기', k.ship_wait, '건', '교환품 발송 · 송장 입력 전', '#ffa41b', ['ship', 'wait']) +
     kp('회수 필요', k.ret_need, '건', '출고 도착 · 반품 송장 없음', '#ff7a45', ['ret', 'need']) +
     kp('회수 진행중', k.ret_doing, '건', '반품 송장 발행 · 수거 대기', '#3182f6', ['ret', 'doing']) +
-    kp('회수 실패', k.ret_fail, '건', (k.ret_fail ? '<b style="color:var(--red)">재접수 필요</b>' : '정상'), '#f04452', ['ret', 'fail']) +
+    kp('회수 실패', k.ret_fail, '건', (k.ret_fail ? '<b style="color:var(--red)">재접수 필요</b>' : '정상') + (k.cs_hold ? ' · CS팀 확인중 ' + k.cs_hold : ''), '#f04452', ['ret', k.ret_fail || !k.cs_hold ? 'fail' : 'hold']) +
     kp('회수 예정', k.recv_wait, '건', '회수 도착 · 회수 처리 전', '#ff8a00', ['insp', 'recv']) +
     kp('검사중', k.inspectUnits, '개', (k.shortUnits ? '<b style="color:var(--red)">미회수 ' + k.shortUnits + 'EA</b> · ' : '') + '입고 완료 · 판정 전', '#7b61ff', ['insp', 'judge']) + '</div>';
   var order = { ret_fail: 0, ret_need: 1, ship_wait: 2, ret_short: 3, recv_wait: 4, judge: 5, dispose: 6, ret_doing: 7, shipping: 8 };
@@ -936,7 +938,7 @@ function vHomeCs() {
     kp('회수 완료', retDone, '건', '회수 입고 완료', '#ff8a00', ['ret', 'done']) +
     kp('검사 완료', res.length, '개', '최근 30일 · 불량 ' + nb + ' · 정상 ' + nn, '#191f28', ['go', 'results']) +
     (function () { var d = csDef_(since, function () { return true; }); return kp('CS 방어율', d.rate, '%', '최근 30일 인입 ' + d.inN + '건 중 출고 ' + d.outN + '건 · 방어 실패 ' + nn + '개', '#3182f6', ['go', 'analysis']); })() + '</div>';
-  var fail = b(['ret_fail', 'ret_short']);
+  var fail = b(['ret_fail', 'cs_hold', 'ret_short']);
   var recent = S.data.units.filter(function (u) { return u.verdict; }).sort(function (a, c) { return resDate_(c).localeCompare(resDate_(a)); }).slice(0, 8);
   var vp = function (v) { return '<span class="pill ' + (v === '불량' ? 'p-red' : v === '정상' ? 'p-green' : 'p-ship') + '">' + esc(v) + '</span>'; };
   html += '<div class="split home"><div class="card"><div class="hd"><h3>최근 검사 결과</h3><span style="flex:1"></span><button class="btn sm" data-act="go" data-v="results">전체 보기</button></div>' +
@@ -1235,11 +1237,11 @@ function vReturn() {
   var all0 = S.data.cases.filter(function (c) { return modelOk(c) && matchQ(c); });
   var all = all0.filter(inScope);
   var byB = function (b) { return all.filter(function (c) { return IDX.st[c.id].b === b; }); };
-  var sets = { need: byB('ret_need'), doing: byB('ret_doing'), fail: byB('ret_fail'), short: byB('ret_short'), done: all.filter(function (c) { return ['recv_wait', 'judge', 'dispose', 'done'].indexOf(IDX.st[c.id].b) >= 0; }) };
+  var sets = { need: byB('ret_need'), doing: byB('ret_doing'), fail: byB('ret_fail'), hold: byB('cs_hold'), short: byB('ret_short'), done: all.filter(function (c) { return ['recv_wait', 'judge', 'dispose', 'done'].indexOf(IDX.st[c.id].b) >= 0; }) };
   var f = S.retF || (sets.fail.length ? 'fail' : sets.need.length && !CS() ? 'need' : 'doing');
   if (CS() && f === 'need') f = 'doing';
-  var tabs = [['fail', '회수 실패·재접수'], ['need', '회수 필요'], ['doing', '회수 진행중'], ['short', '확인 필요'], ['done', '회수 완료']]
-    .filter(function (t) { return !(CS() && t[0] === 'need'); }).map(function (t) { return '<button class="' + (f === t[0] ? 'on' : '') + '" data-act="ret" data-v="' + t[0] + '">' + t[1] + '<span class="n">' + sets[t[0]].length + '</span></button>'; }).join('');
+  var tabs = [['fail', '회수 실패·재접수'], ['hold', 'CS팀 확인중'], ['need', '회수 필요'], ['doing', '회수 진행중'], ['short', '확인 필요'], ['done', '회수 완료']]
+    .filter(function (t) { return !(CS() && t[0] === 'need') && !(t[0] === 'hold' && !sets.hold.length && f !== 'hold'); }).map(function (t) { return '<button class="' + (f === t[0] ? 'on' : '') + '" data-act="ret" data-v="' + t[0] + '">' + t[1] + '<span class="n">' + sets[t[0]].length + '</span></button>'; }).join('');
   var OLD = 120;
   var isOld = function (c) { var dd = days(c.outDoneAt || c.outDate); return dd !== null && dd > OLD; };
   var raw = (sets[f] || []).slice().sort(function (a, b) { return String(a.outDate).localeCompare(String(b.outDate)); });
@@ -1257,6 +1259,20 @@ function vReturn() {
         '<td><div class="row"><input class="inp mono sm" id="rt_' + esc(c.id) + '" placeholder="반품 송장번호" style="width:140px"><button class="btn sm pri" data-act="quickReturn" data-id="' + esc(c.id) + '">등록</button>' +
         '<button class="btn sm red" data-act="writeOff" data-id="' + esc(c.id) + '" title="회수를 포기하고 손망실로 확정">손망실</button></div></td></tr>';
     }).join('');
+  } else if (f === 'hold') {
+    head = '<tr><th>번호</th><th>매장</th><th>회수 대상 S/N</th><th>수량</th><th>반품 송장</th><th>CS팀 확인</th>' + (CS() ? '' : '<th></th>') + '</tr>';
+    rows = list.map(function (c) {
+      var st = IDX.st[c.id], left = bizDays(today(), c.csHoldUntil);
+      return '<tr><td class="nowrap mono click" data-act="case" data-id="' + esc(c.id) + '">' + esc(cid(c)) + '</td>' +
+        '<td class="click" data-act="case" data-id="' + esc(c.id) + '"><b>' + esc(c.store) + '</b>' + mtagSmall(c) + '</td>' +
+        '<td>' + retSn(st) + '</td><td>' + st.expected + '</td>' +
+        '<td class="small">' + trkList(st.retsAll, c.returnTracking, c.retReqAt ? '접수함 · 번호 대기' : '반품 송장 없음') + '</td>' +
+        '<td class="small"><span class="pill p-new">' + md(c.csHoldUntil) + '까지</span>' + (left === 0 ? ' <b style="color:var(--red)">오늘 기한</b>' : '') +
+        (c.csHoldNote ? '<div style="margin-top:4px">' + esc(String(c.csHoldNote).replace(/^Slack: /, '')) + '</div>' : '') + '<div class="muted">' + esc(c.csHoldBy || '') + ' · ' + md(c.csHoldAt) + '</div></td>' +
+        (CS() ? '' : '<td><div class="row"><input class="inp mono sm" id="rt_' + esc(c.id) + '" placeholder="재접수 송장" style="width:120px"><button class="btn sm" data-act="quickReturn" data-id="' + esc(c.id) + '">추가</button>' +
+          '<button class="btn sm" data-act="csHoldOpen" data-id="' + esc(c.id) + '">기한 연장</button><button class="btn sm" data-act="csHoldOff" data-id="' + esc(c.id) + '">확인 끝</button>' +
+          '<button class="btn sm red" data-act="writeOff" data-id="' + esc(c.id) + '" title="회수를 포기하고 손망실로 확정">손망실</button></div></td>') + '</tr>';
+    }).join('');
   } else if (f === 'doing' || f === 'fail') {
     head = '<tr><th>번호</th><th>매장</th><th>회수 대상 S/N</th><th>수량</th><th>반품 송장</th><th>상태</th>' + (CS() ? '' : '<th>경과(영업일)</th>') + '<th></th></tr>';
     rows = list.map(function (c) {
@@ -1265,9 +1281,11 @@ function vReturn() {
       return '<tr><td class="nowrap mono click" data-act="case" data-id="' + esc(c.id) + '">' + esc(cid(c)) + '</td>' +
         '<td class="click" data-act="case" data-id="' + esc(c.id) + '"><b>' + esc(c.store) + '</b>' + mtagSmall(c) + (IDX.req[c.id] ? '<div style="margin-top:4px">' + reqTags(c) + '</div>' : '') + '</td>' +
         '<td>' + retSn(st) + '</td><td>' + st.expected + '</td>' +
-        '<td class="small">' + trkList(st.retsAll, c.returnTracking, c.returnStatus ? c.returnStatus + ' · 송장 미등록' : '') + '</td><td>' + tagOf(RET_LABEL, st.ret) + '</td>' +
+        '<td class="small">' + trkList(st.retsAll, c.returnTracking, c.returnStatus ? c.returnStatus + ' · 송장 미등록' : '') + '</td><td>' + tagOf(RET_LABEL, st.ret) +
+        (st.ret === 'req' && c.retReqAt ? (function (bd) { return '<div class="small ' + (bd >= 2 ? 'hl' : 'muted') + '" style="margin-top:3px">접수 ' + md(c.retReqAt) + ' · ' + bd + '영업일째' + (bd >= 2 ? ' 번호 없음' : '') + '</div>'; })(bizDays(c.retReqAt) || 0) : '') + '</td>' +
         (CS() ? '' : '<td class="nowrap ' + (over ? 'hl' : '') + '">' + (st.retDays === null ? '-' : st.retDays + '일') + '</td>') +
         '<td><div class="row"><input class="inp mono sm" id="rt_' + esc(c.id) + '" placeholder="재접수 송장" style="width:130px"><button class="btn sm" data-act="quickReturn" data-id="' + esc(c.id) + '">추가</button>' +
+        (f === 'fail' || st.ret === 'req' ? '<button class="btn sm" data-act="csHoldOpen" data-id="' + esc(c.id) + '" title="고객사 CS팀이 매장에 확인 중 — 기한까지 재접수 알림에서 뺌">CS팀 확인중</button>' : '') +
         '<button class="btn sm red" data-act="writeOff" data-id="' + esc(c.id) + '" title="회수를 포기하고 손망실로 확정">손망실</button></div></td></tr>';
     }).join('');
   } else if (f === 'short') {
@@ -1297,6 +1315,7 @@ function vReturn() {
   var note = { fail: '반품 송장에 <b>조회내역이 전혀 없는 채로 ' + (S.data.meta.returnFailBizDays || 2) + '영업일 이상</b> 지난 건입니다. 간선상차·인수 등 스캔 기록이 있으면 회수 진행중으로 분류됩니다. 매장에 확인 후 재접수 송장을 넣거나, 회수를 포기할 경우 [손망실]로 확정해 주세요.',
     need: '출고 송장이 <b>도착 완료</b>로 확인된 건입니다. 반품 송장을 등록하면 회수 진행중으로 넘어갑니다.',
     doing: '반품 송장이 발행된 건입니다. 집화가 되면 <b>회수 중</b>, 배송완료되면 <b>회수 완료</b>로 자동으로 바뀝니다.',
+    hold: '고객사 CS팀이 매장에 확인 중인 건입니다. 기한까지는 Slack 재접수 필요 알림·외주센터 카톡 요청문에서 빠지고, 기한이 지나도 회수가 안 되면 다시 <b>회수 실패</b>로 올라와요. 반품 송장이 집화되거나 재발급 번호가 들어오면 자동으로 회수 진행중으로 넘어갑니다.',
     fail: '반품 송장 등록 후 ' + (S.data.meta.returnFailBizDays || 2) + '영업일(주말·공휴일 제외)이 지나도 <b>조회내역이 없는</b> 건과, <b>Slack으로 재회수 요청이 들어온</b> 건입니다. 굵게 표시된 송장이 집화가 안 된 송장입니다. 매장에 확인 후 <b>재접수</b>해 주세요.',
     short: '회수했는데 <b>수량이 모자라거나</b>, 들어온 S/N이 <b>불량 접수한 S/N과 다른</b> 건입니다.',
     done: CS() ? '반품이 도착한 건입니다. 검사가 끝나면 검사 결과 탭에서 볼 수 있어요.' : '반품이 도착한 건입니다. <b>회수 완료 · 입고 확인 전</b>은 회수분 검사 탭에서 실물을 확인하고 회수 처리해 주세요.' }[f];
@@ -2378,6 +2397,16 @@ var ACT = {
     var v = (el.value || '').trim(); if (!v) return toast('반품 송장번호를 입력해 주세요.', true);
     run('addTracking', { caseId: d.id, type: 'return', text: v }, function (r) { return '반품 송장을 등록했습니다 — 회수 진행중' + sheetMsg_(r); }, b);
   },
+  csHoldOpen: function (d) {
+    var c = IDX.caseById[d.id]; if (!c) return;
+    modal('CS팀 확인중 — ' + c.store,
+      '<div class="small muted" style="margin-bottom:8px">고객사 CS팀이 매장에 확인하는 동안 재접수 필요 알림에서 빼 둡니다. 기한이 지나도 회수가 안 되면 다시 회수 실패로 올라와요.</div>' +
+      '<label class="fld"><span>확인 기한</span><select class="inp" id="chDays">' + [[1, '1영업일'], [2, '2영업일 (기본)'], [3, '3영업일'], [5, '5영업일']].map(function (x) { return '<option value="' + x[0] + '"' + (x[0] === 2 ? ' selected' : '') + '>' + x[1] + '</option>'; }).join('') + '</select></label>' +
+      '<label class="fld" style="margin-top:8px"><span>메모</span><input class="inp" id="chNote" style="width:100%" value="' + esc(String(c.csHoldNote || '').replace(/^Slack: /, '')) + '" placeholder="예: 매장 부재, CS팀이 매장 연락 중"></label>',
+      '<button class="btn" data-act="closeModal">취소</button><button class="btn pri" data-act="csHoldGo" data-id="' + esc(c.id) + '">저장</button>');
+  },
+  csHoldGo: function (d, b) { run('csHold', { caseId: d.id, days: +$('#chDays').value, note: $('#chNote').value }, function (r) { closeModal(); return 'CS팀 확인중 — ' + md(r.case.csHoldUntil) + '까지 재접수 알림에서 빼 둘게요.'; }, b); },
+  csHoldOff: function (d, b) { if (!confirm('CS팀 확인을 끝낼까요?\n회수가 아직 안 됐으면 다시 회수 실패로 올라와요.')) return; run('csHold', { caseId: d.id, cancel: true }, 'CS팀 확인중을 해제했어요.', b); },
   quickOut: function (d, b) {
     var el = $('#ot_' + d.id); if (!el) return;
     var v = (el.value || '').trim(); if (!v) return toast('출고 송장번호를 입력해 주세요.', true);
