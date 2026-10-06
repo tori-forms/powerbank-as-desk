@@ -776,6 +776,7 @@ function inTrack(c, us) {
   var f = trackFrom();
   if (String(c.outDate || '') >= f) return true;
   if (!c.outDate && d10(c.createdAt) >= f) return true;
+  if (d10(c.retReqAt) >= f || d10(c.csHoldAt) >= f) return true;
   if (shipsOf(c, 'return').some(function (x) { return (x.reissueReqAt && d10(x.reissueReqAt) >= f) || (x.reissueOf && d10(x.createdAt) >= f); })) return true;
   return (us || []).some(function (u) { return u.recvAt && d10(u.recvAt) >= f; });
 }
