@@ -3156,11 +3156,11 @@ function ltRunning() { return LT.devs.some(function (D) { return D.state === 'ru
 function ltInit() {
   if (LT.inited) return; LT.inited = true;
   ltFlush();
-  ltLoadRecent();
-  window.addEventListener('beforeunload', function (e) { if (ltRunning()) { e.preventDefault(); e.returnValue = ''; } });
-  if (!('hid' in navigator)) return;
+  window.addEventListener('beforeunload', function (e) { ltPersist(true); if (ltRunning()) { e.preventDefault(); e.returnValue = ''; } });
+  document.addEventListener('visibilitychange', function () { ltPersist(true); ltWake(); });
+  if (!('hid' in navigator)) { LT.restoreDone = true; return; }
   navigator.hid.getDevices().then(function (ds) { return ds.filter(ltIsDl24).reduce(function (p, d) { return p.then(function () { return ltAttach(d); }); }, Promise.resolve()); })
-    .then(function () { if (LT.devs.length) { toast('DL24 ' + LT.devs.length + '대 자동 연결'); if (S.view === 'loadtest') render(); } }).catch(function () { });
+    .then(function () { if (!LT.devs.length) { LT.restoreDone = true; return; } return ltWait(1800).then(ltRestore); }).catch(function () { LT.restoreDone = true; });
   navigator.hid.addEventListener('disconnect', function (e) {
     var D = LT.devs.filter(function (x) { return x.dev === e.device; })[0]; if (!D) return;
     D.lost = true; D.err = 'USB 연결 끊김' + (D.state === 'run' ? ' — 장비는 계속 방전 중일 수 있어요. 케이블을 다시 꽂으면 이어서 기록해요.' : ''); ltDraw(D);
@@ -3170,9 +3170,64 @@ function ltInit() {
     var D = LT.devs.filter(function (x) { return x.lost; })[0];
     (e.device.opened ? Promise.resolve() : e.device.open()).then(function () {
       if (D) { ltBind(D, e.device); D.lost = false; D.err = ''; ltSend(D, 0x03); toast(D.no + '번 장비 다시 연결됨'); ltDraw(D); }
-      else ltAttach(e.device).then(function () { if (S.view === 'loadtest') render(); });
+      else ltAttach(e.device).then(function () { return ltWait(1800).then(ltRestore); }).then(function () { if (S.view === 'loadtest') render(); });
     }).catch(function () { });
   });
+}
+function ltPersist(now) {
+  if (!LT.restoreDone) return;
+  if (!now && Date.now() - (LT.persistAt || 0) < 10000) return;
+  LT.persistAt = Date.now();
+  var all = jparse(ls('ltSess'), {}) || {};
+  LT.devs.forEach(function (D) {
+    if (!D.live) return;
+    all[D.no] = { no: D.no, sn: D.sn, state: D.state === 'arm' || D.state === 'check' ? 'idle' : D.state, cid: D.cid || '', cond: D.cond || null, check: D.check || null,
+      base: D.base, startAt: D.startAt || 0, endAt: D.endAt || 0, why: D.why || '', result: D.result || null, saved: D.saved || '',
+      lastWh: D.live.wh, lastMah: D.live.mah, lastAt: Date.now(), plog: (D.plog || []).slice(-1500) };
+  });
+  var ks = Object.keys(all).sort(function (a, b) { return all[b].lastAt - all[a].lastAt; }).slice(0, 40), out = {};
+  ks.forEach(function (k) { out[k] = all[k]; });
+  ls('ltSess', JSON.stringify(out));
+}
+function ltRestore() {
+  var all = jparse(ls('ltSess'), {}) || {}, sess = Object.keys(all).map(function (k) { return all[k]; });
+  var free = LT.devs.filter(function (D) { return D.live && !D.restored && D.state === 'idle' && !D.result; });
+  LT.restoreDone = true;
+  if (!sess.length || !free.length) return;
+  var pairs = [];
+  free.forEach(function (D) { sess.forEach(function (x) { var d = D.live.wh - x.lastWh; if (d >= -0.002 && D.live.mah - x.lastMah >= -1) pairs.push([d, D, x]); }); });
+  pairs.sort(function (a, b) { return a[0] - b[0]; });
+  var usedD = [], usedS = [], n = 0, ran = 0;
+  pairs.forEach(function (p) {
+    var D = p[1], x = p[2]; if (usedD.indexOf(D) >= 0 || usedS.indexOf(x) >= 0) return;
+    if (LT.devs.some(function (o) { return o !== D && o.restored && o.no === x.no; })) return;
+    usedD.push(D); usedS.push(x); n++;
+    D.restored = true; D.no = x.no; D.sn = x.sn || ''; D.cid = x.cid; D.cond = x.cond; D.check = x.check; D.base = x.base; D.startAt = x.startAt; D.endAt = x.endAt;
+    D.why = x.why; D.result = x.result; D.saved = x.saved; D.plog = x.plog || []; D.log = D.plog.slice(); D.offCnt = 0;
+    D.el.querySelector('.ltno').textContent = D.no; D.el.querySelector('[data-k=sn]').value = D.sn;
+    if (x.state === 'run' && D.base) {
+      ran++;
+      if (D.live.on) { D.state = 'run'; D.msg = ['warn', '화면을 나갔다 온 동안에도 장비는 계속 방전했어요. 이어서 기록 중이에요. (그 사이 전압 기록만 비어 있어요)']; }
+      else {
+        var L = D.live, mah = L.mah - D.base.mah, last = D.log[D.log.length - 1] || [D.startAt, L.v, 0, 0, 0, L.temp];
+        D.log.push([D.startAt + mah / (D.cond.cur * 1000) * 3600000, last[1], D.cond.cur, L.wh - D.base.wh, mah, last[5]]);
+        D.state = 'run'; D.awayEnd = true; ltFinish(D, 'auto'); D.msg = ['warn', '화면이 꺼져 있는 동안 시험이 끝났어요. 장비 누적값으로 결과를 계산했어요.'];
+      }
+    } else if (x.state === 'done') D.state = 'done';
+    if (D.sn) ltLoadHist([D.sn]).then(function () { ltDraw(D); });
+    ltDraw(D);
+  });
+  var taken = LT.devs.filter(function (D) { return D.restored; }).map(function (D) { return D.no; }), nx = 1;
+  LT.devs.forEach(function (D) { if (D.restored) return; while (taken.indexOf(nx) >= 0) nx++; D.no = nx; taken.push(nx); D.el.querySelector('.ltno').textContent = D.no; });
+  LT.devs.sort(function (a, b) { return a.no - b.no; });
+  if (n) { toast('이전 화면 복구: DL24 ' + n + '대' + (ran ? ' · 진행 중이던 시험 ' + ran + '건' : '') + ' — 칸 번호·S/N을 한 번 확인해 주세요'); ltPersist(true); }
+  if (S.view === 'loadtest') render();
+  ltWake();
+}
+function ltWake() {
+  var need = ltRunning() && document.visibilityState === 'visible';
+  if (need && !LT.lock && navigator.wakeLock) navigator.wakeLock.request('screen').then(function (l) { LT.lock = l; l.addEventListener('release', function () { LT.lock = null; }); }).catch(function () { });
+  if (!need && LT.lock) { LT.lock.release().catch(function () { }); LT.lock = null; }
 }
 function ltIsDl24(d) { return d && d.vendorId === 0x0483 && d.productId === 0x5750; }
 function ltBind(D, dev) {
@@ -3207,8 +3262,10 @@ function ltOnReport(D, u) {
     if (!D.base) D.base = { wh: L.wh, mah: L.mah };
     D.offCnt = L.on ? 0 : D.offCnt + 1;
     D.log.push([L.t, L.v, L.a, L.wh - D.base.wh, L.mah - D.base.mah, L.temp]);
+    if (!D.plogAt || L.t - D.plogAt >= 30000) { D.plogAt = L.t; (D.plog = D.plog || []).push(D.log[D.log.length - 1]); }
     if (D.offCnt >= 3) ltFinish(D, 'auto');
   }
+  ltPersist();
   ltDraw(D);
 }
 
@@ -3242,10 +3299,10 @@ async function ltFire(D, voc) {
   var r = Math.max(0, (voc - L.v) / L.a);
   D.check = { voc: voc, vload: L.v, i: L.a, r: r, v1: voc - r, ok: voc - r >= LT_CABLE_MIN, skip: A.skip };
   if (!D.check.ok && !A.skip) { await ltSend(D, 0x25, [0, 0, 0, 0]); D.state = 'idle'; return ltDraw(D); }
-  D.state = 'run'; D.base = null; D.log = []; D.offCnt = 0; D.startAt = Date.now(); D.endAt = null; D.why = ''; D.result = null;
+  D.state = 'run'; D.base = null; D.log = []; D.plog = []; D.plogAt = 0; D.offCnt = 0; D.startAt = Date.now(); D.endAt = null; D.why = ''; D.result = null;
   D.cond = { cur: A.cur, cut: A.cut, purpose: ltVal('ltPurpose', '입고 QC'), cable: ltVal('ltCable', ''), sn: D.sn };
   D.cid = 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-  ltSend(D, 0x03); ltDraw(D);
+  ltSend(D, 0x03); ltDraw(D); ltPersist(true); ltWake();
 }
 function ltStop(D) {
   ltSend(D, 0x25, [0, 0, 0, 0]);
@@ -3253,7 +3310,7 @@ function ltStop(D) {
   else if (D.state === 'check' || D.state === 'arm') { D.msg = ['bad', D.state === 'arm' ? '출력 대기를 취소했어요.' : '점검을 멈췄어요.']; D.state = 'idle'; ltDraw(D); }
 }
 function ltFinish(D, kind) {
-  D.state = 'done'; D.endAt = Date.now(); D.why = kind === 'auto' ? '차단 전압 도달(자동 정지)' : '수동 정지';
+  D.state = 'done'; D.endAt = Date.now(); D.why = (kind === 'auto' ? '차단 전압 도달(자동 정지)' : '수동 정지') + (D.awayEnd ? ' · 화면을 닫은 동안 종료' : ''); D.awayEnd = false;
   var lg = D.log.filter(function (r) { return r[2] > 0.05; }), n = lg.length, last = lg[n - 1] || D.log[D.log.length - 1] || [D.startAt, 0, 0, 0, 0, 0];
   var mid = lg.slice(Math.floor(n * 0.02), Math.max(Math.floor(n * 0.95), Math.floor(n * 0.02) + 1));
   var vStart = D.check ? D.check.vload : (lg[0] || [])[1] || 0;
@@ -3266,7 +3323,7 @@ function ltFinish(D, kind) {
   D.result.sag = D.result.vMinMid && vStart - D.result.vMinMid > LT_SAG;
   try { new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=').play(); } catch (e) { }
   if (kind === 'auto' && (D.cond.sn || D.sn) && D.result.sec >= LT_MIN_SEC) ltSave(D);
-  ltDraw(D);
+  ltDraw(D); ltPersist(true); ltWake();
 }
 
 function ltCurve(D) {
@@ -3290,7 +3347,7 @@ function ltSave(D) {
   D.saving = true; D.saveErr = ''; ltDraw(D);
   return ltSaveOne(pl).then(function (t) { D.saved = t.id; toast(pl.sn + ' 시험 결과 저장 · ' + (+pl.wh).toFixed(2) + 'Wh'); },
     function (e) { D.saveErr = '저장 실패 — 이 PC에 보관했다가 다시 보내요 (' + e.message + ')'; })
-    .then(function () { D.saving = false; ltDraw(D); });
+    .then(function () { D.saving = false; ltDraw(D); ltPersist(true); });
 }
 function ltSaveOne(pl) {
   return call('ltSave', pl).then(function (r) {
@@ -3356,7 +3413,7 @@ function ltCard(D) {
 function ltSetSn(D, v) {
   v = ltNorm(v); var inp = D.el.querySelector('[data-k=sn]'); if (inp.value !== v) inp.value = v;
   if (v === D.sn) return;
-  D.sn = v;
+  D.sn = v; ltPersist(true);
   if (D.state === 'run' && D.cond && !D.cond.sn) D.cond.sn = v;
   if (v) ltLoadHist([v]).then(function () { ltDraw(D); });
   ltDraw(D);
@@ -3420,6 +3477,7 @@ function ltRedrawAll() { LT.devs.forEach(ltDraw); if (S.view === 'loadtest') ltR
 
 function vLoadtest() {
   ltInit();
+  if (LT.recent === null && !LT.recentLoading) { LT.recentLoading = true; ltLoadRecent(); }
   var hid = 'hid' in navigator, pur = ltVal('ltPurpose', '입고 QC');
   var f = function (l, h) { return '<label class="fld"><span>' + l + '</span>' + h + '</label>'; };
   return '<div class="card"><div class="hd"><h3>폼즈 보조배터리 로드테스트</h3><span class="muted small">ATORCH DL24 · USB 연결 ' + LT.devs.length + '대</span><span style="flex:1"></span>' +
@@ -3578,7 +3636,7 @@ ACT.ltAdd = function () {
   ltInit();
   return navigator.hid.requestDevice({ filters: [{ vendorId: 0x0483, productId: 0x5750 }] }).then(function (ds) {
     if (!ds.length) return;
-    return ds.reduce(function (p, d) { return p.then(function () { return ltAttach(d); }); }, Promise.resolve()).then(function () { toast('DL24 ' + LT.devs.length + '대 연결됨'); render(); });
+    return ds.reduce(function (p, d) { return p.then(function () { return ltAttach(d); }); }, Promise.resolve()).then(function () { toast('DL24 ' + LT.devs.length + '대 연결됨'); render(); return ltWait(1800).then(ltRestore); });
   }).catch(function (e) { toast('연결 실패: ' + e.message, true); });
 };
 ACT.ltAll = function () {
@@ -3595,6 +3653,7 @@ document.addEventListener('change', function (e) { var id = e.target.id; if (id 
 document.addEventListener('keydown', function (e) { if (e.target.id === 'ltQ' && e.key === 'Enter') { e.preventDefault(); e.target.value = ltNorm(e.target.value); ltQuery(e.target.value); } });
 
 load();
+if (window.AS_PAGE !== 'cs' && 'hid' in navigator) (function ltBoot(n) { if (S.data) { if (!CS()) ltInit(); } else if (n < 40) setTimeout(function () { ltBoot(n + 1); }, 1500); })(0);
 </script>
 </body>
 </html>
