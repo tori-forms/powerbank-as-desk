@@ -3156,12 +3156,12 @@ function ltRunning() { return LT.devs.some(function (D) { return D.state === 'ru
 function ltInit() {
   if (LT.inited) return; LT.inited = true;
   ltFlush();
-  ltAgentFetch('/state').then(function (st) { LT.agent = st; ltAgentStart(st); }, function () { ltInitHid(); });
+  ltAgentFetch('/state').then(function (st) { LT.agent = st; ls('ltAgentSeen', '1'); ltAgentStart(st); }, function () { ltInitHid(); });
 }
 function ltInitHid() {
   LT.agent = null;
   LT.probeTimer = setInterval(function () {
-    if (LT.agent || ltRunning()) return;
+    if (LT.agent || ltRunning() || S.view !== 'loadtest') return;
     ltAgentFetch('/state').then(function (st) {
       if (LT.agent || ltRunning()) return;
       clearInterval(LT.probeTimer);
@@ -3169,7 +3169,7 @@ function ltInitHid() {
       LT.devs = []; if (LT.worker) { LT.worker.terminate(); LT.worker = null; }
       LT.agent = st; ltAgentStart(st); toast('PC 기록 프로그램에 연결했어요. 이제 화면을 닫아도 기록이 계속돼요.');
     }, function () { });
-  }, 15000);
+  }, 30000);
   window.addEventListener('beforeunload', function (e) { ltPersist(true); if (ltRunning()) { e.preventDefault(); e.returnValue = ''; } });
   document.addEventListener('visibilitychange', function () { ltPersist(true); ltWake(); });
   if (!('hid' in navigator)) { LT.restoreDone = true; return; }
@@ -3722,7 +3722,11 @@ document.addEventListener('change', function (e) { var id = e.target.id; if (id 
 document.addEventListener('keydown', function (e) { if (e.target.id === 'ltQ' && e.key === 'Enter') { e.preventDefault(); e.target.value = ltNorm(e.target.value); ltQuery(e.target.value); } });
 
 load();
-if (window.AS_PAGE !== 'cs' && 'hid' in navigator) (function ltBoot(n) { if (S.data) { if (!CS()) ltInit(); } else if (n < 40) setTimeout(function () { ltBoot(n + 1); }, 1500); })(0);
+if (window.AS_PAGE !== 'cs' && 'hid' in navigator) (function ltBoot(n) {
+  if (!S.data) { if (n < 40) setTimeout(function () { ltBoot(n + 1); }, 1500); return; }
+  if (CS()) return;
+  navigator.hid.getDevices().then(function (ds) { if (ls('ltAgentSeen') === '1' || ds.some(ltIsDl24) || (jparse(ls('ltSess'), {}) && Object.keys(jparse(ls('ltSess'), {}) || {}).length)) ltInit(); }, function () { });
+})(0);
 </script>
 </body>
 </html>
