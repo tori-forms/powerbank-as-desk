@@ -641,11 +641,11 @@ function cacheGet_() {
 }
 function cachePut_(d) { return idb_().then(function (db) { db.transaction('kv', 'readwrite').objectStore('kv').put({ at: Date.now(), d: d }, cacheKey_()); }).catch(function () { }); }
 function cacheClear_() { return idb_().then(function (db) { db.transaction('kv', 'readwrite').objectStore('kv').clear(); }).catch(function () { }); }
-function staleBadge(at) {
+function staleBadge(at, text) {
   var el = $('#staleBadge');
   if (!at) { if (el) el.remove(); return; }
   if (!el) { el = document.createElement('div'); el.id = 'staleBadge'; document.body.appendChild(el); }
-  el.innerHTML = '<span class="spin"></span> 최신 정보 확인 중';
+  el.innerHTML = '<span class="spin"></span> ' + esc(text || '최신 정보 확인 중');
 }
 function callHedged_(action, gapMs, max) {
   return new Promise(function (res, rej) {
@@ -674,11 +674,16 @@ function load(silent) {
     if (!c || !c.d) return;
     setTimeout(function () { if (!S.data && !GATED) { useData_(c.d); S.stale = true; staleBadge(c.at); } }, 2500);
   });
-  return callHedged_('bootstrap', 2500, 3).then(function (d) { S.stale = false; staleBadge(null); useData_(d); if (!DEMO_MODE) cachePut_(d); })
+  return callHedged_('bootstrap', 2500, 3).then(function (d) { S.stale = false; S.loadFails = 0; staleBadge(null); useData_(d); if (!DEMO_MODE) cachePut_(d); })
     .catch(function (e) {
+      if (GATED || !$('#view')) { staleBadge(null); return; }
+      if (S.data) {
+        S.loadFails = (S.loadFails || 0) + 1;
+        if (S.loadFails <= 2) { staleBadge(1, '최신 정보 다시 확인 중'); return new Promise(function (r) { setTimeout(r, S.loadFails * 6000); }).then(function () { return load(true); }); }
+        S.loadFails = 0; staleBadge(null);
+        toast('서버 연결이 잠시 원활하지 않아 최신 정보를 받지 못했어요. 잠시 후 새로고침해 주세요.' + (S.stale ? ' (지금 화면은 마지막으로 받은 내용이에요)' : ''), true); return;
+      }
       staleBadge(null);
-      if (GATED || !$('#view')) return;
-      if (S.data) { toast('최신 데이터를 불러오지 못했습니다: ' + e.message, true); return; }
       $('#view').innerHTML = '<div class="empty">불러오기 실패: ' + esc(e.message) + '<br><br>편집기에서 <b>setup()</b>을 먼저 실행했는지 확인해 주세요.</div>';
     });
 }
