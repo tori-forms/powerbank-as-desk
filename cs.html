@@ -728,7 +728,8 @@ function cstate(c) {
         : outs.every(function (x) { return x.stage === 'expired'; }) ? 'expired' : 'before';
   if (c.recvDate || c.returnDoneAt) st.out = 'done';
   var lim = S.data.meta.returnFailBizDays || 2;
-  var overdue = function (x) { var base = x.reissueOf ? d10(x.createdAt) : (c.outDoneAt || c.outDate || d10(x.createdAt)); return x.stage === 'before' && bizDays(base) > lim; };
+  var rbase = function (x) { var reg = d10(x.createdAt), ob = d10(c.outDoneAt || c.outDate || ''); return x.reissueOf ? reg : (!ob ? reg : !reg ? ob : (ob > reg ? ob : reg)); };
+  var overdue = function (x) { return x.stage === 'before' && bizDays(rbase(x)) > lim; };
   st.stuck = rets.filter(function (x) { return !x.doneAt && x.stage !== 'moving' && !x.reissueReqAt && x.failFlag === 'Y'; });
   st.ret = !rets.length ? 'none'
     : rets.every(function (x) { return x.doneAt; }) ? 'done'
@@ -747,9 +748,9 @@ function cstate(c) {
     else st.ret = st.left.some(function (x) { return x.stage !== 'moving' && !x.reissueReqAt && (x.failFlag === 'Y' || overdue(x)); }) ? 'fail'
       : st.left.some(function (x) { return x.reissueReqAt; }) ? 'rereq' : 'part';
   }
-  if (!st.split && st.ret !== 'done' && (c.recvDate || c.returnDoneAt)) st.ret = 'done';
+  if (!st.split && st.ret !== 'done' && (c.recvDate || c.returnDoneAt) && !rets.some(function (x) { return !x.doneAt; })) st.ret = 'done';
   st.retBase = st.reissued.length ? d10(st.reissued.map(function (x) { return x.createdAt; }).sort().slice(-1)[0])
-    : (c.outDoneAt || c.outDate || (rets.length ? d10(rets[0].createdAt) : ''));
+    : (rets.length ? rets.map(rbase).sort().slice(-1)[0] : (c.outDoneAt || c.outDate || ''));
   st.retDays = rets.length ? bizDays(st.retBase) : null;
   if (st.out === 'expired') st.out = 'done';
   if (st.ret === 'before' && st.retDays !== null && st.retDays > lim) st.ret = 'fail';
@@ -757,15 +758,18 @@ function cstate(c) {
   var rq = rets.filter(function (x) { return !x.doneAt && x.reissueReqAt && x.stage !== 'moving'; });
   if (!st.stuck.length && (st.ret === 'fail' || st.ret === 'before') && (rq.length || (st.reissued.length && st.ret === 'before'))) st.ret = 'rereq';
   st.trk = inTrack(c, us);
+  st.atWh = rets.filter(function (x) { return x.doneAt && !x.inAt && x.stage !== 'merged'; });
+  st.toCome = rets.filter(function (x) { return !x.doneAt; });
   st.chk = us.filter(unitChk);
   if (c.closed === 'Y') st.b = 'closed';
   else if (!c.outDate && st.out === 'none') st.b = 'ship_wait';
   else if (st.ret === 'none') st.b = st.out === 'done' ? 'ret_need' : 'shipping';
-  else if (st.ret === 'part') st.b = 'ret_short';
+  else if (st.ret === 'part') st.b = 'ret_doing';
   else if (st.ret === 'fail' || (st.ret !== 'done' && st.ret !== 'rereq' && (IDX.req[c.id] || []).some(function (q) { return q.kind === 'recollect'; }))) st.b = 'ret_fail';
   else if (st.ret === 'arrived' && !us.some(function (u) { return u.recvSn; })) st.b = 'recv_wait';
   else if (st.ret !== 'done') st.b = 'ret_doing';
   else if (open.length && !us.some(function (u) { return u.recvSn; })) st.b = 'recv_wait';
+  else if (us.some(isMiss) && st.atWh.length) st.b = 'recv_wait';
   else if (us.some(isMiss) || st.chk.length) st.b = 'ret_short';
   else if (open.some(function (u) { return !u.verdict; })) st.b = 'judge';
   else if (open.length) st.b = 'dispose';
@@ -1470,6 +1474,7 @@ function recvCard_(c) {
     (st.ret === 'arrived' ? '<span class="pill p-blue">송장 일부 도착</span>' : '') +
     '<span class="prog short" style="margin-left:auto">' + us.length + 'EA 예정</span></div>' +
     '<div class="r2"><span>반품 도착 ' + (md(arr) || '-') + (dd ? ' · ' + dd + '영업일 전' : '') + '</span><span>' + esc(c.reasonCode || '') + '</span><span class="mono">' + esc((st.rets.map(function (x) { return x.no; }).join(', ') || c.returnTracking || '').slice(0, 60)) + '</span></div>';
+  h += boxLines_(c, st);
   if (!on) return h + '<div style="margin:6px 0;display:flex;flex-wrap:wrap;gap:6px">' + us.map(function (u) {
       return '<span class="snchip" style="cursor:default">' + mtag(u.model || caseModel(c)) + ' <span class="mono">' + esc(u.origSn || '(S/N 미상)') + '</span>' + lotTag(u.origSn) + '</span>';
     }).join('') + '</div>' + (noSnN ? '<div class="small" style="color:var(--amber);margin-bottom:6px">접수 S/N이 없거나 형식이 맞지 않는 ' + noSnN + '개 — 실물 S/N을 넣거나 식별 불가 수량으로 처리할 수 있어요</div>' : '') +
@@ -1489,6 +1494,22 @@ function recvCard_(c) {
     '<div class="row" style="margin-top:8px"><label class="small nowrap">입고일 <input class="inp" type="date" id="rcDate" value="' + esc(today()) + '" style="width:150px"></label>' +
     '<button class="btn pri" data-act="recvGo" data-id="' + esc(c.id) + '">회수 처리 → 검사중</button><button class="btn sm" data-act="recvOpen" data-id="">닫기</button></div>' +
     '<div class="small muted" style="margin-top:4px">✓·실제 S/N·식별 불가 수량을 합친 수가 예정보다 적으면 모자란 만큼 <b>확인 필요</b>로 넘어가요. 식별 불가로 처리한 제품은 검사중에 <b>S/N 미식별</b>로 표시됩니다.</div></div></div>';
+}
+function boxLines_(c, st) {
+  var rets = (st.rets || []).filter(function (x) { return x.stage !== 'removed'; });
+  if (!rets.length) return '';
+  var inN = rets.filter(function (x) { return x.inAt || x.stage === 'merged'; }).length;
+  return '<div class="small" style="margin:6px 0;padding:6px 8px;background:var(--panel2,#f6f7f9);border-radius:8px">' +
+    '<div style="margin-bottom:3px"><b>반품 박스 ' + rets.length + '개</b> · 우리 창고 입고 ' + inN + '/' + rets.length + '</div>' +
+    rets.map(function (x) {
+      var s = x.stage === 'merged' ? '합포장(미사용)' : x.inAt ? '✅ 우리 창고 입고 ' + md(x.inAt)
+        : x.doneAt ? '📦 외주창고 도착 ' + md(x.doneAt) + (x.pickReqAt ? ' · 🚚 반출 요청 ' + md(x.pickReqAt) : ' · <b style="color:var(--amber)">반출 요청 필요</b>')
+          : x.stage === 'moving' ? '🚚 외주창고로 이동 중' : '⏳ 집화 전';
+      var btn = x.inAt || x.stage === 'merged' ? '' :
+        '<button class="btn sm" data-act="boxIn" data-no="' + esc(x.no) + '">박스 받음</button>' +
+        (x.doneAt && !x.pickReqAt ? '<button class="btn sm" data-act="boxPick" data-no="' + esc(x.no) + '">반출 요청함</button>' : '');
+      return '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:2px 0"><span class="mono">' + esc(x.no) + '</span><span>' + s + '</span>' + btn + '</div>';
+    }).join('') + '</div>';
 }
 function rcPut_(sn) {
   var hit = $$('.rcChk').filter(function (x) { return x.value === sn; })[0];
@@ -2829,17 +2850,25 @@ var ACT = {
   orphDismiss: function (d, b) { if (!askGate_(d.sn + ' — 매칭 안 됨 목록에서 뺄까요? (잘못 찍은 경우 등)', function () { ACT.orphDismiss(d, b); })) return; run('orphanUpdate', { sn: d.sn, dismiss: true }, '목록에서 뺐어요.', b); },
   rvGo: function () {
     var el = $('#rvScan'); if (!el) return;
-    var sns = (el.value.toUpperCase().match(/[A-Z0-9]{8,}/g) || []).filter(function (x, i, a) { return a.indexOf(x) === i; });
-    if (!sns.length) return toast('바코드를 찍거나 S/N을 입력해 주세요.', true);
+    var toks = (el.value.toUpperCase().replace(/(\d)-(?=\d)/g, '$1').match(/[A-Z0-9]{8,}/g) || []).filter(function (x, i, a) { return a.indexOf(x) === i; });
+    var boxNos = toks.filter(function (x) { return /^\d{10,14}$/.test(x); }), sns = toks.filter(function (x) { return !/^\d{10,14}$/.test(x); });
+    if (boxNos.length) call('boxIn', { nos: boxNos }).then(function (r) {
+      var ok = r.results.filter(function (x) { return x.ok; }), bad = r.results.filter(function (x) { return !x.ok; });
+      toast('📦 반품 박스 ' + ok.length + '개 우리 창고 입고' + (ok.length ? ' — ' + ok.map(function (x) { return x.store; }).filter(String).join(', ') : '') + (bad.length ? ' · 확인 안 됨 ' + bad.map(function (x) { return x.no + '(' + x.msg + ')'; }).join(', ') : ''), !!bad.length);
+      return load(true);
+    }).catch(function (e) { toast(e.message || String(e), true); });
+    if (!sns.length) { el.value = ''; if (!boxNos.length) toast('바코드를 찍거나 S/N을 입력해 주세요.', true); return; }
     if (sns.length > 300) return toast('한 번에 300개까지 확인할 수 있어요. 나눠서 확인해 주세요.', true);
     var prev = S.scanBatch ? S.scanBatch.sns : [];
     S.scanBatch = { sns: prev.concat(sns.filter(function (x) { return prev.indexOf(x) < 0; })), at: nowHm_() };
     el.value = ''; render();
     var m = batchMatch_(S.scanBatch.sns), un = m.unknown.filter(function (x) { return !(S.data.orphans || []).some(function (o) { return o.sn === x.sn && o.status === 'open'; }); });
-    if (un.length) call('orphanAdd', { items: un.map(function (x) { return { sn: x.sn, kind: x.inbox ? 'inbox' : 'unknown', inboxId: x.inbox ? x.inbox.id : '', store: x.inbox ? x.inbox.store : '', msg: x.inbox ? '' : '접수된 AS 건에 없는 S/N' }; }) }).then(function () { return load(true); }).catch(function () { });
+    if (un.length) call('orphanAdd', { items: un.map(function (x) { return { sn: x.sn, kind: x.inbox ? 'inbox' : 'unknown', inboxId: x.inbox ? x.inbox.id : '', store: x.inbox ? x.inbox.store : '', msg: x.inbox ? '' : '접수된 AS 건에 없는 S/N' }; }) }).then(function (r) { if (r && r.auto && r.auto.length) toast('우리 교환품 ' + r.auto.length + '개는 같은 매장 건에 바로 회수 연결했어요 — ' + r.auto.map(function (x) { return x.store + ' ' + x.label; }).join(', ')); return load(true); }).catch(function () { });
     toast(sns.length + '개 확인 — 일치 ' + m.matchedN + '개 · 이미 처리됨 ' + m.dup.length + '개' + (m.unknown.length ? ' · 매장 출처 확인 불가 ' + m.unknown.length + '개 (③ 확인 필요 탭)' : ''));
     var r2 = $('#rvScan'); if (r2) r2.focus();
   },
+  boxIn: function (d, b) { run('boxIn', { nos: [d.no] }, '박스를 우리 창고 입고로 기록했어요.', b); },
+  boxPick: function (d, b) { run('boxPickReq', { nos: [d.no] }, '외주창고 반출 요청함으로 기록했어요.', b); },
   rvClear: function () { var el = $('#rvScan'); if (el) el.value = ''; var c = $('#rvCnt'); if (c) c.textContent = ''; },
   batchClear: function () { S.scanBatch = null; render(); },
   batchGo: function (d, b) {
