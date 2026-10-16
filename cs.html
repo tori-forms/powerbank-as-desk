@@ -3200,6 +3200,23 @@ var LT_FIRE_RETRY = 2;
 var LT_LOW_WH = 15;
 var LT_RATED_MAH = 20000;
 function ltConv(mah) { return (+mah || 0) * 5 / 3.7; }
+var LT_BASE = { mean: 18577, pass: 17500, hold: 17000, cur: 2, cut: 4.0, n: 50 };
+function ltJudge(t) {
+  var c = ltConv(t.mah), sn = String(t.sn || '');
+  if (!(+t.wh >= LT_LOW_WH)) return null;
+  if (sn && !/^P20/.test(sn)) return null;
+  var std = Math.abs(+t.cur - LT_BASE.cur) < 0.05 && Math.abs(+t.cut - LT_BASE.cut) < 0.05;
+  var r;
+  if (t.purpose === '회수분 검사') {
+    var soh = c / LT_BASE.mean * 100;
+    r = soh >= 80 ? ['ok', '정상', '신품 평균의 ' + soh.toFixed(0) + '%'] : soh >= 60 ? ['warn', '정상 노화', '신품 평균의 ' + soh.toFixed(0) + '% · 소모품 열화 범위'] : ['bad', '성능 불량', '신품 평균의 ' + soh.toFixed(0) + '%'];
+  } else {
+    r = c >= LT_BASE.pass ? ['ok', '합격', '기준 17,500mAh 이상'] : c >= LT_BASE.hold ? ['warn', '보류', '17,000~17,500 · 재충전 후 재시험'] : ['bad', '불합격', '기준 17,000mAh 미만'];
+  }
+  if (!std) r = [r[0], r[1] + '(참고)', r[2] + ' · 표준 조건(2A·4.0V)이 아니라 참고용'];
+  return { cls: r[0], txt: r[1], why: r[2] };
+}
+function ltJudgeHtml(t) { var j = ltJudge(t); if (!j) return ''; var col = j.cls === 'ok' ? 'var(--green)' : j.cls === 'warn' ? 'var(--amber)' : 'var(--red)'; return '<b style="color:' + col + '">판정: ' + j.txt + '</b> <span class="small">' + j.why + '</span>'; }
 function ltConvTxt(mah) { var c = ltConv(mah); return '3.7V 환산 <b>' + Math.round(c).toLocaleString() + 'mAh</b> (표기 ' + LT_RATED_MAH.toLocaleString() + 'mAh의 ' + (c / LT_RATED_MAH * 100).toFixed(1) + '%)'; }
 var LT_STD = { cur: '2.0', cut: '4.0', cable: 'A-to-C 30cm (시험용)' };
 (function () { if (ls('ltStd') !== '2A40') { ls('ltCur', LT_STD.cur); ls('ltCut', LT_STD.cut); ls('ltStd', '2A40'); } if (ls('ltStdCable') !== 'c30') { ls('ltCable', LT_STD.cable); ls('ltStdCable', 'c30'); } })();
@@ -3586,7 +3603,7 @@ function ltDraw(D) {
   var res = '';
   if (R) {
     var sn = c.sn || D.sn, vs = sn ? ltVsFirst(sn, R.wh, c.cur, D.cid) : null, short = R.sec < LT_MIN_SEC, low = !short && R.wh < LT_LOW_WH;
-    res = '<div class="ltbox ' + (R.sag || short || low ? 'warn' : 'ok') + '"><b>결과</b> ' + R.wh.toFixed(2) + 'Wh · ' + Math.round(R.mah).toLocaleString() + 'mAh · ' + ltHms(R.sec) + '<br>' + ltConvTxt(R.mah) +
+    res = '<div class="ltbox ' + (R.sag || short || low ? 'warn' : 'ok') + '"><b>결과</b> ' + R.wh.toFixed(2) + 'Wh · ' + Math.round(R.mah).toLocaleString() + 'mAh · ' + ltHms(R.sec) + '<br>' + ltConvTxt(R.mah) + (ltJudge({ mah: R.mah, wh: R.wh, cur: c.cur, cut: c.cut, purpose: c.purpose, sn: c.sn || D.sn }) ? '<br>' + ltJudgeHtml({ mah: R.mah, wh: R.wh, cur: c.cur, cut: c.cut, purpose: c.purpose, sn: c.sn || D.sn }) : '') +
       '<br><span class="small">평균 ' + R.avgV.toFixed(2) + 'V · 시작 ' + R.vStart.toFixed(2) + 'V · 중간 최저 ' + R.vMinMid.toFixed(2) + 'V · 최고 ' + R.maxT.toFixed(1) + '℃ · ' + esc(D.why) + '</span>' +
       (vs ? '<br><b>최초 시험 대비 ' + vs.pct + '%</b> <span class="small">(최초 ' + ymd(vs.first.startAt) + ' ' + (+vs.first.wh).toFixed(1) + 'Wh)</span>' : '') +
       (R.sag ? '<br><b>⚠ 출력 전압 저하</b> <span class="small">시험 중간에 시작보다 ' + (R.vStart - R.vMinMid).toFixed(2) + 'V 떨어졌어요 (케이블이 아니라 보조배터리 출력 문제일 수 있음)</span>' : '') +
@@ -3651,7 +3668,7 @@ function ltRemoteCard(d, i) {
   if (d.err) msg += '<div class="ltbox bad">' + esc(d.err) + '</div>';
   if (d.msg) msg += '<div class="ltbox ' + esc(d.msg[0]) + '">' + esc(d.msg[1]) + '</div>';
   if (ck && ck.v1 != null && (run || d.state === 'done')) msg += '<div class="small" style="margin-top:6px;color:' + (ck.ok ? 'var(--green)' : 'var(--amber)') + '">' + (ck.ok ? '✓ 케이블 점검 통과' : '⚠ 케이블 점검 무시하고 시험') + ' · 1A 기준 ' + (+ck.v1).toFixed(2) + 'V</div>';
-  if (R) msg += '<div class="ltbox ' + (R.sag || R.wh < LT_LOW_WH ? 'warn' : 'ok') + '"><b>결과</b> ' + R.wh.toFixed(2) + 'Wh · ' + Math.round(R.mah).toLocaleString() + 'mAh · ' + ltHms(R.sec) + '<br>' + ltConvTxt(R.mah) +
+  if (R) msg += '<div class="ltbox ' + (R.sag || R.wh < LT_LOW_WH ? 'warn' : 'ok') + '"><b>결과</b> ' + R.wh.toFixed(2) + 'Wh · ' + Math.round(R.mah).toLocaleString() + 'mAh · ' + ltHms(R.sec) + '<br>' + ltConvTxt(R.mah) + (ltJudge({ mah: R.mah, wh: R.wh, cur: c.cur, cut: c.cut, purpose: c.purpose, sn: sn }) ? '<br>' + ltJudgeHtml({ mah: R.mah, wh: R.wh, cur: c.cur, cut: c.cut, purpose: c.purpose, sn: sn }) : '') +
     '<br><span class="small">평균 ' + (+R.avgV).toFixed(2) + 'V · 중간 최저 ' + (+R.vMinMid).toFixed(2) + 'V · ' + esc(d.why || '') + '</span>' + (R.sag ? '<br><b>⚠ 출력 전압 저하</b>' : '') + (R.wh < LT_LOW_WH ? '<br>' + ltLowMsg(R.wh) : '') +
     '<div style="margin-top:4px">' + (d.saved ? '<span style="color:var(--green);font-weight:700">✓ 저장됨</span>' : d.saveErr ? '<span style="color:var(--red)">' + esc(d.saveErr) + '</span>' : '<span class="muted">저장 대기</span>') + '</div></div>';
   return '<div class="card ltdev"><div class="hd"><span class="ltno">' + esc(d.no) + '</span><b>DL24</b>' + (sn ? mtag(modelOfSn(sn)) : '') + '<span style="flex:1"></span><span class="ltpill ' + st[0] + '">' + st[1] + '</span></div><div class="bd">' +
@@ -3701,7 +3718,7 @@ function vLoadtest() {
     '<details style="margin-top:12px"><summary class="small" style="cursor:pointer;font-weight:600">사용 방법 · 표준 조건</summary><ol class="small" style="margin:8px 0 0;padding-left:18px;color:var(--ink2);line-height:1.7">' +
     '<li>표준 조건: <b>A 포트 출력 · 시험용 A-to-C 30cm 케이블(3A급 굵은 선, 장비마다 고정) · CC 2A · 차단 4.0V (품질팀 기존 시험과 같은 조건) · 100% 완충 후 30분 안정화 · 실온</b></li>' +
     '<li>케이블이 길수록 케이블에서 열로 사라지는 몫이 커져 용량이 낮게 재져요 (120cm 동봉 케이블은 2A에서 최대 4% 정도). 예전 120cm 기록과 30cm 기록은 직접 비교하지 마세요.</li>' +
-    '<li><b>반드시 100% 완충한 뒤 시작</b>하세요. 잔량이 남은 상태에서 시작하면 남은 양만 재져요 (잔량 2% → 2~3Wh). 품질팀 기존 시험(P20BOTA25 · 2A · 4.0V)에서는 결과 약 <b>12,600~14,000mAh · 6시간 20분~7시간</b>, 3.7V 환산 <b>약 17,000~18,900mAh(표기의 85~95%)</b>가 나왔어요.</li>' +
+    '<li><b>반드시 100% 완충한 뒤 시작</b>하세요. 잔량이 남은 상태에서 시작하면 남은 양만 재져요 (잔량 2% → 2~3Wh). 품질팀 기존 시험(P20BOTA25 · 2A · 4.0V)에서는 결과 약 <b>12,600~14,400mAh · 6시간 20분~7시간 10분</b>, 3.7V 환산 <b>평균 18,577mAh(표기의 92.9%)</b>가 나왔어요 (신품 50개). 판정: <b>17,500 이상 합격 · 17,000~17,500 보류 · 17,000 미만 불합격</b>, 회수분은 신품 평균 대비 <b>80% 이상 정상 · 60~80% 정상 노화 · 60% 미만 성능 불량</b>.</li>' +
     '<li>1A로 잰 예전 기록과 2A 기록은 직접 비교하지 마세요 (2A가 2~4% 낮게 나와요). 최초 대비 %는 같은 전류 기록끼리만 비교해요.</li>' +
     '<li>DL24마다 12V 전원을 넣고 PC-USB 포트를 PC(또는 전원 허브)에 연결 → <b>＋ 장비 추가</b>에서 "ATORCH DL24"를 하나씩 선택. 한 번 허용한 장비는 다음부터 자동 연결돼요.</li>' +
     '<li>어느 칸이 어느 장비인지 모르겠으면 한 대에만 보조배터리를 꽂아 보세요. 전압이 뜨는 칸이 그 장비예요.</li>' +
@@ -3714,12 +3731,12 @@ function vLoadtest() {
     '<div id="ltHistCard">' + ltHistCard() + '</div>';
 }
 function ltTable(rows, showSn) {
-  return '<div class="tw"><table class="t"><thead><tr><th>시험일시</th>' + (showSn ? '<th>S/N</th>' : '') + '<th>구분</th><th>조건</th><th>케이블 점검</th><th>Wh</th><th>mAh</th><th title="5V 출력 mAh × 5 ÷ 3.7 (품질팀 성적서와 같은 계산)">3.7V 환산 mAh</th><th>시간</th><th>평균 V</th><th>중간 최저 V</th><th>최고 ℃</th><th>종료</th><th>담당</th></tr></thead><tbody>' +
+  return '<div class="tw"><table class="t"><thead><tr><th>시험일시</th>' + (showSn ? '<th>S/N</th>' : '') + '<th>구분</th><th>조건</th><th>케이블 점검</th><th>Wh</th><th>mAh</th><th title="5V 출력 mAh × 5 ÷ 3.7 (품질팀 성적서와 같은 계산)">3.7V 환산 mAh</th><th>판정</th><th>시간</th><th>평균 V</th><th>중간 최저 V</th><th>최고 ℃</th><th>종료</th><th>담당</th></tr></thead><tbody>' +
     rows.map(function (t) {
       return '<tr><td class="nowrap">' + ymd(t.startAt) + ' ' + hm(t.startAt) + '</td>' + (showSn ? '<td><a href="#" class="mono" data-act="ltPick" data-sn="' + esc(t.sn) + '">' + esc(t.sn) + '</a> ' + mtag(t.model) + '</td>' : '') +
         '<td class="nowrap">' + esc(t.purpose) + '</td><td class="nowrap">' + esc(t.cur) + 'A · ' + esc(t.cut) + 'V</td>' +
         '<td class="nowrap">' + (t.cableV1 ? (t.checkOk === 'Y' ? '✓ ' : '⚠ ') + esc((+t.cableV1).toFixed(2)) + 'V' : '-') + '</td>' +
-        '<td class="nowrap"><b>' + (+t.wh).toFixed(2) + '</b>' + (+t.wh < LT_LOW_WH && +t.sec >= LT_MIN_SEC ? ' <span title="완충 안 한 상태로 시작했을 수 있음" style="color:var(--amber)">⚠ 완충?</span>' : '') + '</td><td class="nowrap">' + Math.round(+t.mah).toLocaleString() + '</td><td class="nowrap">' + Math.round(ltConv(t.mah)).toLocaleString() + ' <span class="muted small">' + (ltConv(t.mah) / LT_RATED_MAH * 100).toFixed(1) + '%</span></td><td class="nowrap">' + ltHms(+t.sec) + '</td>' +
+        '<td class="nowrap"><b>' + (+t.wh).toFixed(2) + '</b>' + (+t.wh < LT_LOW_WH && +t.sec >= LT_MIN_SEC ? ' <span title="완충 안 한 상태로 시작했을 수 있음" style="color:var(--amber)">⚠ 완충?</span>' : '') + '</td><td class="nowrap">' + Math.round(+t.mah).toLocaleString() + '</td><td class="nowrap">' + Math.round(ltConv(t.mah)).toLocaleString() + ' <span class="muted small">' + (ltConv(t.mah) / LT_RATED_MAH * 100).toFixed(1) + '%</span></td><td class="nowrap">' + (function () { var j = ltJudge(t); return j ? '<span style="color:' + (j.cls === 'ok' ? 'var(--green)' : j.cls === 'warn' ? 'var(--amber)' : 'var(--red)') + ';font-weight:700" title="' + esc(j.why) + '">' + esc(j.txt) + '</span>' : '-'; })() + '</td><td class="nowrap">' + ltHms(+t.sec) + '</td>' +
         '<td>' + (t.avgV ? (+t.avgV).toFixed(2) : '-') + '</td><td>' + (t.vMinMid ? (+t.vMinMid).toFixed(2) : '-') + '</td><td>' + (t.maxT ? (+t.maxT).toFixed(1) : '-') + '</td>' +
         '<td class="small nowrap">' + esc(String(t.why || '').replace('차단 전압 도달(자동 정지)', '자동 정지').replace('출력 전압 저하', '⚠ 출력 저하')) + '</td><td class="small nowrap">' + esc(t.actor) + '</td></tr>';
     }).join('') + '</tbody></table></div>';
@@ -3803,14 +3820,14 @@ function ltXlsx() {
         l.length > 1 ? dt(z.startAt) : '', l.length > 1 ? z.purpose : '', l.length > 1 ? z.cur + 'A / ' + z.cut + 'V' : '', l.length > 1 ? N(z.wh, 2) : '', l.length > 1 ? N(z.mah, 0) : '',
         same ? N(+z.wh / +f.wh * 100, 1) : '', N(Math.max.apply(null, l.map(function (x) { return +x.maxT || 0; })), 1)]);
     });
-    var rec = [['S/N', '모델', '시험 구분', '시작 일시', '종료 일시', '방전 전류(A)', '차단 전압(V)', '케이블', '케이블 점검(1A 기준 V)', '점검 결과', '용량(Wh)', '용량(mAh)', '3.7V 환산 용량(mAh, ×5÷3.7)', '표기 대비(%)', '시험 시간', '시작 전압(V)', '평균 전압(V)', '중간 최저 전압(V)', '최고 온도(℃)', '종료 사유', '장비 칸', '담당', '메모']];
+    var rec = [['S/N', '모델', '시험 구분', '시작 일시', '종료 일시', '방전 전류(A)', '차단 전압(V)', '케이블', '케이블 점검(1A 기준 V)', '점검 결과', '용량(Wh)', '용량(mAh)', '3.7V 환산 용량(mAh, ×5÷3.7)', '표기 대비(%)', '판정', '판정 근거', '시험 시간', '시작 전압(V)', '평균 전압(V)', '중간 최저 전압(V)', '최고 온도(℃)', '종료 사유', '장비 칸', '담당', '메모']];
     t.forEach(function (x) {
       rec.push([x.sn, prodLabel(x.model), x.purpose, dt(x.startAt), dt(x.endAt), N(x.cur, 2), N(x.cut, 2), x.cable, N(x.cableV1, 2), x.checkOk === 'Y' ? '통과' : x.checkOk === 'skip' ? '무시하고 시험' : '',
-        N(x.wh, 2), N(x.mah, 0), N(ltConv(x.mah), 0), N(ltConv(x.mah) / LT_RATED_MAH * 100, 1), ltHms(+x.sec), N(x.vStart, 2), N(x.avgV, 2), N(x.vMinMid, 2), N(x.maxT, 1), x.why, x.ch, x.actor, x.note]);
+        N(x.wh, 2), N(x.mah, 0), N(ltConv(x.mah), 0), N(ltConv(x.mah) / LT_RATED_MAH * 100, 1), (ltJudge(x) || {}).txt || '', (ltJudge(x) || {}).why || '', ltHms(+x.sec), N(x.vStart, 2), N(x.avgV, 2), N(x.vMinMid, 2), N(x.maxT, 1), x.why, x.ch, x.actor, x.note]);
     });
     saveBlob_(xlsxBook_([
       { name: 'S-N별 요약', rows: sum, widths: [22, 16, 9, 16, 11, 12, 10, 10, 16, 11, 12, 10, 10, 12, 12] },
-      { name: '시험 기록', rows: rec, widths: [22, 16, 11, 16, 16, 11, 11, 18, 18, 12, 10, 10, 22, 12, 10, 11, 11, 14, 11, 26, 8, 10, 30] }
+      { name: '시험 기록', rows: rec, widths: [22, 16, 11, 16, 16, 11, 11, 18, 18, 12, 10, 10, 22, 12, 12, 34, 10, 11, 11, 14, 11, 26, 8, 10, 30] }
     ]), 'Forms_LoadTest_' + today().replace(/-/g, '') + '.xlsx');
     toast('S/N ' + (sum.length - 1) + '개 · 시험 ' + t.length + '건을 엑셀로 내려받았어요.');
   }).catch(function (e) { toast(e.message, true); });
