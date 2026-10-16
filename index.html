@@ -3195,6 +3195,8 @@ var LT_CABLE_MIN = 4.85;
 var LT_MIN_SEC = 300;
 var LT_SAG = 0.15;
 var LT_PURPOSES = ['입고 QC', '회수분 검사', '클레임 자료', '기타'];
+var LT_ARM_MIN_V = 4.6;
+var LT_FIRE_RETRY = 2;
 var LT_LOW_WH = 15;
 var LT_STD = { cur: '2.0', cut: '4.5' };
 (function () { if (ls('ltStd') !== '2A45') { ls('ltCur', LT_STD.cur); ls('ltCut', LT_STD.cut); ls('ltStd', '2A45'); } })();
@@ -3378,8 +3380,8 @@ function ltOnReport(D, u) {
   if (u[3] !== 0x05) return;
   var L = { t: Date.now(), v: ltLe(u, 8) / 1000, a: ltLe(u, 12) / 1000, wh: ltLe(u, 24) / 1000, mah: ltLe(u, 28) / 1000, temp: ltLe(u, 40) / 1000, on: ltLe(u, 52) === 1 };
   D.live = L; if (!D.lost) D.err = '';
-  if (D.state === 'arm' && !L.on) {
-    if (L.v >= D.arm.cut + 0.3) { D.arm.hits.push(L.v); if (D.arm.hits.length >= 2) ltFire(D, Math.max.apply(null, D.arm.hits)); }
+  if (D.state === 'arm' && !L.on && Date.now() >= (D.arm.wait || 0)) {
+    if (L.v >= Math.max(D.arm.cut + 0.3, LT_ARM_MIN_V)) { D.arm.hits.push(L.v); if (D.arm.hits.length >= 2) ltFire(D, Math.max.apply(null, D.arm.hits)); }
     else D.arm.hits = [];
   }
   if (D.state === 'run') {
@@ -3403,11 +3405,11 @@ async function ltStart(D, skip) {
   try {
     if (D.mode == null) { await ltSend(D, 0x03); await ltWait(700); }
     if (D.mode !== 0) { D.msg = ['bad', '장비가 CC(정전류) 모드가 아니에요. 장비 버튼으로 CC 모드로 바꾼 뒤 다시 시작해 주세요.']; return; }
-    if (D.live && D.live.on) { await ltSend(D, 0x25, [0, 0, 0, 0]); await ltWait(300); }
+    await ltSend(D, 0x25, [0, 0, 0, 0]); await ltWait(300);
     await ltSend(D, 0x21, ltF32(cur)); await ltWait(150);
     await ltSend(D, 0x29, ltF32(cut)); await ltWait(150);
     D.result = null; D.saved = null; D.saveErr = ''; D.cid = '';
-    D.arm = { cur: cur, cut: cut, skip: !!skip, hits: [], at: Date.now() };
+    D.arm = { cur: cur, cut: cut, skip: !!skip, hits: [], at: Date.now(), retry: 0, wait: 0 };
     D.state = 'arm';
   } finally { D.busy = false; ltDraw(D); }
 }
@@ -3418,9 +3420,15 @@ async function ltFire(D, voc) {
   if (D.state !== 'check') return;
   var L = D.live || {};
   if (!L.on || !(L.a >= A.cur * 0.9)) {
-    await ltSend(D, 0x25, [0, 0, 0, 0]); D.state = 'idle';
-    D.msg = ['bad', '전류가 설정값만큼 흐르지 않아요 (' + (+L.a || 0).toFixed(2) + 'A / 설정 ' + A.cur + 'A). 케이블 접촉·보조배터리 출력을 확인하고 ▶ 시작을 다시 눌러 주세요.']; return ltDraw(D);
+    await ltSend(D, 0x25, [0, 0, 0, 0]);
+    if ((A.retry || 0) < LT_FIRE_RETRY) {
+      A.retry = (A.retry || 0) + 1; A.hits = []; A.wait = Date.now() + 800; D.state = 'arm';
+      D.msg = ['warn', '부하를 걸었는데 전류가 안 흘러서 자동으로 다시 시도 중이에요 (' + A.retry + '/' + LT_FIRE_RETRY + '). 보조배터리 출력이 꺼져 있으면 전원 버튼을 눌러 주세요.']; return ltDraw(D);
+    }
+    D.state = 'idle';
+    D.msg = ['bad', '전류가 설정값만큼 흐르지 않아요 (' + (+L.a || 0).toFixed(2) + 'A / 설정 ' + A.cur + 'A, ' + (LT_FIRE_RETRY + 1) + '번 시도). 케이블 접촉·보조배터리 출력을 확인하고 ▶ 시작을 다시 눌러 주세요.']; return ltDraw(D);
   }
+  if (A.retry) D.msg = null;
   var r = Math.max(0, (voc - L.v) / L.a);
   D.check = { voc: voc, vload: L.v, i: L.a, r: r, v1: voc - r, ok: voc - r >= LT_CABLE_MIN, skip: A.skip };
   if (!D.check.ok && !A.skip) { await ltSend(D, 0x25, [0, 0, 0, 0]); D.state = 'idle'; return ltDraw(D); }
