@@ -758,7 +758,7 @@ function cstate(c) {
   var rq = rets.filter(function (x) { return !x.doneAt && x.reissueReqAt && x.stage !== 'moving'; });
   if (!st.stuck.length && (st.ret === 'fail' || st.ret === 'before') && (rq.length || (st.reissued.length && st.ret === 'before'))) st.ret = 'rereq';
   st.trk = inTrack(c, us);
-  st.atWh = rets.filter(function (x) { return x.doneAt && !x.inAt && x.stage !== 'merged'; });
+  st.atWh = rets.filter(function (x) { return x.doneAt && !x.inAt && x.stage !== 'merged' && (st.trk || d10(x.doneAt) >= trackFrom()); });
   st.toCome = rets.filter(function (x) { return !x.doneAt; });
   st.chk = us.filter(unitChk);
   if (c.closed === 'Y') st.b = 'closed';
@@ -3195,6 +3195,12 @@ var LT_CABLE_MIN = 4.85;
 var LT_MIN_SEC = 300;
 var LT_SAG = 0.15;
 var LT_PURPOSES = ['입고 QC', '회수분 검사', '클레임 자료', '기타'];
+var LT_LOW_WH = 15;
+var LT_STD = { cur: '2.0', cut: '4.5' };
+(function () { if (ls('ltStd') !== '2A45') { ls('ltCur', LT_STD.cur); ls('ltCut', LT_STD.cut); ls('ltStd', '2A45'); } })();
+function ltAskFull(n) {
+  return ask_('보조배터리를 100% 완충한 뒤 30분 이상 쉬게 했나요?\n\n완충하지 않고 시험하면 남은 양만 재져서 용량이 낮게 나와요 (예: 잔량 2% → 2~3Wh).' + (n > 1 ? '\n\n시작할 장비 ' + n + '대' : ''), { title: '완충 확인', yes: '네, 완충했어요' });
+}
 function ltNorm(s) { s = String(s || '').toUpperCase().replace(/[\s\-_]/g, ''); return s.replace(/^P2OB/, 'P20B').replace(/^P20BPTA/, 'P20BOTA').replace(/^P20B0TA/, 'P20BOTA'); }
 function ltLe(a, o) { return (a[o] | (a[o + 1] << 8) | (a[o + 2] << 16) | (a[o + 3] << 24)) >>> 0; }
 function ltFbe(a, o) { return new DataView(a.buffer, a.byteOffset).getFloat32(o, false); }
@@ -3388,9 +3394,9 @@ function ltOnReport(D, u) {
 }
 
 async function ltStart(D, skip) {
-  if (LT.agent) return ltAgentCmd(D, 'start', { cur: +ltVal('ltCur', '1.0'), cut: +ltVal('ltCut', '4.0'), purpose: ltVal('ltPurpose', '입고 QC'), cable: ltVal('ltCable', ''), skip: !!skip, sn: D.sn });
+  if (LT.agent) return ltAgentCmd(D, 'start', { cur: +ltVal('ltCur', LT_STD.cur), cut: +ltVal('ltCut', LT_STD.cut), purpose: ltVal('ltPurpose', '입고 QC'), cable: ltVal('ltCable', ''), skip: !!skip, sn: D.sn });
   if (D.busy || D.state === 'run' || D.state === 'check' || D.state === 'arm') return;
-  var cur = +ltVal('ltCur', '1.0'), cut = +ltVal('ltCut', '4.0');
+  var cur = +ltVal('ltCur', LT_STD.cur), cut = +ltVal('ltCut', LT_STD.cut);
   if (!(cur > 0 && cur <= 5) || !(cut > 0 && cut < 20)) { D.msg = ['bad', '방전 전류(0~5A)와 차단 전압을 확인해 주세요.']; return ltDraw(D); }
   if (D.lost) { D.msg = ['bad', 'USB 연결이 끊겨 있어요. 케이블을 다시 꽂아 주세요.']; return ltDraw(D); }
   D.busy = true; D.msg = null; D.check = null;
@@ -3503,7 +3509,7 @@ function ltHistHtml(sn, exceptCid) {
   return '<b>이전 기록 ' + l.length + '회</b><br>최초 ' + ltOne(l[0]) + (l.length > 1 ? '<br>직전 ' + ltOne(l[l.length - 1]) : '');
 }
 function ltVsFirst(sn, wh, cur, exceptCid) {
-  var h = (LT.hist[sn] || []).filter(function (t) { return t.cid !== exceptCid && +t.cur === +cur && +t.wh > 0; });
+  var h = (LT.hist[sn] || []).filter(function (t) { return t.cid !== exceptCid && +t.cur === +cur && +t.wh >= LT_LOW_WH; });
   return h.length ? { pct: Math.round(wh / +h[0].wh * 1000) / 10, first: h[0] } : null;
 }
 
@@ -3527,7 +3533,7 @@ function ltCard(D) {
   el.addEventListener('click', function (e) {
     var b = e.target.closest('[data-lt]'); if (!b) return;
     var a = b.getAttribute('data-lt');
-    if (a === 'go') ltStart(D); else if (a === 'stop') ltStop(D); else if (a === 'skip') ltStart(D, true); else if (a === 'save') ltSave(D);
+    if (a === 'go') ltAskFull(1).then(function (ok) { if (ok) ltStart(D); }); else if (a === 'stop') ltStop(D); else if (a === 'skip') ltStart(D, true); else if (a === 'save') ltSave(D);
   });
   ltDraw(D);
 }
@@ -3568,11 +3574,12 @@ function ltDraw(D) {
   k('msg').innerHTML = msg;
   var res = '';
   if (R) {
-    var sn = c.sn || D.sn, vs = sn ? ltVsFirst(sn, R.wh, c.cur, D.cid) : null, short = R.sec < LT_MIN_SEC;
-    res = '<div class="ltbox ' + (R.sag || short ? 'warn' : 'ok') + '"><b>결과</b> ' + R.wh.toFixed(2) + 'Wh · ' + Math.round(R.mah).toLocaleString() + 'mAh · ' + ltHms(R.sec) +
+    var sn = c.sn || D.sn, vs = sn ? ltVsFirst(sn, R.wh, c.cur, D.cid) : null, short = R.sec < LT_MIN_SEC, low = !short && R.wh < LT_LOW_WH;
+    res = '<div class="ltbox ' + (R.sag || short || low ? 'warn' : 'ok') + '"><b>결과</b> ' + R.wh.toFixed(2) + 'Wh · ' + Math.round(R.mah).toLocaleString() + 'mAh · ' + ltHms(R.sec) +
       '<br><span class="small">평균 ' + R.avgV.toFixed(2) + 'V · 시작 ' + R.vStart.toFixed(2) + 'V · 중간 최저 ' + R.vMinMid.toFixed(2) + 'V · 최고 ' + R.maxT.toFixed(1) + '℃ · ' + esc(D.why) + '</span>' +
       (vs ? '<br><b>최초 시험 대비 ' + vs.pct + '%</b> <span class="small">(최초 ' + ymd(vs.first.startAt) + ' ' + (+vs.first.wh).toFixed(1) + 'Wh)</span>' : '') +
       (R.sag ? '<br><b>⚠ 출력 전압 저하</b> <span class="small">시험 중간에 시작보다 ' + (R.vStart - R.vMinMid).toFixed(2) + 'V 떨어졌어요 (케이블이 아니라 보조배터리 출력 문제일 수 있음)</span>' : '') +
+      (low ? '<br>' + ltLowMsg(R.wh) : '') +
       (short ? '<br><b>⚠ 시험이 ' + Math.round(R.sec / 60) + '분 만에 끝났어요</b> <span class="small">연결이 빠졌거나 완충이 안 된 상태일 수 있어 자동 저장하지 않았어요.</span>' : '') +
       '<div style="margin-top:6px">' + (D.saved ? '<span style="color:var(--green);font-weight:700">✓ 저장됨</span>' : D.saving ? '<span class="muted">저장 중…</span>' :
         (D.saveErr ? '<span style="color:var(--red)">' + esc(D.saveErr) + '</span> ' : '') + (sn ? '<button class="btn sm pri" data-lt="save">이 결과 저장</button>' : '<span class="muted">S/N을 넣으면 저장할 수 있어요</span>')) + '</div></div>';
@@ -3595,6 +3602,7 @@ function ltChart(cv, data, colors, multi) {
   });
   g.fillStyle = '#8b95a1'; g.font = '18px sans-serif'; g.fillText(mx.toFixed(2) + 'V', 6, 20); g.fillText(mn.toFixed(2) + 'V', 6, H - 6);
 }
+function ltLowMsg(wh) { return '<b>⚠ 용량이 ' + (+wh).toFixed(1) + 'Wh로 매우 낮아요</b> <span class="small">완충하지 않고 시작했을 가능성이 커요. 100% 완충 → 30분 휴지 → 재시험해 주세요. 완충했는데도 이 값이면 셀 불량이에요.</span>'; }
 function ltRedrawAll() { LT.devs.forEach(ltDraw); if (S.view === 'loadtest') ltRefreshHistCard(); }
 
 var LTR = { live: null, got: 0, timer: null, busy: false };
@@ -3621,7 +3629,7 @@ function ltRemoteSec(d) {
   if (!d.startAt) return null;
   if (d.state === 'done' && d.result) return d.result.sec;
   if (d.state !== 'run') return null;
-  return ((LTR.live.agentAt || LTR.live.ms) - d.startAt) / 1000 + ltRemoteAge();
+  return ((LTR.live.agentAt || LTR.live.ms) - d.startAt) / 1000;
 }
 function ltRemoteCard(d, i) {
   var L = d.live, R = d.result, c = d.cond || {}, st = ltRemoteState(d), sn = (d.state === 'run' || d.state === 'done') && c.sn ? c.sn : d.sn;
@@ -3632,8 +3640,8 @@ function ltRemoteCard(d, i) {
   if (d.err) msg += '<div class="ltbox bad">' + esc(d.err) + '</div>';
   if (d.msg) msg += '<div class="ltbox ' + esc(d.msg[0]) + '">' + esc(d.msg[1]) + '</div>';
   if (ck && ck.v1 != null && (run || d.state === 'done')) msg += '<div class="small" style="margin-top:6px;color:' + (ck.ok ? 'var(--green)' : 'var(--amber)') + '">' + (ck.ok ? '✓ 케이블 점검 통과' : '⚠ 케이블 점검 무시하고 시험') + ' · 1A 기준 ' + (+ck.v1).toFixed(2) + 'V</div>';
-  if (R) msg += '<div class="ltbox ' + (R.sag ? 'warn' : 'ok') + '"><b>결과</b> ' + R.wh.toFixed(2) + 'Wh · ' + Math.round(R.mah).toLocaleString() + 'mAh · ' + ltHms(R.sec) +
-    '<br><span class="small">평균 ' + (+R.avgV).toFixed(2) + 'V · 중간 최저 ' + (+R.vMinMid).toFixed(2) + 'V · ' + esc(d.why || '') + '</span>' + (R.sag ? '<br><b>⚠ 출력 전압 저하</b>' : '') +
+  if (R) msg += '<div class="ltbox ' + (R.sag || R.wh < LT_LOW_WH ? 'warn' : 'ok') + '"><b>결과</b> ' + R.wh.toFixed(2) + 'Wh · ' + Math.round(R.mah).toLocaleString() + 'mAh · ' + ltHms(R.sec) +
+    '<br><span class="small">평균 ' + (+R.avgV).toFixed(2) + 'V · 중간 최저 ' + (+R.vMinMid).toFixed(2) + 'V · ' + esc(d.why || '') + '</span>' + (R.sag ? '<br><b>⚠ 출력 전압 저하</b>' : '') + (R.wh < LT_LOW_WH ? '<br>' + ltLowMsg(R.wh) : '') +
     '<div style="margin-top:4px">' + (d.saved ? '<span style="color:var(--green);font-weight:700">✓ 저장됨</span>' : d.saveErr ? '<span style="color:var(--red)">' + esc(d.saveErr) + '</span>' : '<span class="muted">저장 대기</span>') + '</div></div>';
   return '<div class="card ltdev"><div class="hd"><span class="ltno">' + esc(d.no) + '</span><b>DL24</b>' + (sn ? mtag(modelOfSn(sn)) : '') + '<span style="flex:1"></span><span class="ltpill ' + st[0] + '">' + st[1] + '</span></div><div class="bd">' +
     '<div class="mono" style="font-weight:700;margin-bottom:4px">' + (sn ? esc(sn) : '<span class="muted">S/N 없음</span>') + '</div>' +
@@ -3675,12 +3683,14 @@ function vLoadtest() {
     (remoteOnly ? '<div class="small muted">시험 조작은 서버 PC(기록 프로그램이 켜진 PC)에서 해요. 이 PC에서는 아래에서 진행 상황을 실시간으로 볼 수 있어요.</div><details style="margin-top:10px"><summary class="small" style="cursor:pointer">이 PC에 장비를 직접 연결해서 시험하기</summary>' : '') +
     '<div class="row" style="align-items:flex-end;gap:10px;flex-wrap:wrap;margin-top:' + (remoteOnly ? '10px' : '0') + '">' +
     f('시험 구분', '<select class="inp" id="ltPurpose">' + LT_PURPOSES.map(function (p) { return '<option' + (p === pur ? ' selected' : '') + '>' + p + '</option>'; }).join('') + '</select>') +
-    f('방전 전류 (A, CC)', '<input class="inp" id="ltCur" type="number" step="0.1" min="0.1" max="5" value="' + esc(ltVal('ltCur', '1.0')) + '" style="width:90px">') +
-    f('차단 전압 (V)', '<input class="inp" id="ltCut" type="number" step="0.1" min="1" max="20" value="' + esc(ltVal('ltCut', '4.0')) + '" style="width:90px">') +
+    f('방전 전류 (A, CC)', '<input class="inp" id="ltCur" type="number" step="0.1" min="0.1" max="5" value="' + esc(ltVal('ltCur', LT_STD.cur)) + '" style="width:90px">') +
+    f('차단 전압 (V)', '<input class="inp" id="ltCut" type="number" step="0.1" min="1" max="20" value="' + esc(ltVal('ltCut', LT_STD.cut)) + '" style="width:90px">') +
     f('케이블', '<input class="inp" id="ltCable" value="' + esc(ltVal('ltCable', '동봉 A-to-C 120cm')) + '" style="width:170px">') +
     (hid ? (LT.agent ? '' : '<button class="btn pri" data-act="ltAdd">＋ 장비 추가 (USB)</button>') + '<button class="btn" data-act="ltAll">▶ 전체 시작</button><button class="btn red" data-act="ltStopAll">■ 전체 정지</button>' : '') + '</div>' + (remoteOnly ? '</details>' : '') +
     '<details style="margin-top:12px"><summary class="small" style="cursor:pointer;font-weight:600">사용 방법 · 표준 조건</summary><ol class="small" style="margin:8px 0 0;padding-left:18px;color:var(--ink2);line-height:1.7">' +
-    '<li>표준 조건: <b>A 포트 출력 · 동봉 A-to-C 120cm 케이블(장비마다 고정) · CC 1A · 차단 4.0V · 완충 후 30분 안정화 · 실온</b></li>' +
+    '<li>표준 조건: <b>A 포트 출력 · 동봉 A-to-C 120cm 케이블(장비마다 고정) · CC 2A · 차단 4.5V · 100% 완충 후 30분 안정화 · 실온</b></li>' +
+    '<li><b>반드시 100% 완충한 뒤 시작</b>하세요. 잔량이 남은 상태에서 시작하면 남은 양만 재져요 (잔량 2% → 2~3Wh). 20,000mAh 정상품은 2A 기준 <b>약 59~65Wh · 6시간 안팎</b>이 나와요.</li>' +
+    '<li>1A로 잰 예전 기록과 2A 기록은 직접 비교하지 마세요 (2A가 2~4% 낮게 나와요). 최초 대비 %는 같은 전류 기록끼리만 비교해요.</li>' +
     '<li>DL24마다 12V 전원을 넣고 PC-USB 포트를 PC(또는 전원 허브)에 연결 → <b>＋ 장비 추가</b>에서 "ATORCH DL24"를 하나씩 선택. 한 번 허용한 장비는 다음부터 자동 연결돼요.</li>' +
     '<li>어느 칸이 어느 장비인지 모르겠으면 한 대에만 보조배터리를 꽂아 보세요. 전압이 뜨는 칸이 그 장비예요.</li>' +
     '<li>칸마다 S/N을 스캔하면 <b>이전 용량 테스트 기록(최초·직전)</b>이 바로 떠요. 스캔하면 다음 칸으로 넘어가요.</li>' +
@@ -3697,7 +3707,7 @@ function ltTable(rows, showSn) {
       return '<tr><td class="nowrap">' + ymd(t.startAt) + ' ' + hm(t.startAt) + '</td>' + (showSn ? '<td><a href="#" class="mono" data-act="ltPick" data-sn="' + esc(t.sn) + '">' + esc(t.sn) + '</a> ' + mtag(t.model) + '</td>' : '') +
         '<td class="nowrap">' + esc(t.purpose) + '</td><td class="nowrap">' + esc(t.cur) + 'A · ' + esc(t.cut) + 'V</td>' +
         '<td class="nowrap">' + (t.cableV1 ? (t.checkOk === 'Y' ? '✓ ' : '⚠ ') + esc((+t.cableV1).toFixed(2)) + 'V' : '-') + '</td>' +
-        '<td class="nowrap"><b>' + (+t.wh).toFixed(2) + '</b></td><td class="nowrap">' + Math.round(+t.mah).toLocaleString() + '</td><td class="nowrap">' + ltHms(+t.sec) + '</td>' +
+        '<td class="nowrap"><b>' + (+t.wh).toFixed(2) + '</b>' + (+t.wh < LT_LOW_WH && +t.sec >= LT_MIN_SEC ? ' <span title="완충 안 한 상태로 시작했을 수 있음" style="color:var(--amber)">⚠ 완충?</span>' : '') + '</td><td class="nowrap">' + Math.round(+t.mah).toLocaleString() + '</td><td class="nowrap">' + ltHms(+t.sec) + '</td>' +
         '<td>' + (t.avgV ? (+t.avgV).toFixed(2) : '-') + '</td><td>' + (t.vMinMid ? (+t.vMinMid).toFixed(2) : '-') + '</td><td>' + (t.maxT ? (+t.maxT).toFixed(1) : '-') + '</td>' +
         '<td class="small nowrap">' + esc(String(t.why || '').replace('차단 전압 도달(자동 정지)', '자동 정지').replace('출력 전압 저하', '⚠ 출력 저하')) + '</td><td class="small nowrap">' + esc(t.actor) + '</td></tr>';
     }).join('') + '</tbody></table></div>';
@@ -3836,7 +3846,7 @@ ACT.ltAll = function () {
   if (!go.length) return toast('시작할 장비가 없어요.', true);
   var noSn = go.filter(function (D) { return !D.sn; }).length;
   if (noSn) toast('S/N이 없는 칸 ' + noSn + '개 — 시험 중에 넣어도 돼요 (넣어야 저장돼요).', true);
-  go.forEach(function (D) { ltStart(D); });
+  ltAskFull(go.length).then(function (ok) { if (ok) go.forEach(function (D) { ltStart(D); }); });
 };
 ACT.ltStopAll = function () { if (askGate_('시험 중인 모든 장비의 부하를 끌까요? (중간 결과는 자동 저장되지 않아요)', function () { ACT.ltStopAll(); })) LT.devs.forEach(function (D) { if (D.state === 'run' || D.state === 'check' || D.state === 'arm') ltStop(D); }); };
 ACT.ltXlsx = function () { return ltXlsx(); };
