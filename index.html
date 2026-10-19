@@ -3228,7 +3228,7 @@ function ltConvTxt(mah) { var c = ltConv(mah); return '3.7V 환산 <b>' + Math.r
 var LT_STD = { cur: '2.0', cut: '4.0', cable: 'A-to-C 30cm (시험용)' };
 (function () { if (ls('ltStd') !== '2A40') { ls('ltCur', LT_STD.cur); ls('ltCut', LT_STD.cut); ls('ltStd', '2A40'); } if (ls('ltStdCable') !== 'c30') { ls('ltCable', LT_STD.cable); ls('ltStdCable', 'c30'); } })();
 function ltAskFull(n) {
-  return ask_('보조배터리를 100% 완충한 뒤 30분 이상 쉬게 했나요?\n\n완충하지 않고 시험하면 남은 양만 재져서 용량이 낮게 나와요 (예: 잔량 2% → 2~3Wh).' + (n > 1 ? '\n\n시작할 장비 ' + n + '대' : ''), { title: '완충 확인', yes: '네, 완충했어요' });
+  return ask_('보조배터리를 100% 완충했나요?\n\n완충하지 않고 시험하면 남은 양만 재져서 용량이 낮게 나와요 (예: 잔량 2% → 2~3Wh).' + (n > 1 ? '\n\n시작할 장비 ' + n + '대' : ''), { title: '완충 확인', yes: '네, 완충했어요' });
 }
 function ltNorm(s) { s = String(s || '').toUpperCase().replace(/[\s\-_]/g, ''); return s.replace(/^P2OB/, 'P20B').replace(/^P20BPTA/, 'P20BOTA').replace(/^P20B0TA/, 'P20BOTA'); }
 function ltLe(a, o) { return (a[o] | (a[o + 1] << 8) | (a[o + 2] << 16) | (a[o + 3] << 24)) >>> 0; }
@@ -3672,7 +3672,7 @@ function ltChart(cv, data, colors, multi) {
   });
   g.fillStyle = '#8b95a1'; g.font = '18px sans-serif'; g.fillText(mx.toFixed(2) + 'V', 6, 20); g.fillText(mn.toFixed(2) + 'V', 6, H - 6);
 }
-function ltLowMsg(wh) { return '<b>⚠ 용량이 ' + (+wh).toFixed(1) + 'Wh로 매우 낮아요</b> <span class="small">완충하지 않고 시작했을 가능성이 커요. 100% 완충 → 30분 휴지 → 재시험해 주세요. 완충했는데도 이 값이면 셀 불량이에요.</span>'; }
+function ltLowMsg(wh) { return '<b>⚠ 용량이 ' + (+wh).toFixed(1) + 'Wh로 매우 낮아요</b> <span class="small">완충하지 않고 시작했을 가능성이 커요. 100% 완충 후 재시험해 주세요. 완충했는데도 이 값이면 셀 불량이에요.</span>'; }
 function ltRedrawAll() { LT.devs.forEach(ltDraw); if (S.view === 'loadtest') ltRefreshHistCard(); }
 
 var LTR = { live: null, got: 0, timer: null, busy: false };
@@ -3757,7 +3757,7 @@ function vLoadtest() {
     f('케이블', '<input class="inp" id="ltCable" value="' + esc(ltVal('ltCable', LT_STD.cable)) + '" style="width:170px">') +
     (hid ? (LT.agent ? '' : '<button class="btn pri" data-act="ltAdd">＋ 장비 추가 (USB)</button>') + '<button class="btn" data-act="ltAll">▶ 전체 시작</button><button class="btn red" data-act="ltStopAll">■ 전체 정지</button>' + (LT.agent ? '<button class="btn" data-act="ltAssign" title="실물 1번 테스트기부터 차례로 배터리를 꽂으면 그 순서대로 1, 2, 3… 번호가 붙어요">칸 번호 지정</button><button class="btn" data-act="ltRenum" title="연결 끊긴 칸을 지우고 칸 번호를 1부터 다시 매겨요 (시험 중이 아닐 때만)">칸 번호 정리</button>' : '') : '') + '</div>' + (remoteOnly ? '</details>' : '') +
     '<details style="margin-top:12px"><summary class="small" style="cursor:pointer;font-weight:600">사용 방법 · 표준 조건</summary><ol class="small" style="margin:8px 0 0;padding-left:18px;color:var(--ink2);line-height:1.7">' +
-    '<li>표준 조건: <b>A 포트 출력 · 시험용 A-to-C 30cm 케이블(3A급 굵은 선, 장비마다 고정) · CC 2A · 차단 4.0V (품질팀 기존 시험과 같은 조건) · 100% 완충 후 30분 안정화 · 실온</b></li>' +
+    '<li>표준 조건: <b>A 포트 출력 · 시험용 A-to-C 30cm 케이블(3A급 굵은 선, 장비마다 고정) · CC 2A · 차단 4.0V (품질팀 기존 시험과 같은 조건) · 100% 완충 · 실온</b></li>' +
     '<li>케이블이 길수록 케이블에서 열로 사라지는 몫이 커져 용량이 낮게 재져요 (120cm 동봉 케이블은 2A에서 최대 4% 정도). 예전 120cm 기록과 30cm 기록은 직접 비교하지 마세요.</li>' +
     '<li><b>반드시 100% 완충한 뒤 시작</b>하세요. 잔량이 남은 상태에서 시작하면 남은 양만 재져요 (잔량 2% → 2~3Wh). 품질팀 기존 시험(P20BOTA25 · 2A · 4.0V)에서는 결과 약 <b>12,600~14,400mAh · 6시간 20분~7시간 10분</b>, 3.7V 환산 <b>평균 18,577mAh(표기의 92.9%)</b>가 나왔어요 (신품 50개). 판정: <b>17,500 이상 합격 · 17,000~17,500 보류 · 17,000 미만 불합격</b>, 회수분은 신품 평균 대비 <b>80% 이상 정상 · 60~80% 정상 노화 · 60% 미만 성능 불량</b>.</li>' +
     '<li>1A로 잰 예전 기록과 2A 기록은 직접 비교하지 마세요 (2A가 2~4% 낮게 나와요). 최초 대비 %는 같은 전류 기록끼리만 비교해요.</li>' +
