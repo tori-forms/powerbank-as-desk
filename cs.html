@@ -3361,6 +3361,7 @@ function ltAgentPoll() {
     var was = LT.agentDown; LT.agentDown = false; LT.agent = st;
     var before = LT.devs.length;
     (st.devices || []).forEach(ltAgentApply);
+    ltAgentPrune(st.devices || []);
     if ((was || LT.devs.length !== before) && S.view === 'loadtest') render();
     if (S.view === 'loadtest' && Date.now() - (LT.logAt || 0) > 5000) {
       LT.logAt = Date.now();
@@ -3368,6 +3369,10 @@ function ltAgentPoll() {
     }
   }, function () { if (!LT.agentDown) { LT.agentDown = true; if (S.view === 'loadtest') render(); } })
     .then(function () { LT.agentBusy = false; });
+}
+function ltAgentPrune(list) {
+  var nos = list.map(function (x) { return x.no; });
+  LT.devs.slice().forEach(function (D) { if (nos.indexOf(D.no) < 0) { if (D.el && D.el.parentNode) D.el.parentNode.removeChild(D.el); LT.devs.splice(LT.devs.indexOf(D), 1); } });
 }
 function ltAgentApply(x) {
   var D = LT.devs.filter(function (d) { return d.no === x.no; })[0];
@@ -3733,7 +3738,7 @@ function vLoadtest() {
     f('방전 전류 (A, CC)', '<input class="inp" id="ltCur" type="number" step="0.1" min="0.1" max="5" value="' + esc(ltVal('ltCur', LT_STD.cur)) + '" style="width:90px">') +
     f('차단 전압 (V)', '<input class="inp" id="ltCut" type="number" step="0.1" min="1" max="20" value="' + esc(ltVal('ltCut', LT_STD.cut)) + '" style="width:90px">') +
     f('케이블', '<input class="inp" id="ltCable" value="' + esc(ltVal('ltCable', LT_STD.cable)) + '" style="width:170px">') +
-    (hid ? (LT.agent ? '' : '<button class="btn pri" data-act="ltAdd">＋ 장비 추가 (USB)</button>') + '<button class="btn" data-act="ltAll">▶ 전체 시작</button><button class="btn red" data-act="ltStopAll">■ 전체 정지</button>' : '') + '</div>' + (remoteOnly ? '</details>' : '') +
+    (hid ? (LT.agent ? '' : '<button class="btn pri" data-act="ltAdd">＋ 장비 추가 (USB)</button>') + '<button class="btn" data-act="ltAll">▶ 전체 시작</button><button class="btn red" data-act="ltStopAll">■ 전체 정지</button>' + (LT.agent ? '<button class="btn" data-act="ltRenum" title="연결 끊긴 칸을 지우고 칸 번호를 1부터 다시 매겨요 (시험 중이 아닐 때만)">칸 번호 정리</button>' : '') : '') + '</div>' + (remoteOnly ? '</details>' : '') +
     '<details style="margin-top:12px"><summary class="small" style="cursor:pointer;font-weight:600">사용 방법 · 표준 조건</summary><ol class="small" style="margin:8px 0 0;padding-left:18px;color:var(--ink2);line-height:1.7">' +
     '<li>표준 조건: <b>A 포트 출력 · 시험용 A-to-C 30cm 케이블(3A급 굵은 선, 장비마다 고정) · CC 2A · 차단 4.0V (품질팀 기존 시험과 같은 조건) · 100% 완충 후 30분 안정화 · 실온</b></li>' +
     '<li>케이블이 길수록 케이블에서 열로 사라지는 몫이 커져 용량이 낮게 재져요 (120cm 동봉 케이블은 2A에서 최대 4% 정도). 예전 120cm 기록과 30cm 기록은 직접 비교하지 마세요.</li>' +
@@ -3899,6 +3904,17 @@ ACT.ltAll = function () {
 };
 ACT.ltStopAll = function () { if (askGate_('시험 중인 모든 장비의 부하를 끌까요? (중간 결과는 자동 저장되지 않아요)', function () { ACT.ltStopAll(); })) LT.devs.forEach(function (D) { if (D.state === 'run' || D.state === 'check' || D.state === 'arm') ltStop(D); }); };
 ACT.ltXlsx = function () { return ltXlsx(); };
+ACT.ltRenum = function () {
+  if (LT.devs.some(function (D) { return D.state === 'run' || D.state === 'arm' || D.state === 'check'; })) return toast('시험 중인 장비가 있어서 번호를 바꿀 수 없어요. 시험이 끝난 뒤 눌러 주세요.', true);
+  ask_('연결 끊긴 칸을 지우고, 지금 연결된 장비의 칸 번호를 1번부터 빈틈없이 다시 매길까요?\n(장비 라벨과 칸 번호를 맞추려면, 정리 후 배터리를 한 대씩 꽂아 전압이 뜨는 칸을 확인하세요)', { title: '칸 번호 정리', yes: '정리' }).then(function (ok) {
+    if (!ok) return;
+    ltAgentCmd(null, 'renumber').then(function (r) {
+      if (!r) return;
+      LT.devs.forEach(function (D) { if (D.el && D.el.parentNode) D.el.parentNode.removeChild(D.el); }); LT.devs = [];
+      (r.devices || []).forEach(ltAgentApply); render(); toast('칸 번호를 1~' + r.count + '번으로 정리했어요.');
+    });
+  });
+};
 ACT.ltPick = function (d) { var q = $('#ltQ'); if (q) q.value = d.sn || ''; ltQuery(d.sn || ''); window.scrollTo && $('#ltHistCard') && $('#ltHistCard').scrollIntoView({ block: 'start', behavior: 'smooth' }); };
 document.addEventListener('change', function (e) { var id = e.target.id; if (id === 'ltPurpose' || id === 'ltCur' || id === 'ltCut' || id === 'ltCable') ls(id, e.target.value); });
 document.addEventListener('keydown', function (e) { if (e.target.id === 'ltQ' && e.key === 'Enter') { e.preventDefault(); e.target.value = ltNorm(e.target.value); ltQuery(e.target.value); } });
