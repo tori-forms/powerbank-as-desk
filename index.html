@@ -1255,7 +1255,10 @@ function shipWait_(sets, tabs) {
     }).join('') : '<tr><td colspan="8"><div class="empty">출고 대기 건이 없습니다. 인입함에서 교환 확정하면 여기로 들어와요.</div></td></tr>') + '</tbody></table></div></div>';
 }
 function sheetMsg_(r) {
-  var s = r && r.sheet; if (!s) return '';
+  var s = r && r.sheet, ts = r && r.testSync ? ' · 회수분 테스트 결과 시트도 AS Desk 판정으로 고쳤어요' : ''; if (!s) return ts;
+  return sheetMsg0_(s) + ts;
+}
+function sheetMsg0_(s) {
   if (s.notTorder) return '';
   if (s.error) return ' · 티오더 시트 기록 실패(30분 안에 자동 재시도)';
   if (s.shifted) return ' · 티오더 시트 행 위치가 바뀌어 기록을 건너뛰었어요(다음 가져오기 때 다시 맞춰요)';
@@ -3064,8 +3067,14 @@ var ACT = {
     if (!was) { el.classList.add('on'); if (tx) { tx.style.display = ''; tx.focus(); } } else if (tx) tx.style.display = 'none';
   },
   tpl: function (d) {
-    var t = OPINION_TPL[+d.i];
-    $('#in_op').value = t[0]; setChip('verdict', t[1]); if (t[2]) setChip('testSymptom', t[2]); setChip('cause', t[3]);
+    var t = OPINION_TPL[+d.i], mine = chipVal('verdict');
+    $('#in_op').value = t[0];
+    if (mine && mine !== t[1]) {
+      if (t[2] && !chipVal('testSymptom')) setChip('testSymptom', t[2]);
+      if (!chipVal('cause')) setChip('cause', t[3]);
+      return toast('문구만 넣었어요. 판정은 직접 고른 [' + mine + '] 그대로예요.');
+    }
+    setChip('verdict', t[1]); if (t[2]) setChip('testSymptom', t[2]); setChip('cause', t[3]);
     if (!chipVal('disposition')) setChip('disposition', DEFAULT_DISP[t[1]]);
   },
   saveInspect: function (d, b) {
