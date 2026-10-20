@@ -2225,20 +2225,33 @@ var QC_STEP_ = {
   fail: ['구간 전체 불합격', '이 구간 전체를 수입검사 불합격으로 기록합니다. 일부만 불량이면 [검사 합격]에서 불합격 S/N만 입고 제외하세요.'],
   rej: ['불합격 S/N 제외', '수입검사에서 불합격한 S/N을 외주창고에 입고하지 않고 재고에서 뺍니다. 사유·처리를 같이 남겨요.'],
   wh: ['외주창고 입고', '외주창고에 입고됐음을 기록합니다. 이때부터 출고 가능 재고로 계산해요.'],
-  unwh: ['외주창고 입고 취소', '외주창고 입고 기록을 지웁니다.']
+  unwh: ['외주창고 입고 취소', '외주창고 입고 기록을 지웁니다.'],
+  keep: ['우리 창고 보관', '외주창고로 보내지 않고 우리 창고에 교환용으로 둘 S/N 구간을 적어 주세요. 외주창고 출고 가능과 따로 세요. 비우고 기록하면 보관을 해제해요. 입고 제외(불합격)에 잘못 들어간 S/N이면 제외도 자동으로 취소돼요.']
 };
 function stockStageCell(x) {
   var r = x.r, g = STAGE_[x.stage];
   var qc = r.qcStatus && r.qcStatus !== '검사중' ? '수입검사 ' + r.qcStatus + (r.qcAt ? ' ' + md(r.qcAt) : '') : '';
   return '<span class="pill ' + g.p + '">' + g.t + '</span>' +
-    '<div class="small muted" style="margin-top:3px">' + [qc, r.whAt ? '외주창고 입고 ' + md(r.whAt) : ''].filter(String).map(esc).join(' · ') + (r.qcNote ? '<div>' + esc(r.qcNote) + '</div>' : '') + '</div>';
+    '<div class="small muted" style="margin-top:3px">' + [qc, r.whAt ? '외주창고 입고 ' + md(r.whAt) : ''].filter(String).map(esc).join(' · ') + (r.qcNote ? '<div>' + esc(r.qcNote) + '</div>' : '') + '</div>' +
+    (r.keep ? '<div class="small" style="margin-top:4px;padding:4px 8px;border-radius:8px;background:#f3e8ff;color:#6b21a8">🏠 <b>우리 창고 보관(교환용)</b> 남음 ' + (x.keepLeft || 0) + '개' + (r.keepAt ? ' · ' + esc(md(r.keepAt)) : '') + '<div class="mono" style="font-size:11px">' + esc(r.keep) + '</div></div>' : '');
 }
 function stockQcBtns(x) {
   var b = function (step, pri) { return '<button class="btn sm' + (pri ? ' pri' : '') + '" data-act="qcOpen" data-id="' + esc(x.r.id) + '" data-v="' + step + '">' + QC_STEP_[step][0] + '</button> '; };
-  return { pre: b('inspect') + b('pass', 1) + b('skip'), qc: b('pass', 1) + b('skip') + b('rej') + b('fail'), fail: b('inspect') + b('pass'), ready: b('wh', 1) + b('rej') + b('inspect'), wh: b('rej') }[x.stage] || '';
+  return ({ pre: b('inspect') + b('pass', 1) + b('skip'), qc: b('pass', 1) + b('skip') + b('rej') + b('fail'), fail: b('inspect') + b('pass'), ready: b('wh', 1) + b('rej') + b('inspect'), wh: b('rej') }[x.stage] || '') + (x.stage !== 'fail' ? b('keep') : '');
 }
 var QC_REJ_WHY = ['용량 미달', '충전 불량', '출력 불량', '표시부(LED) 불량', '포트 불량', '외관 불량(찍힘·스크래치)', '스웰링', '인쇄·라벨 불량', '포장 불량', '기타'];
 var QC_REJ_DISP = ['제조사 반송 예정', '제조사 반송 완료', '폐기', '재작업(수리) 대기', '내부 샘플 전환', '보관(처리 미정)'];
+function stockKeepTxt(txt, r) {
+  if (!r) return txt;
+  return String(txt || '').split(/[,\n;]+/).map(function (tok) {
+    tok = tok.trim(); if (!tok) return '';
+    return tok.split(/\s*[~～]\s*/).map(function (x) {
+      x = x.trim().toUpperCase();
+      if (/^\d+$/.test(x) && x.length < +r.digits) { var p10 = Math.pow(10, x.length), n = Math.floor(+r.fromNo / p10) * p10 + +x; if (n < +r.fromNo) n += p10; return stockSn(r, n); }
+      return x;
+    }).join('~');
+  }).filter(String).join(', ');
+}
 function qcRejOf(r) { try { return JSON.parse(r.qcRej || '[]'); } catch (e) { return []; } }
 function qcRejSns_(txt, r) {
   if (!String(txt || '').trim()) return [];
@@ -2276,18 +2289,20 @@ function stockCalc() {
   var list = rows.map(function (r) {
     var hand = null;
     if (r.onHand) { var rg = snRangesTxt(r.onHand, r.model); if (typeof rg !== 'string') { hand = {}; rg.forEach(function (x) { for (var k = x.lo; k <= x.hi; k++) hand[k] = 1; }); } }
-    var left = 0, useN = 0, gap = [], next = [], rejN = 0, rej = {};
+    var left = 0, useN = 0, gap = [], next = [], rejN = 0, rej = {}, keep = {}, keepLeft = 0, keepNext = [];
     qcRejOf(r).forEach(function (e) { rej[e.sn] = 1; });
+    if (r.keep) { var kr = snRangesTxt(r.keep, r.model); if (typeof kr !== 'string') kr.forEach(function (x) { for (var k = x.lo; k <= x.hi; k++) keep[k] = 1; }); }
+    var have = function (k, sn) { left++; if (keep[k]) { keepLeft++; if (keepNext.length < 3) keepNext.push(sn); } else if (next.length < 3) next.push(sn); };
     for (var k = +r.fromNo; k <= +r.toNo; k++) {
       var sn = stockSn(r, k), u = used[sn];
       if (rej[sn] && !u) { rejN++; continue; }
       if (hand) {
-        if (hand[k]) { if (u && u.some(function (x) { return x.d >= r.countedAt; })) useN++; else { left++; if (next.length < 3) next.push(sn); } }
+        if (hand[k]) { if (u && u.some(function (x) { return x.d >= r.countedAt; })) useN++; else have(k, sn); }
         else if (u) useN++; else gap.push(k);
-      } else if (u) useN++; else { left++; if (next.length < 3) next.push(sn); }
+      } else if (u) useN++; else have(k, sn);
     }
     var stg = stockStage(r);
-    return { r: r, used: useN, left: left, next: next, gap: gap, counted: !!hand, wh: stg === 'wh', stage: stg, rej: rejN };
+    return { r: r, used: useN, left: left, next: next, gap: gap, counted: !!hand, wh: stg === 'wh', stage: stg, rej: rejN, keepLeft: keepLeft, keepNext: keepNext };
   });
   var since = rows.length ? rows.map(function (r) { return r.receivedAt; }).sort()[0] : '';
   var dup = [], unreg = [];
@@ -2335,7 +2350,7 @@ function vStockRep() {
   var mOf = function (r) { return r.model || modelOfSn(stockSn(r, r.fromNo)) || '기타'; };
   var MN = {}; PRODS(true).forEach(function (p) { MN[p.id] = p.label; });
   var models = [], byM = {};
-  X.list.forEach(function (x) { var m = mOf(x.r); if (!byM[m]) { byM[m] = { qty: 0, left: 0, wh: 0, st: {} }; models.push(m); } byM[m].qty += +x.r.qty; byM[m].left += x.left; if (x.wh) byM[m].wh += x.left; byM[m].st[x.stage] = (byM[m].st[x.stage] || 0) + x.left; });
+  X.list.forEach(function (x) { var m = mOf(x.r); if (!byM[m]) { byM[m] = { qty: 0, left: 0, wh: 0, keep: 0, st: {} }; models.push(m); } byM[m].qty += +x.r.qty; byM[m].left += x.left; byM[m].keep += x.keepLeft; if (x.wh) byM[m].wh += x.left - x.keepLeft; byM[m].st[x.stage] = (byM[m].st[x.stage] || 0) - x.keepLeft + x.left; });
   var stTxt = function (st) { return ['qc', 'ready', 'fail', 'pre'].filter(function (k) { return st[k]; }).map(function (k) { return ' · <b style="color:' + STAGE_[k].c + '">' + { qc: '검사 중', ready: '입고 대기', fail: '불합격', pre: '창고 입고 전' }[k] + ' ' + st[k].toLocaleString() + '</b>'; }).join(''); };
   var rk = function (m) { var i = prodIdx(m); return i < 0 ? 99 : i; };
   models.sort(function (a, b) { return rk(a) - rk(b); });
@@ -2361,7 +2376,7 @@ function vStockRep() {
     h += '<div class="kpis" style="grid-template-columns:repeat(' + models.length + ',minmax(0,1fr));margin-top:14px">' + models.map(function (m) {
       var u = 0, g = 0; X.list.forEach(function (x) { if (mOf(x.r) === m) { u += x.used; g += x.gap.length; } });
       return '<div class="kpi" data-act="stockM" data-v="' + m + '"><div class="l">' + mtag(m) + ' 남은 재고</div><div class="v"' + (byM[m].qty && byM[m].left / byM[m].qty < 0.1 ? ' style="color:var(--red)"' : '') + '>' + byM[m].left.toLocaleString() + '<small>개</small></div>' +
-        '<div class="d small">출고 가능(외주창고) <b style="color:var(--green)">' + byM[m].wh.toLocaleString() + '</b>' + stTxt(byM[m].st) + '</div>' +
+        '<div class="d small">출고 가능(외주창고) <b style="color:var(--green)">' + byM[m].wh.toLocaleString() + '</b>' + (byM[m].keep ? ' · 🏠 우리 창고 교환용 <b style="color:#7c3aed">' + byM[m].keep.toLocaleString() + '</b>' : '') + stTxt(byM[m].st) + '</div>' +
         '<div class="d small muted">입고 ' + byM[m].qty.toLocaleString() + ' · 출고 기록 ' + u.toLocaleString() + (g ? ' · <b style="color:var(--red)">기록 없이 빠짐 ' + g.toLocaleString() + '</b>' : '') + '</div></div>';
     }).join('') + '</div>';
   } else h += '<div class="kpis" style="grid-template-columns:repeat(4,minmax(0,1fr));margin-top:14px">' +
@@ -2369,7 +2384,9 @@ function vStockRep() {
     '<div class="kpi"><div class="l">출고 기록 (AS + 별도)</div><div class="v">' + usedN.toLocaleString() + '<small>개</small></div></div>' +
     '<div class="kpi"><div class="l">기록 없이 빠짐</div><div class="v" style="color:' + (gapN ? 'var(--red)' : 'inherit') + '">' + gapN.toLocaleString() + '<small>개</small></div><div class="d small muted">실사 입력한 구간만 계산</div></div>' +
     '<div class="kpi"><div class="l">남은 재고</div><div class="v" style="color:' + (tot && left / tot < 0.1 ? 'var(--red)' : 'inherit') + '">' + left.toLocaleString() + '<small>개</small></div>' +
-    '<div class="d small">출고 가능(외주창고) <b style="color:var(--green)">' + view.reduce(function (a, x) { return a + (x.wh ? x.left : 0); }, 0).toLocaleString() + '</b>' + stTxt(view.reduce(function (o, x) { o[x.stage] = (o[x.stage] || 0) + x.left; return o; }, {})) + '</div></div></div>';
+    '<div class="d small">출고 가능(외주창고) <b style="color:var(--green)">' + view.reduce(function (a, x) { return a + (x.wh ? x.left - x.keepLeft : 0); }, 0).toLocaleString() + '</b>' +
+    (function (k) { return k ? ' · 🏠 우리 창고 교환용 <b style="color:#7c3aed">' + k.toLocaleString() + '</b>' : ''; })(view.reduce(function (a, x) { return a + x.keepLeft; }, 0)) +
+    stTxt(view.reduce(function (o, x) { o[x.stage] = (o[x.stage] || 0) + x.left - x.keepLeft; return o; }, {})) + '</div></div></div>';
   h += '<div class="card"><div class="tw"><table class="t"><thead><tr><th>구간</th><th>입고일</th><th>상태 (수입검사 · 외주창고)</th><th>입고</th><th>출고 기록</th><th>남음</th><th>다음 출고할 S/N</th><th>메모</th><th></th></tr></thead><tbody>' +
     (view.length ? view.map(function (x, i) {
       var r = x.r, open = S.countOpen === r.id, m = mOf(r);
@@ -2377,7 +2394,8 @@ function vStockRep() {
       var row = gh + '<tr><td class="mono small">' + esc(stockSn(r, r.fromNo)) + '<br>~ ' + esc(stockSn(r, r.toNo)) + colorTag(r.color || colorOfSn(stockSn(r, r.fromNo))) + '</td><td class="nowrap">' + esc(ymd(r.receivedAt)) + '</td><td>' + stockStageCell(x) + (stockQcBtns(x) ? '<div class="row" style="gap:4px;margin-top:6px">' + stockQcBtns(x) + '</div>' : '') + '</td>' +
         '<td>' + (+r.qty).toLocaleString() + (r.qcSample || x.rej ? '<div class="small muted">' + (r.qcSample ? '샘플 ' + esc(r.qcSample) : '') + (x.rej ? (r.qcSample ? ' · ' : '') + '<b style="color:var(--red)">입고 제외 ' + x.rej + '</b>' : '') + '</div>' : '') + '</td><td>' + x.used.toLocaleString() + '</td>' +
         '<td><b>' + x.left.toLocaleString() + '</b>' + (x.counted ? '<div class="small muted">실사 ' + esc(md(r.countedAt)) + ' 기준</div>' : '<div class="small muted">기록 기준</div>') + '</td>' +
-        '<td class="' + (x.wh ? 'mono ' : '') + 'small">' + (!x.wh ? '<span class="small" style="color:' + STAGE_[x.stage].c + '">' + { qc: '검사 합격(또는 생략) 후 외주창고 입고해야 출고 가능', ready: '외주창고 입고 후 출고 가능', fail: '불합격 — 출고 불가', pre: '외주창고 입고 후 출고 가능' }[x.stage] + '</span>' : x.next.map(esc).join('<br>') || '<span class="muted">소진</span>') + '</td>' +
+        '<td class="' + (x.wh ? 'mono ' : '') + 'small">' + (!x.wh ? (x.left - x.keepLeft > 0 || !x.keepLeft ? '<span class="small" style="color:' + STAGE_[x.stage].c + '">' + { qc: '검사 합격(또는 생략) 후 외주창고 입고해야 출고 가능', ready: '외주창고 입고 후 출고 가능', fail: '불합격 — 출고 불가', pre: '외주창고 입고 후 출고 가능' }[x.stage] + '</span>' : '') : x.next.map(esc).join('<br>') || (x.keepLeft ? '' : '<span class="muted">소진</span>')) +
+        (r.keep ? '<div class="small" style="margin-top:4px;color:#7c3aed">🏠 우리 창고 교환용' + (x.keepNext.length ? '<div class="mono">' + x.keepNext.map(esc).join('<br>') + '</div>' : ' — 소진') + '</div>' : '') + '</td>' +
         '<td class="small">' + esc(r.note || '') + '</td><td class="nowrap"><button class="btn sm' + (x.counted ? '' : ' pri') + '" data-act="countOpen" data-id="' + esc(r.id) + '">실사 반영</button> ' +
         '<button class="btn sm" data-act="editOpen" data-id="' + esc(r.id) + '">수정</button> ' +
         '<button class="btn sm" data-act="logOpen" data-id="' + esc(r.id) + '">이력</button> ' +
@@ -2394,6 +2412,7 @@ function vStockRep() {
         row += '<tr><td colspan="9" style="background:var(--line2)"><div class="small" style="margin-bottom:6px"><b>' + q[0] + '</b> — ' + q[1] + '</div>' +
           '<div class="row"><label class="small nowrap">날짜 <input class="inp" id="qcAt" type="date" value="' + esc(today()) + '" style="width:150px"></label>' +
           (qs === 'pass' || qs === 'fail' ? '<label class="small nowrap">샘플 검사 수량 <input class="inp" id="qcSample" type="number" min="0" value="' + esc(r.qcSample || '') + '" placeholder="예: 32" style="width:90px"></label>' : '') +
+          (qs === 'keep' ? '<input class="inp mono" id="qcKeep" value="' + esc(r.keep || '') + '" placeholder="예: 05001~05010 (번호만 써도 돼요)" style="flex:1;min-width:220px">' : '') +
           '<input class="inp" id="qcNote" placeholder="' + (qs === 'fail' ? '불량 내용 (예: 샘플 32개 중 용량 미달 5개)' : '메모 (검사자·검사 항목·특이사항)') + '" style="flex:1;min-width:160px">' +
           (qs === 'pass' || qs === 'skip' ? '<label class="small nowrap" style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="qcWh"' + (qs === 'skip' ? ' checked' : '') + '> 외주창고 입고까지 같이 처리</label>' : '') + '</div>' +
           (qs === 'pass' || qs === 'rej' ? '<div style="margin-top:8px;padding:10px;border:1px dashed var(--red);border-radius:10px;background:var(--redSoft)"><div class="small" style="margin-bottom:6px"><b style="color:var(--red)">불합격 S/N — 입고 제외</b> · 외주창고로 보내지 않고 재고에서 뺄 S/N (없으면 비워 두세요)</div>' +
@@ -2772,6 +2791,7 @@ var ACT = {
   qcOpen: function (d) { S.qcOpen = d.id ? { id: d.id, step: d.v } : null; S.editOpen = null; S.countOpen = null; if (d.v === 'unwh') S.logOpen = null; render(); var n = $('#qcNote'); if (n) n.focus(); },
   logOpen: function (d) { S.logOpen = S.logOpen === d.id ? null : (d.id || null); render(); },
   stockQc: function (d, b) {
+    if (d.v === 'keep') return run('stockQc', { id: d.id, step: 'keep', at: $('#qcAt').value, note: $('#qcNote').value, keep: stockKeepTxt($('#qcKeep').value, (S.data.stock || []).filter(function (x) { return x.id === d.id; })[0]) }, function (r) { S.qcOpen = null; return r.keepN ? '우리 창고 보관(교환용) ' + r.keepN + '개로 기록했어요.' + (r.rejBack ? ' 입고 제외 ' + r.rejBack + '개는 취소했어요.' : '') : '우리 창고 보관을 해제했어요.'; }, b);
     var step = d.v, wh = $('#qcWh') && $('#qcWh').checked, r0 = (S.data.stock || []).filter(function (x) { return x.id === d.id; })[0];
     if (wh) step = step === 'pass' ? 'passWh' : 'skipWh';
     var rej = $('#qcRejSns') && r0 ? qcRejSns_($('#qcRejSns').value, r0) : [];
@@ -3317,7 +3337,7 @@ function ltRestore() {
     D.el.querySelector('.ltno').textContent = D.no; D.el.querySelector('[data-k=sn]').value = D.sn;
     if (x.state === 'run' && D.base) {
       ran++;
-      if (D.live.on) { D.state = 'run'; D.msg = ['warn', '화면을 나갔다 온 동안에도 장비는 계속 방전했어요. 이어서 기록 중이에요. (그 사이 전압 기록만 비어 있어요)']; }
+      if (D.live.on) { D.state = 'run'; D.msg = Date.now() - (x.lastAt || Date.now()) >= 180000 ? ['ok', '시험 중 — 화면이 꺼져 있던 동안의 방전량도 포함해서 이어서 기록하고 있어요 (그 사이 전압 그래프만 비어 있어요).'] : null; }
       else {
         var L = D.live, mah = L.mah - D.base.mah, last = D.log[D.log.length - 1] || [D.startAt, L.v, 0, 0, 0, L.temp];
         D.log.push([D.startAt + mah / (D.cond.cur * 1000) * 3600000, last[1], D.cond.cur, L.wh - D.base.wh, mah, last[5]]);
