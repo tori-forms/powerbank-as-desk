@@ -2744,11 +2744,13 @@ var ACT = {
       '<div class="row" style="margin-top:8px"><label class="fld"><span>교체사유</span><select class="inp" id="nc_reason">' + L.REASONS.map(function (r) { return '<option>' + esc(r) + '</option>'; }).join('') + '</select></label>' +
       '<label class="fld"><span>수량</span><input class="inp" id="nc_qty" type="number" min="1" value="1" style="width:80px"></label></div>' +
       '<label class="fld" style="margin-top:8px"><span>접수 S/N (줄바꿈으로 여러 개)</span><textarea class="inp mono" id="nc_sns" rows="3"></textarea></label>' +
-      '<label class="fld" style="margin-top:8px"><span>증상</span><textarea class="inp" id="nc_sym" rows="2"></textarea></label>',
+      '<label class="fld" style="margin-top:8px"><span>증상</span><textarea class="inp" id="nc_sym" rows="2"></textarea></label>' +
+      '<label class="small" style="display:flex;align-items:flex-start;gap:6px;margin-top:10px;padding:8px 10px;border:1px solid var(--line);border-radius:10px"><input type="checkbox" id="nc_qc" style="margin-top:3px"><span><b>고객사 QC 직교환</b> — AS 채널 인입 없이 고객사 QC팀이 직접 교환 요청한 건. 티오더 AS 시트에는 올리지 않고 AS Desk에만 기록해요. (매장명을 비우면 \'고객사 QC팀\')</span></label>',
       '<button class="btn" data-act="closeModal">취소</button><button class="btn pri" data-act="newCaseGo">등록</button>');
   },
   newCaseGo: function (d, b) {
-    run('caseCreate', { store: $('#nc_store').value, inquiryNo: $('#nc_inq').value, reasonCode: $('#nc_reason').value, qty: +$('#nc_qty').value, sns: $('#nc_sns').value.split(/\n/), symptom: $('#nc_sym').value }, 'AS 건을 등록했습니다.', b)
+    var qc = $('#nc_qc') && $('#nc_qc').checked;
+    run('caseCreate', { store: $('#nc_store').value, inquiryNo: $('#nc_inq').value, reasonCode: $('#nc_reason').value, qty: +$('#nc_qty').value, sns: $('#nc_sns').value.split(/\n/), symptom: $('#nc_sym').value, channel: qc ? 'qc' : '' }, qc ? '고객사 QC 직교환 건을 등록했습니다.' : 'AS 건을 등록했습니다.', b)
       .then(function (r) { closeModal(); if (r && r.case) openCase(r.case.id); });
   },
   saveInfo: function (d, b) {
@@ -3681,7 +3683,7 @@ function ltDraw(D) {
       (R.sag ? '<br><b>⚠ 출력 전압 저하</b> <span class="small">시험 중간에 시작보다 ' + (R.vStart - R.vMinMid).toFixed(2) + 'V 떨어졌어요 (케이블이 아니라 보조배터리 출력 문제일 수 있음)</span>' : '') +
       (low ? '<br>' + ltLowMsg(R.wh) : '') +
       (short ? '<br><b>⚠ 시험이 ' + Math.round(R.sec / 60) + '분 만에 끝났어요</b> <span class="small">연결이 빠졌거나 완충이 안 된 상태일 수 있어 자동 저장하지 않았어요.</span>' : '') +
-      '<div style="margin-top:6px">' + (D.saved ? '<span style="color:var(--green);font-weight:700">✓ 저장됨</span>' : D.saving ? '<span class="muted">저장 중…</span>' :
+      '<div style="margin-top:6px">' + (D.saved ? '<span style="color:var(--green);font-weight:700">✓ 저장됨</span> <button class="btn sm" data-act="ltRep" data-sn="' + esc(sn) + '">📄 성적서</button>' : D.saving ? '<span class="muted">저장 중…</span>' :
         (D.saveErr ? '<span style="color:var(--red)">' + esc(D.saveErr) + '</span> ' : '') + (sn ? '<button class="btn sm pri" data-lt="save">이 결과 저장</button>' : '<span class="muted">S/N을 넣으면 저장할 수 있어요</span>')) + '</div></div>';
   }
   k('res').innerHTML = res;
@@ -3742,7 +3744,7 @@ function ltRemoteCard(d, i) {
   if (ck && ck.v1 != null && (run || d.state === 'done')) msg += '<div class="small" style="margin-top:6px;color:' + (ck.ok ? 'var(--green)' : 'var(--amber)') + '">' + (ck.ok ? '✓ 케이블 점검 통과' : '⚠ 케이블 점검 무시하고 시험') + ' · 1A 기준 ' + (+ck.v1).toFixed(2) + 'V</div>';
   if (R) msg += '<div class="ltbox ' + (R.sag || R.wh < LT_LOW_WH ? 'warn' : 'ok') + '"><b>결과</b> ' + R.wh.toFixed(2) + 'Wh · ' + Math.round(R.mah).toLocaleString() + 'mAh · ' + ltHms(R.sec) + '<br>' + ltConvTxt(R.mah) + (ltJudge({ mah: R.mah, wh: R.wh, cur: c.cur, cut: c.cut, purpose: c.purpose, sn: sn }) ? '<br>' + ltJudgeHtml({ mah: R.mah, wh: R.wh, cur: c.cur, cut: c.cut, purpose: c.purpose, sn: sn }) : '') +
     '<br><span class="small">평균 ' + (+R.avgV).toFixed(2) + 'V · 중간 최저 ' + (+R.vMinMid).toFixed(2) + 'V · ' + esc(d.why || '') + '</span>' + (R.sag ? '<br><b>⚠ 출력 전압 저하</b>' : '') + (R.wh < LT_LOW_WH ? '<br>' + ltLowMsg(R.wh) : '') +
-    '<div style="margin-top:4px">' + (d.saved ? '<span style="color:var(--green);font-weight:700">✓ 저장됨</span>' : d.saveErr ? '<span style="color:var(--red)">' + esc(d.saveErr) + '</span>' : '<span class="muted">저장 대기</span>') + '</div></div>';
+    '<div style="margin-top:4px">' + (d.saved ? '<span style="color:var(--green);font-weight:700">✓ 저장됨</span> <button class="btn sm" data-act="ltRep" data-sn="' + esc(sn) + '">📄 성적서</button>' : d.saveErr ? '<span style="color:var(--red)">' + esc(d.saveErr) + '</span>' : '<span class="muted">저장 대기</span>') + '</div></div>';
   return '<div class="card ltdev"><div class="hd"><span class="ltno">' + esc(d.no) + '</span><b>DL24</b>' + (sn ? mtag(modelOfSn(sn)) : '') + '<span style="flex:1"></span><span class="ltpill ' + st[0] + '">' + st[1] + '</span></div><div class="bd">' +
     '<div class="mono" style="font-weight:700;margin-bottom:4px">' + (sn ? esc(sn) : '<span class="muted">S/N 없음</span>') + '</div>' +
     (sn ? '<div class="lthist small">' + ltHistHtml(sn, d.cid) + '</div>' : '') +
@@ -3778,7 +3780,7 @@ function vLoadtest() {
     : remoteOnly ? '' : '<div class="ltbox warn" style="margin-bottom:10px"><b>브라우저 기록 모드</b> — PC 기록 프로그램이 꺼져 있어서 이 화면이 직접 기록해요. <b>이 탭을 닫거나 새로고침하면 그동안 기록이 끊겨요.</b> 시험 PC에서는 기록 프로그램을 켜 두세요.</div>';
   var f = function (l, h) { return '<label class="fld"><span>' + l + '</span>' + h + '</label>'; };
   return '<div class="card"><div class="hd"><h3>폼즈 보조배터리 로드테스트</h3><span class="muted small">ATORCH DL24 · ' + (remoteOnly ? '서버 PC ' + LTR.live.devices.length : 'USB 연결 ' + LT.devs.length) + '대</span><span style="flex:1"></span>' +
-    '<button class="btn sm" data-act="ltXlsx">엑셀 다운로드 (S/N별 전체 기록)</button></div><div class="bd">' +
+    '<button class="btn sm pri" data-act="ltRep">📄 성적서 (원하는 S/N만)</button><button class="btn sm" data-act="ltXlsx">엑셀 다운로드 (S/N별 전체 기록)</button></div><div class="bd">' +
     mode + (hid || remoteOnly ? '' : '<div class="ltbox bad" style="margin-bottom:10px">이 브라우저는 USB 장비 연결을 지원하지 않아요. PC 크롬(또는 엣지)에서 열어 주세요. 기록 조회·엑셀은 그대로 쓸 수 있어요.</div>') +
     (remoteOnly ? '<div class="small muted">시험 조작은 서버 PC(기록 프로그램이 켜진 PC)에서 해요. 이 PC에서는 아래에서 진행 상황을 실시간으로 볼 수 있어요.</div><details style="margin-top:10px"><summary class="small" style="cursor:pointer">이 PC에 장비를 직접 연결해서 시험하기</summary>' : '') +
     '<div class="row" style="align-items:flex-end;gap:10px;flex-wrap:wrap;margin-top:' + (remoteOnly ? '10px' : '0') + '">' +
@@ -3829,6 +3831,7 @@ function ltHistCard() {
     }
   } else body = '<div class="empty">S/N을 입력(스캔)하고 Enter를 누르면 그 제품의 용량 테스트 이력만 보여드려요.' + (LT.recent !== null ? '<br><span class="small">저장된 시험 ' + LT.total + '건 · 전체 기록은 위의 엑셀 다운로드로 받을 수 있어요</span>' : '') + '</div>';
   return '<div class="card" style="margin-top:14px"><div class="hd"><h3>S/N 용량 테스트 이력 조회</h3><span style="flex:1"></span>' +
+    (q && LT.histFull && LT.histFull.sn === q && LT.histFull.tests.length ? '<button class="btn sm pri" data-act="ltRep" data-sn="' + esc(q) + '" data-all="1">📄 이 S/N 성적서</button> ' : '') +
     (q ? '<button class="btn sm" data-act="ltPick" data-sn="">지우기</button>' : '') +
     '<input class="inp mono" id="ltQ" placeholder="S/N 입력 후 Enter" value="' + esc(q) + '" style="width:230px" autocomplete="off"></div><div class="bd">' + body + '</div></div>';
 }
@@ -3951,6 +3954,100 @@ ACT.ltAll = function () {
 };
 ACT.ltStopAll = function () { if (askGate_('시험 중인 모든 장비의 부하를 끌까요? (중간 결과는 자동 저장되지 않아요)', function () { ACT.ltStopAll(); })) LT.devs.forEach(function (D) { if (D.state === 'run' || D.state === 'check' || D.state === 'arm') ltStop(D); }); };
 ACT.ltXlsx = function () { return ltXlsx(); };
+ACT.ltRep = function (d) {
+  if (d.sn) return ltReport([d.sn], d.all ? 'all' : 'last');
+  var done = [];
+  LT.devs.forEach(function (D) { var sn = (D.cond && D.cond.sn) || D.sn; if (D.state === 'done' && D.saved && sn) done.push(sn); });
+  if (!done.length && LTR.live && LTR.live.devices) LTR.live.devices.forEach(function (x) { var sn = (x.cond && x.cond.sn) || x.sn; if (x.state === 'done' && x.saved && sn) done.push(sn); });
+  modal('용량 시험 성적서', '<div class="small" style="margin-bottom:8px">성적서로 받을 S/N을 적어 주세요 (줄바꿈·쉼표로 여러 개, 스캔 가능). ' + (done.length ? '지금 <b>완료·저장된 칸 ' + done.length + '개</b>를 미리 넣어 뒀어요 — 필요 없는 줄은 지우세요.' : '') + '</div>' +
+    '<textarea class="inp mono" id="lrSns" rows="7" style="width:100%">' + esc(done.join('\n')) + '</textarea>' +
+    '<div class="row" style="margin-top:8px;gap:10px"><label class="small nowrap"><input type="radio" name="lrMode" value="last" checked> S/N별 최근 시험 1건</label><label class="small nowrap"><input type="radio" name="lrMode" value="all"> 시험 이력 전부</label></div>' +
+    '<div class="small muted" style="margin-top:6px">새 창에 성적서가 열려요 → <b>인쇄 → 대상: PDF로 저장</b>하면 PDF 파일이 돼요. 방전 곡선이 S/N마다 같이 들어가요.</div>',
+    '<button class="btn" data-act="closeModal">취소</button><button class="btn pri" data-act="ltRepGo">성적서 만들기</button>');
+};
+ACT.ltRepGo = function () {
+  var sns = String($('#lrSns').value || '').split(/[\s,;]+/).map(ltNorm).filter(function (s, i, a) { return s && a.indexOf(s) === i; });
+  if (!sns.length) return toast('S/N을 넣어 주세요.', true);
+  if (sns.length > 60) return toast('한 번에 60개까지 만들 수 있어요.', true);
+  var m = document.querySelector('input[name=lrMode]:checked');
+  closeModal(); ltReport(sns, m ? m.value : 'last');
+};
+function ltReport(sns, mode) {
+  var w = null; try { w = window.open('', '_blank'); } catch (e) { }
+  if (w) { try { w.document.write('<p style="font:15px sans-serif;padding:30px">성적서 만드는 중… (' + sns.length + '개)</p>'); } catch (e) { } }
+  toast('성적서 만드는 중… (' + sns.length + '개)');
+  var res = {}, i = 0;
+  var next = function () {
+    var batch = sns.slice(i, i + 4); i += 4;
+    if (!batch.length) return Promise.resolve();
+    return Promise.all(batch.map(function (sn) { return call('ltQuery', { sn: sn }).then(function (r) { res[sn] = r.tests || []; }, function () { res[sn] = []; }); })).then(next);
+  };
+  return next().then(function () {
+    var rows = [], none = [];
+    sns.forEach(function (sn) { var t = res[sn] || []; if (!t.length) { none.push(sn); return; } (mode === 'all' ? t : [t[t.length - 1]]).forEach(function (x) { rows.push(x); }); });
+    if (!rows.length) { if (w) w.close(); return toast('저장된 시험 기록이 없어요: ' + none.join(', '), true); }
+    var html = ltReportHtml(rows, none);
+    if (w && !w.closed) { w.document.open(); w.document.write(html); w.document.close(); }
+    else {
+      var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([html], { type: 'text/html' })); a.download = '용량시험성적서_' + today().replace(/-/g, '') + '.html'; document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+      toast('팝업이 막혀서 파일로 내려받았어요. 열어서 인쇄 → PDF로 저장하세요.');
+    }
+  });
+}
+function ltRepSvg(t) {
+  var c = jparse(t.curve, null), v = c && c.v || [], dt = +(c && c.dt) || 0;
+  if (v.length < 2) return '<div class="nocv">방전 곡선 기록 없음</div>';
+  var W = 720, H = 190, L = 44, R = 10, T = 10, B = 26, lo = Math.min.apply(null, v.concat([+t.cut || 4])) - 0.1, hi = Math.max.apply(null, v) + 0.1;
+  var sec = dt ? dt * (v.length - 1) : (+t.sec || v.length), X = function (k) { return L + (W - L - R) * k / (v.length - 1); }, Y = function (y) { return T + (H - T - B) * (hi - y) / (hi - lo); };
+  var g = '', hrs = sec / 3600, step = hrs > 8 ? 2 : 1;
+  for (var h = 0; h <= hrs + 1e-9; h += step) { var x = L + (W - L - R) * (h * 3600 / sec); g += '<line x1="' + x.toFixed(1) + '" y1="' + T + '" x2="' + x.toFixed(1) + '" y2="' + (H - B) + '" stroke="#e5e8eb"/><text x="' + x.toFixed(1) + '" y="' + (H - 8) + '" font-size="10" text-anchor="middle" fill="#6b7684">' + h + 'h</text>'; }
+  [hi - 0.1, (hi + lo) / 2, lo + 0.1].forEach(function (y) { g += '<line x1="' + L + '" y1="' + Y(y).toFixed(1) + '" x2="' + (W - R) + '" y2="' + Y(y).toFixed(1) + '" stroke="#e5e8eb"/><text x="' + (L - 4) + '" y="' + (Y(y) + 3).toFixed(1) + '" font-size="10" text-anchor="end" fill="#6b7684">' + y.toFixed(2) + 'V</text>'; });
+  var cy = Y(+t.cut || 4);
+  g += '<line x1="' + L + '" y1="' + cy.toFixed(1) + '" x2="' + (W - R) + '" y2="' + cy.toFixed(1) + '" stroke="#f04452" stroke-dasharray="4 3"/><text x="' + (W - R - 2) + '" y="' + (cy - 3).toFixed(1) + '" font-size="10" text-anchor="end" fill="#f04452">차단 ' + (+t.cut).toFixed(1) + 'V</text>';
+  return '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" height="' + H + '">' + g + '<polyline fill="none" stroke="#3182f6" stroke-width="1.6" points="' + v.map(function (y, k) { return X(k).toFixed(1) + ',' + Y(y).toFixed(1); }).join(' ') + '"/></svg>';
+}
+function ltReportHtml(rows, none) {
+  var E = esc, N = function (x, d) { x = +x; return isFinite(x) ? x.toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d }) : '-'; };
+  var dt = function (s) { return String(s || '').replace('T', ' ').slice(0, 16); };
+  var conv = rows.map(function (t) { return ltConv(t.mah); });
+  var js = rows.map(function (t) { return ltJudge(t); });
+  var cnt = {}; js.forEach(function (j) { if (j) cnt[j.txt] = (cnt[j.txt] || 0) + 1; });
+  var avg = conv.reduce(function (a, b) { return a + b; }, 0) / conv.length;
+  var conds = rows.map(function (t) { return (+t.cur).toFixed(1) + 'A · ' + (+t.cut).toFixed(1) + 'V'; }).filter(function (x, i, a) { return a.indexOf(x) === i; });
+  var col = function (j) { return !j ? '' : j.cls === 'ok' ? '#1fb86c' : j.cls === 'warn' ? '#e08a00' : '#f04452'; };
+  var head = '<tr><th>No</th><th>S/N</th><th>모델</th><th>구분</th><th>시험 일시</th><th>조건</th><th>시험 시간</th><th>Wh</th><th>mAh<br><small>(5V 출력)</small></th><th>3.7V 환산<br>mAh</th><th>표기 대비</th><th>판정</th></tr>';
+  var body = rows.map(function (t, i) {
+    var j = js[i];
+    return '<tr><td>' + (i + 1) + '</td><td class="m">' + E(t.sn) + '</td><td>' + E(prodLabel(t.model || modelOfSn(t.sn)) || '-') + '</td><td>' + E(LT_PUR_LABEL[t.purpose] || t.purpose || '') + '</td><td>' + E(dt(t.startAt)) + '</td><td>' + E((+t.cur).toFixed(1) + 'A · ' + (+t.cut).toFixed(1) + 'V') + '</td><td>' + E(ltHms(t.sec)) + '</td>' +
+      '<td class="r">' + N(t.wh, 2) + '</td><td class="r">' + N(t.mah, 0) + '</td><td class="r"><b>' + N(conv[i], 0) + '</b></td><td class="r">' + N(conv[i] / LT_RATED_MAH * 100, 1) + '%</td><td style="color:' + col(j) + ';font-weight:700">' + E(j ? j.txt : '-') + '</td></tr>';
+  }).join('');
+  var each = rows.map(function (t, i) {
+    var j = js[i];
+    return '<div class="unit"><div class="uh"><b>' + (i + 1) + '. <span class="m">' + E(t.sn) + '</span></b> <span>' + E(prodLabel(t.model || modelOfSn(t.sn)) || '') + ' · ' + E(LT_PUR_LABEL[t.purpose] || t.purpose || '') + ' · ' + E(dt(t.startAt)) + '</span>' + (j ? '<span class="jd" style="border-color:' + col(j) + ';color:' + col(j) + '">' + E(j.txt) + '</span>' : '') + '</div>' +
+      '<table class="kv"><tr><td>측정 용량</td><td><b>' + N(t.wh, 2) + ' Wh · ' + N(t.mah, 0) + ' mAh</b> (5V 출력)</td><td>3.7V 환산</td><td><b>' + N(conv[i], 0) + ' mAh</b> (표기 ' + N(LT_RATED_MAH, 0) + 'mAh의 ' + N(conv[i] / LT_RATED_MAH * 100, 1) + '%)</td></tr>' +
+      '<tr><td>시험 조건</td><td>CC ' + E((+t.cur).toFixed(1)) + 'A · 차단 ' + E((+t.cut).toFixed(1)) + 'V · ' + E(t.cable || '-') + '</td><td>시험 시간</td><td>' + E(ltHms(t.sec)) + '</td></tr>' +
+      '<tr><td>전압</td><td>시작 ' + N(t.vStart, 2) + 'V · 평균 ' + N(t.avgV, 2) + 'V · 중간 최저 ' + N(t.vMinMid, 2) + 'V</td><td>최고 온도</td><td>' + (t.maxT ? N(t.maxT, 1) + '℃ (부하 MOS)' : '-') + '</td></tr>' +
+      '<tr><td>케이블 점검</td><td>' + (t.cableV1 ? (t.checkOk === 'Y' ? '통과' : '무시하고 시험') + ' · 1A 기준 ' + N(t.cableV1, 2) + 'V' : '-') + '</td><td>종료</td><td>' + E(t.why || '-') + '</td></tr>' +
+      (j ? '<tr><td>판정 근거</td><td colspan="3">' + E(j.why) + '</td></tr>' : '') + '</table>' + ltRepSvg(t) + '</div>';
+  }).join('');
+  var css = '*{box-sizing:border-box}body{font-family:"Pretendard","Apple SD Gothic Neo","Malgun Gothic",sans-serif;color:#191f28;margin:0;padding:24px;font-size:12px}h1{font-size:22px;margin:0 0 4px}.sub{color:#6b7684;margin-bottom:14px}' +
+    '.box{border:1px solid #d1d6db;border-radius:8px;padding:10px 12px;margin-bottom:12px;line-height:1.6}table{border-collapse:collapse;width:100%}.list th,.list td{border:1px solid #d1d6db;padding:4px 6px;text-align:center;font-size:11px}.list th{background:#f2f4f6}.r{text-align:right!important}.m{font-family:Consolas,monospace}' +
+    '.sum{display:flex;gap:18px;flex-wrap:wrap;margin:10px 0 16px}.sum div b{font-size:16px}.unit{border:1px solid #d1d6db;border-radius:8px;padding:10px 12px;margin-top:12px;page-break-inside:avoid}.uh{display:flex;gap:10px;align-items:center;margin-bottom:6px;font-size:13px}' +
+    '.jd{margin-left:auto;border:1.5px solid;border-radius:6px;padding:1px 10px;font-weight:700}.kv td{padding:3px 6px;border-bottom:1px solid #f2f4f6;font-size:11px}.kv td:nth-child(odd){color:#6b7684;width:90px;white-space:nowrap}.nocv{color:#8b95a1;padding:8px 0}' +
+    '.bar{position:sticky;top:0;background:#fff;padding:8px 0 12px;display:flex;gap:8px}.bar button{font:inherit;padding:7px 16px;border-radius:8px;border:1px solid #d1d6db;background:#3182f6;color:#fff;font-weight:700;cursor:pointer}' +
+    '@media print{body{padding:0}.bar{display:none}@page{size:A4;margin:12mm}}';
+  return '<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>용량 시험 성적서 ' + E(today()) + '</title><style>' + css + '</style></head><body>' +
+    '<div class="bar"><button onclick="print()">인쇄 / PDF로 저장</button></div>' +
+    '<h1>보조배터리 용량 시험 성적서</h1><div class="sub">(주)폼즈 · VOLTALES · 발행일 ' + E(today()) + ' · 대상 ' + rows.length + '건</div>' +
+    '<div class="box"><b>시험 방법</b> — 100% 완충 후 USB-A 출력 → 시험용 A-to-C 30cm 케이블 → ATORCH DL24 전자부하 정전류(CC) 방전, 차단 전압 도달 시 자동 종료 · 실온 · 조건: ' + E(conds.join(' / ')) + '<br>' +
+    '<b>환산</b> — 3.7V 환산 mAh = 측정 mAh(5V 출력) × 5 ÷ 3.7 (기존 품질 성적서와 같은 계산) · 표기 용량 ' + N(LT_RATED_MAH, 0) + 'mAh<br>' +
+    '<b>판정 기준</b> (CC 2A · 차단 4.0V) — 납품 검사: ' + N(LT_BASE.pass, 0) + 'mAh 이상 합격 · ' + N(LT_BASE.hold, 0) + '~' + N(LT_BASE.pass, 0) + ' 보류(재충전 후 재시험) · ' + N(LT_BASE.hold, 0) + ' 미만 불합격 / AS 회수분: 신품 평균(' + N(LT_BASE.mean, 0) + 'mAh) 대비 80% 이상 정상 · 60~80% 정상 노화 · 60% 미만 성능 불량. 다른 조건으로 잰 결과는 (참고)로 표시.</div>' +
+    '<div class="sum"><div>대상 <b>' + rows.length + '</b>건</div><div>3.7V 환산 평균 <b>' + N(avg, 0) + '</b> mAh</div><div>최저 <b>' + N(Math.min.apply(null, conv), 0) + '</b> · 최고 <b>' + N(Math.max.apply(null, conv), 0) + '</b></div>' +
+    Object.keys(cnt).map(function (k) { return '<div>' + E(k) + ' <b>' + cnt[k] + '</b></div>'; }).join('') + '</div>' +
+    '<table class="list"><thead>' + head + '</thead><tbody>' + body + '</tbody></table>' +
+    (none.length ? '<div class="sub" style="margin-top:8px">기록 없음: ' + none.map(E).join(', ') + '</div>' : '') +
+    each + '</body></html>';
+}
 ACT.ltAssign = function () {
   if (LT.devs.some(function (D) { return D.state === 'run' || D.state === 'arm' || D.state === 'check'; })) return toast('시험 중인 장비가 있어서 번호를 지정할 수 없어요. 시험이 끝난 뒤 눌러 주세요.', true);
   ask_('실물 테스트기에 붙인 번호대로 칸 번호를 맞춥니다.\n\n1. 모든 테스트기에서 배터리를 빼 주세요.\n2. [시작]을 누른 뒤 1번 테스트기부터 차례로 배터리를 꽂으세요 (배터리 1개로 옮겨 가며 꽂아도 돼요).\n3. 전압이 잡히는 순서대로 1, 2, 3… 번 칸이 돼요.\n\n장비를 같은 USB 포트에 두면 다음에도 번호가 그대로예요.', { title: '칸 번호 지정', yes: '시작' }).then(function (ok) {
