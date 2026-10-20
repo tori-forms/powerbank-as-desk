@@ -740,6 +740,7 @@ function cstate(c) {
           : rets.every(function (x) { return x.stage === 'expired'; }) ? 'expired' : 'before';
   if (st.ret === 'none' && (c.returnTracking || c.returnStatus)) st.ret = (c.returnDoneAt || c.recvDate) ? 'done' : 'before';
   if (st.ret === 'none' && c.retReqAt && !c.recvDate) st.ret = 'req';
+  if (st.ret === 'none' && c.source === 'qc' && c.recvDate) st.ret = 'done';
   var anyDone = rets.some(function (x) { return x.doneAt; }), allDone = rets.length && rets.every(function (x) { return x.doneAt; });
   st.split = anyDone && !allDone;
   if (st.split && st.ret !== 'moving') {
@@ -1394,6 +1395,7 @@ function caseDrawer(c) {
   var h = '<div class="dh"><div style="flex:1;min-width:0"><div class="row" style="gap:8px"><span class="mono muted">' + esc(cid(c)) + '</span>' + bpill(c) + ' ' + tagOf(OUT_LABEL, st.out) + ' ' + (st.ret !== 'none' ? tagOf(RET_LABEL, st.ret) + ' ' : '') + mtag(caseModel(c)) + '</div>' +
     '<h2 style="margin:6px 0 0;font-size:18px">' + esc(c.store) + '</h2>' + steps + '</div><button class="btn sm" data-act="closeDrawer">✕</button></div><div class="db">';
   var tds = [];
+  if (c.source === 'qc' && c.closed !== 'Y' && !us.some(function (u) { return u.recvSn; })) h += '<div class="flags"><div class="flag">🤝 고객사 직교환 — 불량품을 이미 받았으면 반품·회수 절차 없이 바로 검사로 넘길 수 있어요. <button class="btn sm pri" data-act="qcRecvNow" data-id="' + esc(c.id) + '">불량품 받음 → 검사로</button></div></div>';
   if (tds.length) h += '<div class="flags">' + tds.map(function (t) { return '<div class="flag">📌 할 일 #' + esc(t.no) + ' — ' + esc(t.text) + ' <span class="muted">(' + esc(md(t.createdAt)) + ')</span> <button class="btn sm" data-act="todoDone" data-id="' + esc(t.id) + '">완료</button></div>'; }).join('') + '</div>';
   h += '<div class="sec" style="border:0"><h4>기본 정보 ' + (c.slackUrl ? '<a class="btn sm" target="_blank" href="' + esc(c.slackUrl) + '">Slack ↗</a>' : '') + (c.torderRow ? '<a class="btn sm" target="_blank" href="' + esc(S.data.meta.torderUrl) + '#gid=0&range=A' + esc(c.torderRow) + '">티오더 시트 ' + esc(c.torderRow) + '행 ↗</a>' : '') + '</h4>' +
     '<div class="row"><label class="fld"><span>문의번호</span><input class="inp" id="cf_inquiryNo" value="' + esc(c.inquiryNo) + '" style="width:120px"></label>' +
@@ -2775,15 +2777,24 @@ var ACT = {
       '<label class="fld" style="flex:1;min-width:200px"><span>교체로 보낸 S/N (출고 S/N)</span><textarea class="inp mono" id="nc_out" rows="3" placeholder="예: 30711 · 30900~30905 (번호만 써도 돼요)">' + esc(pre.out || '') + '</textarea></label></div>' +
       '<div class="row" style="margin-top:8px"><label class="fld"><span>출고일</span><input class="inp" id="nc_outDate" type="date" value="' + esc(pre.outDate || today()) + '" style="width:150px"></label>' +
       '<label class="fld" style="flex:1"><span>출고 송장 (선택)</span><input class="inp mono" id="nc_trk" placeholder="직접 전달이면 비워 두세요"></label></div>' +
+      '<label class="small" style="display:flex;align-items:flex-start;gap:6px;margin-top:8px;padding:8px 10px;border:1px solid var(--line);border-radius:10px"><input type="checkbox" id="nc_now" style="margin-top:3px"' + (pre.qc ? ' checked' : '') + '><span><b>불량품 바로 받음</b> — 교환하면서 불량품을 그 자리에서 받은 경우. 반품·회수 절차 없이 바로 <b>회수분 검사</b>로 넘어가요. (불량 S/N을 적은 것만 받음 처리)</span></label>' +
       '<label class="fld" style="margin-top:8px"><span>증상</span><textarea class="inp" id="nc_sym" rows="2"></textarea></label>' +
       '<div class="small muted" style="margin-top:6px">교체 S/N을 넣으면 그 S/N은 이 건으로 출고 처리돼 재고에서 빠져요 (별도 출고 기록은 따로 안 해도 돼요). 불량품이 들어오면 회수 스캔 → 판정은 일반 AS와 똑같아요.</div>',
       '<button class="btn" data-act="closeModal">취소</button><button class="btn pri" data-act="newCaseGo">등록</button>');
   },
   newCaseQc: function () { ACT.newCase({ pre: { qc: 1 } }); },
+  qcRecvNow: function (d, b) {
+    var c = IDX.caseById[d.id]; if (!c) return;
+    var sns = S.data.units.filter(function (u) { return u.caseId === c.id && u.origSn && !u.recvSn; }).map(function (u) { return u.origSn; });
+    var go = function (list) { run('receive', { caseId: c.id, recvSns: list, recvDate: c.outDate || today() }, '불량품 받음 처리 — 회수분 검사에 올라갔어요.', b); };
+    if (sns.length) return ask_('받은 불량품 S/N\n' + sns.join('\n') + '\n\n반품·회수 절차 없이 바로 회수분 검사로 넘길까요?', { title: '불량품 받음', yes: '받음 처리' }).then(function (ok) { if (ok) go(sns); });
+    ask_('받은 불량품 S/N을 입력해 주세요 (여러 개는 쉼표로)', { title: '불량품 받음', input: '', ph: '예: P20VABK260404667', yes: '받음 처리' }).then(function (v) { if (v && v.trim()) go(v.split(/[\s,]+/)); });
+  },
   newCaseGo: function (d, b) {
     var qc = $('#nc_qc') && $('#nc_qc').checked, out = $('#nc_out').value.trim(), som = $('#nc_model').value;
+    if ($('#nc_now') && $('#nc_now').checked && !$('#nc_sns').value.trim()) return toast('[불량품 바로 받음]은 불량(접수) S/N을 적어야 처리돼요.', true);
     if (out) { var rg = snRangesTxt(out, som); if (typeof rg === 'string') return toast('교체 S/N: ' + rg, true); }
-    run('caseCreate', { store: $('#nc_store').value, inquiryNo: $('#nc_inq').value, reasonCode: $('#nc_reason').value, qty: +$('#nc_qty').value, model: out ? som : '', sns: $('#nc_sns').value.split(/\n/), outText: out, outDate: $('#nc_outDate').value, outTracking: $('#nc_trk').value, symptom: $('#nc_sym').value, channel: qc ? 'qc' : '' }, qc ? '고객사 직교환 건을 등록했습니다.' : 'AS 건을 등록했습니다.', b)
+    run('caseCreate', { store: $('#nc_store').value, inquiryNo: $('#nc_inq').value, reasonCode: $('#nc_reason').value, qty: +$('#nc_qty').value, model: out ? som : '', sns: $('#nc_sns').value.split(/\n/), outText: out, outDate: $('#nc_outDate').value, outTracking: $('#nc_trk').value, symptom: $('#nc_sym').value, channel: qc ? 'qc' : '', recvNow: $('#nc_now') && $('#nc_now').checked ? 1 : '' }, qc ? '고객사 직교환 건을 등록했습니다.' : 'AS 건을 등록했습니다.', b)
       .then(function (r) { closeModal(); if (r && r.case) openCase(r.case.id); });
   },
   saveInfo: function (d, b) {
