@@ -3204,7 +3204,7 @@ function ltAutoPurpose(sn) {
   if ((S.data.units || []).some(function (u) { return u.recvSn === sn; }) || (S.data.orphans || []).some(function (o) { return o.sn === sn; })) return '회수분 검사';
   return null;
 }
-function ltPurOf(D) { return D.purManual ? D.pur : (ltAutoPurpose(D.sn) || '입고 QC'); }
+function ltPurOf(D) { return D.purManual && D.pur ? D.pur : (ltAutoPurpose(D.sn) || '입고 QC'); }
 var LT_RATED_MAH = 20000;
 function ltConv(mah) { return (+mah || 0) * 5 / 3.7; }
 var LT_BASE = { mean: 18577, pass: 17500, hold: 17000, cur: 2, cut: 4.0, n: 50 };
@@ -3387,8 +3387,9 @@ function ltAgentApply(x) {
   var prevSaved = D.saved, prevSn = D.sn, prevState = D.state;
   ['state', 'live', 'mode', 'setCur', 'setCut', 'err', 'lost', 'check', 'cond', 'result', 'saved', 'saving', 'saveErr', 'msg', 'startAt', 'endAt', 'why', 'cid', 'base'].forEach(function (k) { D[k] = x[k]; });
   D.arm = x.armCut != null ? { cut: x.armCut } : null;
-  var inp = D.el.querySelector('[data-k=sn]');
-  if (document.activeElement !== inp) { D.sn = x.sn || ''; if (inp.value !== D.sn) inp.value = D.sn; }
+  var inp = D.el.querySelector('[data-k=sn]'), fresh = Date.now() - (D.snAt || 0) < 4000;
+  if (document.activeElement !== inp && !(fresh && (x.sn || '') !== D.sn)) { D.sn = x.sn || ''; if (inp.value !== D.sn) inp.value = D.sn; }
+  if ('pur' in x && !fresh) { if (x.pur) { D.pur = x.pur; D.purManual = true; } else D.purManual = false; }
   if (prevState !== D.state && (D.state === 'run' || D.state === 'done')) D.logDone = false;
   if (D.sn && D.sn !== prevSn) ltLoadHist([D.sn]).then(function () { ltDraw(D); });
   if (D.saved && !prevSaved && prevState !== undefined) { var sn = (D.cond && D.cond.sn) || D.sn; delete LT.hist[sn]; ltLoadHist([sn]).then(function () { ltDraw(D); }); ltLoadRecent(); toast(sn + ' 시험 결과 저장됨'); }
@@ -3590,14 +3591,15 @@ function ltCard(D) {
   });
   sn.addEventListener('change', function () { if (!LT.moving) ltSetSn(D, sn.value); });
   el.querySelector('[data-k=pur]').addEventListener('change', function (e) {
-    D.pur = e.target.value; D.purManual = true;
+    D.pur = e.target.value; D.purManual = true; D.snAt = Date.now();
     if ((D.state === 'run' || D.state === 'done') && D.cond && !D.saved) D.cond.purpose = D.pur;
-    if (LT.agent) ltAgentCmd(D, 'sn', { sn: D.sn, purpose: D.pur });
+    if (LT.agent) ltAgentCmd(D, 'sn', { sn: ltNorm(sn.value) || D.sn, purpose: D.pur, purSel: D.pur });
     ltPersist(true); ltDraw(D);
   });
   el.addEventListener('click', function (e) {
     var b = e.target.closest('[data-lt]'); if (!b) return;
     var a = b.getAttribute('data-lt');
+    if (a === 'purauto') { D.purManual = false; D.pur = ''; D.snAt = Date.now(); if (LT.agent) ltAgentCmd(D, 'sn', { sn: ltNorm(sn.value) || D.sn, purSel: '' }); ltDraw(D); return; }
     if (a === 'go') ltAskFull(1).then(function (ok) { if (ok) ltStart(D); }); else if (a === 'stop') ltStop(D); else if (a === 'skip') ltStart(D, true); else if (a === 'save') ltSave(D);
   });
   ltDraw(D);
@@ -3605,7 +3607,7 @@ function ltCard(D) {
 function ltSetSn(D, v) {
   v = ltNorm(v); var inp = D.el.querySelector('[data-k=sn]'); if (inp.value !== v) inp.value = v;
   if (v === D.sn) return;
-  D.sn = v; D.purManual = false; ltPersist(true);
+  D.sn = v; D.snAt = Date.now(); ltPersist(true);
   var run0 = D.state === 'run' && D.cond && !D.cond.sn;
   if (LT.agent) ltAgentCmd(D, 'sn', run0 ? { sn: v, purpose: ltPurOf(D) } : { sn: v });
   if (run0) { D.cond.sn = v; D.cond.purpose = ltPurOf(D); }
@@ -3617,13 +3619,14 @@ function ltDraw(D) {
   var k = function (n) { return el.querySelector('[data-k=' + n + ']'); }, L = D.live, R = D.result, c = D.cond || {};
   var st = D.err ? ['bad', D.lost ? '연결 끊김' : '통신 오류'] : D.state === 'arm' ? ['wait', '출력 대기'] : D.state === 'check' ? ['run', '케이블 점검 중'] : D.state === 'run' ? ['run', '시험 중'] : D.state === 'done' ? ['ok', '완료'] : ['idle', L && L.on ? '부하 ON (대기)' : '대기'];
   k('pill').className = 'ltpill ' + st[0]; k('pill').textContent = st[1];
-  var snNow = (D.state === 'run' || D.state === 'done') && c.sn ? c.sn : D.sn;
+  var next = D.state === 'done' && D.sn && c.sn && D.sn !== c.sn;
+  var snNow = (D.state === 'run' || D.state === 'done') && c.sn && !next ? c.sn : D.sn;
   k('model').innerHTML = snNow ? mtag(modelOfSn(snNow)) : '';
   k('hist').innerHTML = snNow ? ltHistHtml(snNow, D.cid) : '';
-  var curPur = (D.state === 'run' || D.state === 'done') && c.purpose ? c.purpose : ltPurOf(D), ps = k('pur');
+  var curPur = (D.state === 'run' || D.state === 'done') && c.purpose && !next ? c.purpose : ltPurOf(D), ps = k('pur');
   if (ps && document.activeElement !== ps && ps.value !== curPur) ps.value = curPur;
   if (ps) { ps.style.fontWeight = '700'; ps.style.color = curPur === '회수분 검사' ? '#c2410c' : curPur === '입고 QC' ? '#1d4ed8' : ''; }
-  k('purwhy').innerHTML = D.purManual ? '<span class="muted">직접 선택</span>' : snNow && ltAutoPurpose(snNow) ? '<span style="color:#c2410c">AS Desk 회수 기록 있음 → 자동</span>' : snNow ? '<span class="muted">회수 기록 없음 → 납품 검사</span>' : '';
+  k('purwhy').innerHTML = D.purManual ? '<span class="muted">직접 선택 (이 칸 고정)</span> <a href="javascript:void 0" data-lt="purauto" class="small">자동으로</a>' : snNow && ltAutoPurpose(snNow) ? '<span style="color:#c2410c">AS Desk 회수 기록 있음 → 자동</span>' : snNow ? '<span class="muted">회수 기록 없음 → 납품 검사</span>' : '';
   if (L) {
     k('v').textContent = L.v.toFixed(3) + 'V'; k('a').textContent = L.a.toFixed(3) + 'A'; k('w').textContent = (L.v * L.a).toFixed(2) + 'W';
     var b = D.base || { wh: L.wh, mah: L.mah }, live = D.state === 'run';
