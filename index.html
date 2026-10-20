@@ -1277,7 +1277,7 @@ function toolbar(kind) {
     '<input class="inp" id="q" placeholder="매장·S/N·송장·문의번호 검색" value="' + esc(S.q) + '" style="width:240px"><span class="sp"></span>' +
     (kind === '회수' ? '<button class="btn" data-act="bulkReturn">반품 송장 일괄 등록</button>' : '') +
     '<button class="btn" data-act="syncCj">⟳ 배송 상태 갱신</button>' +
-    (kind === '출고' ? '<button class="btn pri" data-act="newCase">＋ AS 직접 등록</button>' : '') + '</div>';
+    (kind === '출고' ? '<button class="btn" data-act="newCaseQc">＋ 고객사 직교환</button> <button class="btn pri" data-act="newCase">＋ AS 직접 등록</button>' : '') + '</div>';
 }
 function vReturn() {
   var all0 = S.data.cases.filter(function (c) { return modelOk(c) && matchQ(c); });
@@ -2635,7 +2635,7 @@ function ask_(msg, opt) {
     };
     document.addEventListener('keydown', key, true);
     document.getElementById(id + 'y').onclick = ok;
-    document.getElementById(id + 'n').onclick = function () { done(null); };
+    document.getElementById(id + 'n').onclick = function () { done(opt.noVal !== undefined ? opt.noVal : null); };
     bg.onclick = function (e) { if (e.target === bg) done(null); };
     setTimeout(function () { var f = inp || document.getElementById(id + 'y'); if (f) { f.focus(); if (inp) inp.select(); } }, 30);
   });
@@ -2764,18 +2764,26 @@ var ACT = {
       return load(true);
     }).catch(function (e) { toast(e.message || String(e), true); S.busy = false; if (b) { b.disabled = false; b.innerHTML = orig; } });
   },
-  newCase: function () {
-    modal('AS 직접 등록', '<div class="row"><label class="fld" style="flex:1"><span>매장명</span><input class="inp" id="nc_store"></label><label class="fld"><span>문의번호</span><input class="inp" id="nc_inq" style="width:120px"></label></div>' +
+  newCase: function (d) {
+    d = d || {}; var pre = d.pre || {};
+    modal(pre.qc ? '고객사 직교환 등록' : 'AS 직접 등록', '<label class="small" style="display:flex;align-items:flex-start;gap:6px;margin-bottom:10px;padding:8px 10px;border:1px solid var(--line);border-radius:10px"><input type="checkbox" id="nc_qc" style="margin-top:3px"' + (pre.qc ? ' checked' : '') + '><span><b>고객사 QC 직교환</b> — AS 채널 인입 없이 고객사(QC팀·매장)에 직접 교환품을 보낸 건. 티오더 AS 시트에는 올리지 않고 AS Desk에만 기록해요. (매장명을 비우면 \'고객사 QC팀\')</span></label>' +
+      '<div class="row"><label class="fld" style="flex:1"><span>매장명 / 받는 곳</span><input class="inp" id="nc_store" value="' + esc(pre.store || '') + '"></label><label class="fld"><span>문의번호</span><input class="inp" id="nc_inq" style="width:120px"></label></div>' +
       '<div class="row" style="margin-top:8px"><label class="fld"><span>교체사유</span><select class="inp" id="nc_reason">' + L.REASONS.map(function (r) { return '<option>' + esc(r) + '</option>'; }).join('') + '</select></label>' +
-      '<label class="fld"><span>수량</span><input class="inp" id="nc_qty" type="number" min="1" value="1" style="width:80px"></label></div>' +
-      '<label class="fld" style="margin-top:8px"><span>접수 S/N (줄바꿈으로 여러 개)</span><textarea class="inp mono" id="nc_sns" rows="3"></textarea></label>' +
+      '<label class="fld"><span>수량</span><input class="inp" id="nc_qty" type="number" min="1" value="1" style="width:80px"></label>' +
+      '<label class="fld"><span>기종</span><select class="inp" id="nc_model">' + prodOpts(pre.model || '', SN_PRODS()) + '</select></label></div>' +
+      '<div class="row" style="margin-top:8px;align-items:flex-start"><label class="fld" style="flex:1;min-width:200px"><span>불량(접수) S/N — 회수받을 것</span><textarea class="inp mono" id="nc_sns" rows="3" placeholder="줄바꿈으로 여러 개 · 모르면 비워도 돼요"></textarea></label>' +
+      '<label class="fld" style="flex:1;min-width:200px"><span>교체로 보낸 S/N (출고 S/N)</span><textarea class="inp mono" id="nc_out" rows="3" placeholder="예: 30711 · 30900~30905 (번호만 써도 돼요)">' + esc(pre.out || '') + '</textarea></label></div>' +
+      '<div class="row" style="margin-top:8px"><label class="fld"><span>출고일</span><input class="inp" id="nc_outDate" type="date" value="' + esc(pre.outDate || today()) + '" style="width:150px"></label>' +
+      '<label class="fld" style="flex:1"><span>출고 송장 (선택)</span><input class="inp mono" id="nc_trk" placeholder="직접 전달이면 비워 두세요"></label></div>' +
       '<label class="fld" style="margin-top:8px"><span>증상</span><textarea class="inp" id="nc_sym" rows="2"></textarea></label>' +
-      '<label class="small" style="display:flex;align-items:flex-start;gap:6px;margin-top:10px;padding:8px 10px;border:1px solid var(--line);border-radius:10px"><input type="checkbox" id="nc_qc" style="margin-top:3px"><span><b>고객사 QC 직교환</b> — AS 채널 인입 없이 고객사 QC팀이 직접 교환 요청한 건. 티오더 AS 시트에는 올리지 않고 AS Desk에만 기록해요. (매장명을 비우면 \'고객사 QC팀\')</span></label>',
+      '<div class="small muted" style="margin-top:6px">교체 S/N을 넣으면 그 S/N은 이 건으로 출고 처리돼 재고에서 빠져요 (별도 출고 기록은 따로 안 해도 돼요). 불량품이 들어오면 회수 스캔 → 판정은 일반 AS와 똑같아요.</div>',
       '<button class="btn" data-act="closeModal">취소</button><button class="btn pri" data-act="newCaseGo">등록</button>');
   },
+  newCaseQc: function () { ACT.newCase({ pre: { qc: 1 } }); },
   newCaseGo: function (d, b) {
-    var qc = $('#nc_qc') && $('#nc_qc').checked;
-    run('caseCreate', { store: $('#nc_store').value, inquiryNo: $('#nc_inq').value, reasonCode: $('#nc_reason').value, qty: +$('#nc_qty').value, sns: $('#nc_sns').value.split(/\n/), symptom: $('#nc_sym').value, channel: qc ? 'qc' : '' }, qc ? '고객사 QC 직교환 건을 등록했습니다.' : 'AS 건을 등록했습니다.', b)
+    var qc = $('#nc_qc') && $('#nc_qc').checked, out = $('#nc_out').value.trim(), som = $('#nc_model').value;
+    if (out) { var rg = snRangesTxt(out, som); if (typeof rg === 'string') return toast('교체 S/N: ' + rg, true); }
+    run('caseCreate', { store: $('#nc_store').value, inquiryNo: $('#nc_inq').value, reasonCode: $('#nc_reason').value, qty: +$('#nc_qty').value, model: out ? som : '', sns: $('#nc_sns').value.split(/\n/), outText: out, outDate: $('#nc_outDate').value, outTracking: $('#nc_trk').value, symptom: $('#nc_sym').value, channel: qc ? 'qc' : '' }, qc ? '고객사 직교환 건을 등록했습니다.' : 'AS 건을 등록했습니다.', b)
       .then(function (r) { closeModal(); if (r && r.case) openCase(r.case.id); });
   },
   saveInfo: function (d, b) {
@@ -2850,7 +2858,11 @@ var ACT = {
   stockOut: function (d, b) {
     var som = $('#soModel').value, rg = snRangesTxt($('#soSns').value, som);
     if (typeof rg === 'string' || !rg.length) return toast(typeof rg === 'string' ? rg + (som && prodOf(som) && !+prodOf(som).numDigits ? ' (' + prodLabel(som) + '은(는) 전체 S/N으로)' : '') : 'S/N을 입력해 주세요.', true);
-    run('stockOut', { sns: $('#soSns').value, model: som, outAt: $('#soDate').value, purpose: $('#soPurpose').value, dest: $('#soDest').value }, function (r) { return '별도 출고 ' + r.stockout.qty + '개 기록했습니다.'; }, b);
+    var go = function () { return run('stockOut', { sns: $('#soSns').value, model: som, outAt: $('#soDate').value, purpose: $('#soPurpose').value, dest: $('#soDest').value }, function (r) { return '별도 출고 ' + r.stockout.qty + '개 기록했습니다.'; }, b); };
+    if ($('#soPurpose').value !== '별도 교환') return go();
+    var pre = { qc: 1, out: $('#soSns').value, outDate: $('#soDate').value, store: $('#soDest').value, model: som };
+    ask_('고객사(QC팀·매장)에 직접 보낸 교환품이면 [고객사 직교환]으로 등록하세요.\n교체 S/N 출고 · 불량품 회수 · 판정까지 한 건으로 관리돼요.\n\n불량품 회수 없이 그냥 내보낸 것(추가 지급 등)이면 [별도 출고로 기록]을 누르세요.', { title: '별도 교환', yes: '고객사 직교환으로 등록', no: '별도 출고로 기록', noVal: 'plain' })
+      .then(function (v) { if (v === true) ACT.newCase({ pre: pre }); else if (v === 'plain') go(); });
   },
   stockOutDel: function (d, b) {
     if (!b.dataset.sure) { b.dataset.sure = '1'; b.textContent = '한 번 더 누르면 삭제'; b.classList.add('red'); return; }
