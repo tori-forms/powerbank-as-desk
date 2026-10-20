@@ -400,6 +400,7 @@ var INBOX_ST = { '신규': 'p-new', '방어 추정': 'p-red', '보류': 'p-gray'
 var OPINION_TPL = [
   ['충전 진행이 되지 않으며 충전 2시간 진행 후 충방전 테스트 하였으나 반응없음으로 불량 판정', '불량', '충전 불량', 'IC 소손(과전압·서지)'],
   ['완충 후 방전테스트시 용량이 정격 용량 대비 80%미만으로 확인되어 불량 판정', '불량', '성능 저하', '셀 용량 저하(80% 미만)'],
+  ['완충 후 방전테스트시 용량이 정격 용량 대비 80% 미만으로 확인되나, 충·방전 동작은 정상이며 사용 기간에 따른 셀 자연 열화(정상 노화) 범위로 정상 판정', '정상', '', '정상 노화(셀 자연 열화)'],
   ['충방전 테스트 진행 후 보조배터리 자체 충전 (100%), 휴대폰, 태블릿 충전 시 모든 Port 이상 없음', '정상', '', 'NTF(재현 안 됨)'],
   ['완충 후 방전테스트시 정격 용량 80% 이상으로 정상 판정', '정상', '', 'NTF(재현 안 됨)'],
   ['배터리 팽창 확인', '불량', '스웰링', '스웰링(과충전·고온)'],
@@ -453,7 +454,8 @@ function hm(s) { s = String(s || ''); if (/^\d{4}-\d{2}-\d{2}T/.test(s)) return 
 function md(s) { s = d10(s); return s ? s.slice(5).replace('-', '.') : ''; }
 function ymd(s) { s = d10(s); return s ? s.slice(2).replace(/-/g, '.') : ''; }
 function days(a, b) { if (!a) return null; var x = new Date(d10(a) + 'T00:00:00'), y = new Date(d10(b || today()) + 'T00:00:00'); return Math.round((y - x) / 86400000); }
-function cz(v) { return v === 'NTF(재현 안 됨)' ? '재현 안 됨(정상)' : v; }
+function cz(v) { if (!v) return v; return String(v).split(' / ').map(function (x) { return x === 'NTF(재현 안 됨)' ? '재현 안 됨(정상)' : x; }).join(' / '); }
+var CHIP_MULTI = { testSymptom: 1, cause: 1 };
 function jparse(s, d) { try { return JSON.parse(s || ''); } catch (e) { return d; } }
 function trk(s) { return String(s || '').split(/\n/).filter(String); }
 var PROD_DEFAULT = [{ id: 'P20BOTA25', label: '기존 P20BOTA25', short: '기존', kind: '본체', snMode: 'sn', prefix: 'P20BOTA25', snLen: 16, numDigits: 7, torder: true, active: true },
@@ -1721,8 +1723,9 @@ function inspectForm(u, many) {
   var chips = function (name, arr, cur, cls) { return '<div class="chips" data-name="' + name + '">' + arr.map(function (v) { return '<span class="chip ' + (cls ? cls(v) : '') + (v === cur ? ' on' : '') + '" data-act="chip" data-v="' + esc(v) + '">' + esc(cz(v)) + '</span>'; }).join('') + '</div>'; };
   var vcls = function (v) { return v === '불량' ? 'r' : v === '정상' ? 'g' : 'a'; };
   var chipsTxt = function (name, arr, cur) {
-    var own = cur && arr.indexOf(cur) < 0 ? cur : '';
-    return '<div class="chips" data-name="' + name + '">' + arr.map(function (v) { return '<span class="chip' + (v === cur ? ' on' : '') + '" data-act="chip" data-v="' + esc(v) + '">' + esc(cz(v)) + '</span>'; }).join('') +
+    var parts = String(cur || '').split(' / ').map(function (x) { return x.trim(); }).filter(String);
+    var own = parts.filter(function (x) { return arr.indexOf(x) < 0; }).join(' / ');
+    return '<div class="chips" data-name="' + name + '">' + arr.map(function (v) { return '<span class="chip' + (parts.indexOf(v) >= 0 ? ' on' : '') + '" data-act="chip" data-v="' + esc(v) + '">' + esc(cz(v)) + '</span>'; }).join('') +
       '<span class="chip cust' + (own ? ' on' : '') + '" data-act="chipCust" data-name="' + name + '">✏ 직접 입력</span></div>' +
       '<input class="inp chipTxt" data-name="' + name + '" value="' + esc(own) + '" maxlength="60" placeholder="직접 입력 (예: 충전 IC 발열로 보호 동작)" style="width:100%;margin-top:6px' + (own ? '' : ';display:none') + '">';
   };
@@ -1749,8 +1752,8 @@ function inspectForm(u, many) {
     '<label class="fld"><span>측정 용량 (정격 대비 %)</span><input class="inp" id="in_cap" type="number" min="0" max="120" step="1" value="' + esc(u.capPct || '') + '" style="width:110px" placeholder="예: 76"></label>' +
     '<label class="fld"><span>검사일</span><input class="inp" type="date" id="in_date" value="' + esc(u.testDate || today()) + '"></label></div>' +
     ltInspSlot(many ? many.map(function (x) { return x.recvSn || x.origSn; }) : [u.recvSn || u.origSn]) +
-    '<div class="fld"><span>불량 증상 (검사 기준)</span>' + chipsTxt('testSymptom', L.TEST_SYMPTOMS, u.testSymptom) + '</div>' +
-    '<div class="fld" style="margin-top:12px"><span>원인</span>' + chipsTxt('cause', L.CAUSES, u.cause) + '</div>' +
+    '<div class="fld"><span>불량 증상 (검사 기준) <span class="muted small">· 여러 개 선택 가능</span></span>' + chipsTxt('testSymptom', L.TEST_SYMPTOMS, u.testSymptom) + '</div>' +
+    '<div class="fld" style="margin-top:12px"><span>원인 <span class="muted small">· 여러 개 선택 가능</span></span>' + chipsTxt('cause', L.CAUSES, u.cause) + '</div>' +
     '<div class="fld" style="margin-top:12px"><span>검사 의견 — 표준 문구를 누르면 판정·증상·원인이 함께 채워집니다</span><div class="chips" style="margin-bottom:6px">' +
     OPINION_TPL.map(function (t, i) { return '<span class="chip" data-act="tpl" data-i="' + i + '" title="' + esc(t[0]) + '">' + esc(t[0].slice(0, 22)) + '…</span>'; }).join('') + '</div>' +
     '<textarea class="inp" id="in_op" rows="3">' + esc(u.opinion || '') + '</textarea></div>' +
@@ -1758,15 +1761,18 @@ function inspectForm(u, many) {
     '<div class="row" style="margin-top:16px"><button class="btn pri" data-act="saveInspect">' + (many ? '선택한 ' + many.length + '개 저장' : '저장') + '</button><span class="muted small">원인은 판정에 따라 자동 추천됩니다 (정상 → 재현 안 됨, 용량 80% 미만 → 셀 용량 저하)</span></div></div></div>';
 }
 function chipVal(name) {
-  var el = $('#inspCard .chips[data-name="' + name + '"] .chip.on'); if (!el) return '';
-  if (el.classList.contains('cust')) { var t = $('#inspCard .chipTxt[data-name="' + name + '"]'); return t ? t.value.trim() : ''; }
-  return el.getAttribute('data-v');
+  var on = $$('#inspCard .chips[data-name="' + name + '"] .chip.on'), out = [];
+  on.forEach(function (el) {
+    if (el.classList.contains('cust')) { var t = $('#inspCard .chipTxt[data-name="' + name + '"]'); if (t && t.value.trim()) out.push(t.value.trim()); }
+    else out.push(el.getAttribute('data-v'));
+  });
+  return CHIP_MULTI[name] ? out.join(' / ') : (out[0] || '');
 }
 function setChip(name, v) {
-  var hit = false;
-  $$('#inspCard .chips[data-name="' + name + '"] .chip').forEach(function (x) { var on = !x.classList.contains('cust') && x.getAttribute('data-v') === v; if (on) hit = true; x.classList.toggle('on', on); });
+  var parts = CHIP_MULTI[name] ? String(v || '').split(' / ').map(function (x) { return x.trim(); }).filter(String) : (v ? [v] : []), hit = [];
+  $$('#inspCard .chips[data-name="' + name + '"] .chip').forEach(function (x) { var on = !x.classList.contains('cust') && parts.indexOf(x.getAttribute('data-v')) >= 0; if (on) hit.push(x.getAttribute('data-v')); x.classList.toggle('on', on); });
   var t = $('#inspCard .chipTxt[data-name="' + name + '"]'), cu = $('#inspCard .chips[data-name="' + name + '"] .chip.cust');
-  if (t && cu) { var own = !!v && !hit; cu.classList.toggle('on', own); t.style.display = own ? '' : 'none'; if (own) t.value = v; }
+  if (t && cu) { var rest = parts.filter(function (x) { return hit.indexOf(x) < 0; }).join(' / '); cu.classList.toggle('on', !!rest); t.style.display = rest ? '' : 'none'; t.value = rest; }
 }
 function monthsBack(n) {
   var t = new Date(today() + 'T00:00:00'), out = [];
@@ -1851,11 +1857,12 @@ function vAnalysis() {
   var vSeries = [['불량', '#f04452'], ['정상', '#1fb86c'], ['외력/사용자 과실', '#ffa41b']].map(function (v) { return { name: v[0], color: v[1], vals: byM(units, function (u) { return u.testDate; }, function (u) { return u.verdict === v[0]; }) }; });
   h += '<div class="two" style="margin-bottom:14px"><div class="card"><div class="hd"><h3>월별 교환 출고 수량</h3></div><div class="bd">' + vcols(ms, exSeries) + '</div></div>' +
     '<div class="card"><div class="hd"><h3>월별 회수 검사 판정</h3></div><div class="bd">' + vcols(ms, vSeries) + '</div></div></div>';
-  var cc = {}, cN = 0; bad.forEach(function (u) { var k = u.cause; if (!k || k === '분석 중') return; cN++; cc[k] = (cc[k] || 0) + 1; });
+  var cc = {}, cN = 0; bad.forEach(function (u) { var ks = String(u.cause || '').split(' / ').filter(function (k) { return k && k !== '분석 중'; }); if (!ks.length) return; cN++; ks.forEach(function (k) { cc[k] = (cc[k] || 0) + 1; }); });
   var cItems = Object.keys(cc).map(function (k) { return [k, cc[k]]; }).sort(function (a, b) { return b[1] - a[1]; });
   var cum = 0;
-  var pareto = hbars(cItems, '#f04452', cN, function (x) { cum += x[1]; return x[1] + ' <span class="muted">' + pct(cum, cN) + '%</span>'; });
-  var sc = {}; tested.forEach(function (u) { var k = u.testSymptom; if (!k) return; sc[k] = sc[k] || [0, 0]; sc[k][u.verdict === '불량' ? 0 : 1]++; });
+  var cTot = cItems.reduce(function (t, x) { return t + x[1]; }, 0);
+  var pareto = hbars(cItems, '#f04452', cN, function (x) { cum += x[1]; return x[1] + ' <span class="muted">' + pct(cum, cTot) + '%</span>'; });
+  var sc = {}; tested.forEach(function (u) { String(u.testSymptom || '').split(' / ').filter(String).forEach(function (k) { sc[k] = sc[k] || [0, 0]; sc[k][u.verdict === '불량' ? 0 : 1]++; }); });
   var sItems = Object.keys(sc).map(function (k) { return [k, sc[k][0] + sc[k][1], null, sc[k]]; }).sort(function (a, b) { return b[1] - a[1]; });
   var rc = {}; cases.forEach(function (c) { var k = c.reasonCode || '미분류'; rc[k] = (rc[k] || 0) + 1; });
   h += '<div class="three" style="margin-bottom:14px"><div class="card"><div class="hd"><h3>불량 원인 순위</h3><span class="muted small">원인 확정 ' + cN + 'EA' + (bad.length > cN ? ' (분석 중 ' + (bad.length - cN) + 'EA 제외)' : '') + ' · 오른쪽은 누적%</span></div><div class="bd">' + (cItems.length ? pareto : '<div class="empty">데이터 없음</div>') + '</div></div>' +
@@ -3053,6 +3060,7 @@ var ACT = {
   chip: function (d, el) {
     var box = el.parentNode, name = box.getAttribute('data-name');
     var was = el.classList.contains('on');
+    if (CHIP_MULTI[name] && box.closest('#inspCard')) { el.classList.toggle('on', !was); return; }
     $$('.chip', box).forEach(function (x) { x.classList.remove('on'); });
     if (!was) el.classList.add('on');
     var tx = box.parentNode && box.parentNode.querySelector('.chipTxt[data-name="' + name + '"]'); if (tx) tx.style.display = 'none';
@@ -3063,7 +3071,7 @@ var ACT = {
   },
   chipCust: function (d, el) {
     var box = el.parentNode, name = box.getAttribute('data-name'), tx = box.parentNode.querySelector('.chipTxt[data-name="' + name + '"]'), was = el.classList.contains('on');
-    $$('.chip', box).forEach(function (x) { x.classList.remove('on'); });
+    if (!CHIP_MULTI[name]) $$('.chip', box).forEach(function (x) { x.classList.remove('on'); }); else el.classList.remove('on');
     if (!was) { el.classList.add('on'); if (tx) { tx.style.display = ''; tx.focus(); } } else if (tx) tx.style.display = 'none';
   },
   tpl: function (d) {
