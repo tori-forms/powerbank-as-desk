@@ -1717,6 +1717,12 @@ function inspectForm(u, many) {
   }
   var chips = function (name, arr, cur, cls) { return '<div class="chips" data-name="' + name + '">' + arr.map(function (v) { return '<span class="chip ' + (cls ? cls(v) : '') + (v === cur ? ' on' : '') + '" data-act="chip" data-v="' + esc(v) + '">' + esc(cz(v)) + '</span>'; }).join('') + '</div>'; };
   var vcls = function (v) { return v === '불량' ? 'r' : v === '정상' ? 'g' : 'a'; };
+  var chipsTxt = function (name, arr, cur) {
+    var own = cur && arr.indexOf(cur) < 0 ? cur : '';
+    return '<div class="chips" data-name="' + name + '">' + arr.map(function (v) { return '<span class="chip' + (v === cur ? ' on' : '') + '" data-act="chip" data-v="' + esc(v) + '">' + esc(cz(v)) + '</span>'; }).join('') +
+      '<span class="chip cust' + (own ? ' on' : '') + '" data-act="chipCust" data-name="' + name + '">✏ 직접 입력</span></div>' +
+      '<input class="inp chipTxt" data-name="' + name + '" value="' + esc(own) + '" maxlength="60" placeholder="직접 입력 (예: 충전 IC 발열로 보호 동작)" style="width:100%;margin-top:6px' + (own ? '' : ';display:none') + '">';
+  };
   var sibs = unitsOf(c);
   var inbox = c.inboxId ? IDX.inboxById[c.inboxId] : null;
   var autoLot = many ? null : lotOf(u.recvSn || u.origSn), lotV = u.lot || (autoLot ? autoLot.name : '');
@@ -1740,16 +1746,25 @@ function inspectForm(u, many) {
     '<label class="fld"><span>측정 용량 (정격 대비 %)</span><input class="inp" id="in_cap" type="number" min="0" max="120" step="1" value="' + esc(u.capPct || '') + '" style="width:110px" placeholder="예: 76"></label>' +
     '<label class="fld"><span>검사일</span><input class="inp" type="date" id="in_date" value="' + esc(u.testDate || today()) + '"></label></div>' +
     ltInspSlot(many ? many.map(function (x) { return x.recvSn || x.origSn; }) : [u.recvSn || u.origSn]) +
-    '<div class="fld"><span>불량 증상 (검사 기준)</span>' + chips('testSymptom', L.TEST_SYMPTOMS, u.testSymptom) + '</div>' +
-    '<div class="fld" style="margin-top:12px"><span>원인</span>' + chips('cause', L.CAUSES, u.cause) + '</div>' +
+    '<div class="fld"><span>불량 증상 (검사 기준)</span>' + chipsTxt('testSymptom', L.TEST_SYMPTOMS, u.testSymptom) + '</div>' +
+    '<div class="fld" style="margin-top:12px"><span>원인</span>' + chipsTxt('cause', L.CAUSES, u.cause) + '</div>' +
     '<div class="fld" style="margin-top:12px"><span>검사 의견 — 표준 문구를 누르면 판정·증상·원인이 함께 채워집니다</span><div class="chips" style="margin-bottom:6px">' +
     OPINION_TPL.map(function (t, i) { return '<span class="chip" data-act="tpl" data-i="' + i + '" title="' + esc(t[0]) + '">' + esc(t[0].slice(0, 22)) + '…</span>'; }).join('') + '</div>' +
     '<textarea class="inp" id="in_op" rows="3">' + esc(u.opinion || '') + '</textarea></div>' +
     '<div class="fld" style="margin-top:12px"><span>처리 (어떻게 했는지)</span>' + chips('disposition', L.DISPOSITIONS.filter(function (x) { return ['미회수', '회수불가', '분실', '고객 폐기', '손망실(회수 포기)'].indexOf(x) < 0 || x === u.disposition; }), u.disposition) + '</div>' +
     '<div class="row" style="margin-top:16px"><button class="btn pri" data-act="saveInspect">' + (many ? '선택한 ' + many.length + '개 저장' : '저장') + '</button><span class="muted small">원인은 판정에 따라 자동 추천됩니다 (정상 → 재현 안 됨, 용량 80% 미만 → 셀 용량 저하)</span></div></div></div>';
 }
-function chipVal(name) { var el = $('#inspCard .chips[data-name="' + name + '"] .chip.on'); return el ? el.getAttribute('data-v') : ''; }
-function setChip(name, v) { $$('#inspCard .chips[data-name="' + name + '"] .chip').forEach(function (x) { x.classList.toggle('on', x.getAttribute('data-v') === v); }); }
+function chipVal(name) {
+  var el = $('#inspCard .chips[data-name="' + name + '"] .chip.on'); if (!el) return '';
+  if (el.classList.contains('cust')) { var t = $('#inspCard .chipTxt[data-name="' + name + '"]'); return t ? t.value.trim() : ''; }
+  return el.getAttribute('data-v');
+}
+function setChip(name, v) {
+  var hit = false;
+  $$('#inspCard .chips[data-name="' + name + '"] .chip').forEach(function (x) { var on = !x.classList.contains('cust') && x.getAttribute('data-v') === v; if (on) hit = true; x.classList.toggle('on', on); });
+  var t = $('#inspCard .chipTxt[data-name="' + name + '"]'), cu = $('#inspCard .chips[data-name="' + name + '"] .chip.cust');
+  if (t && cu) { var own = !!v && !hit; cu.classList.toggle('on', own); t.style.display = own ? '' : 'none'; if (own) t.value = v; }
+}
 function monthsBack(n) {
   var t = new Date(today() + 'T00:00:00'), out = [];
   for (var i = n - 1; i >= 0; i--) { var d = new Date(t.getFullYear(), t.getMonth() - i, 1); out.push(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')); }
@@ -3037,10 +3052,16 @@ var ACT = {
     var was = el.classList.contains('on');
     $$('.chip', box).forEach(function (x) { x.classList.remove('on'); });
     if (!was) el.classList.add('on');
+    var tx = box.parentNode && box.parentNode.querySelector('.chipTxt[data-name="' + name + '"]'); if (tx) tx.style.display = 'none';
     if (name === 'verdict' && !was) {
       if (d.v === '정상') { if (!chipVal('cause')) setChip('cause', 'NTF(재현 안 됨)'); }
       if (!chipVal('disposition')) setChip('disposition', DEFAULT_DISP[d.v] || '');
     }
+  },
+  chipCust: function (d, el) {
+    var box = el.parentNode, name = box.getAttribute('data-name'), tx = box.parentNode.querySelector('.chipTxt[data-name="' + name + '"]'), was = el.classList.contains('on');
+    $$('.chip', box).forEach(function (x) { x.classList.remove('on'); });
+    if (!was) { el.classList.add('on'); if (tx) { tx.style.display = ''; tx.focus(); } } else if (tx) tx.style.display = 'none';
   },
   tpl: function (d) {
     var t = OPINION_TPL[+d.i];
