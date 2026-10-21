@@ -1512,11 +1512,10 @@ function boxLines_(c, st) {
     '<div style="margin-bottom:3px"><b>반품 박스 ' + rets.length + '개</b> · 우리 창고 입고 ' + inN + '/' + rets.length + '</div>' +
     rets.map(function (x) {
       var s = x.stage === 'merged' ? '합포장(미사용)' : x.inAt ? '✅ 우리 창고 입고 ' + md(x.inAt)
-        : x.doneAt ? '📦 외주창고 도착 ' + md(x.doneAt) + (x.pickReqAt ? ' · 🚚 반출 요청 ' + md(x.pickReqAt) : ' · <b style="color:var(--amber)">반출 요청 필요</b>')
+        : x.doneAt ? '📦 외주창고 도착 ' + md(x.doneAt)
           : x.stage === 'moving' ? '🚚 외주창고로 이동 중' : '⏳ 집화 전';
       var btn = x.inAt || x.stage === 'merged' ? '' :
-        '<button class="btn sm" data-act="boxIn" data-no="' + esc(x.no) + '">박스 받음</button>' +
-        (x.doneAt && !x.pickReqAt ? '<button class="btn sm" data-act="boxPick" data-no="' + esc(x.no) + '">반출 요청함</button>' : '');
+        '<button class="btn sm" data-act="boxIn" data-no="' + esc(x.no) + '">박스 받음</button>';
       return '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:2px 0"><span class="mono">' + esc(x.no) + '</span><span>' + s + '</span>' + btn + '</div>';
     }).join('') + '</div>';
 }
