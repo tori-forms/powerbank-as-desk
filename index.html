@@ -708,6 +708,7 @@ function buildIndex() {
   d.units.forEach(function (u) { (IDX.units[u.caseId] = IDX.units[u.caseId] || []).push(u); IDX.unitById[u.id] = u; });
   (d.ships || []).forEach(function (x) { if (x.caseId && x.stage !== 'removed') (IDX.ships[x.caseId] = IDX.ships[x.caseId] || []).push(x); });
   d.cases.forEach(function (c) { IDX.caseById[c.id] = c; });
+  IDX.shipRej = {}; (d.shiprej || []).forEach(function (r) { IDX.shipRej[r.sn] = r; });
   d.cases.forEach(function (c) { IDX.st[c.id] = cstate(c); });
   d.inbox.forEach(function (i) { IDX.inboxById[i.id] = i; });
 }
@@ -1395,6 +1396,7 @@ function caseDrawer(c) {
   var h = '<div class="dh"><div style="flex:1;min-width:0"><div class="row" style="gap:8px"><span class="mono muted">' + esc(cid(c)) + '</span>' + bpill(c) + ' ' + tagOf(OUT_LABEL, st.out) + ' ' + (st.ret !== 'none' ? tagOf(RET_LABEL, st.ret) + ' ' : '') + mtag(caseModel(c)) + '</div>' +
     '<h2 style="margin:6px 0 0;font-size:18px">' + esc(c.store) + '</h2>' + steps + '</div><button class="btn sm" data-act="closeDrawer">✕</button></div><div class="db">';
   var tds = [];
+  h += shipRejWarn(us.map(function (u) { return u.recvSn || u.origSn; }).concat(us.map(function (u) { return u.outSn; })), 1);
   if (c.source === 'qc' && c.closed !== 'Y' && !us.some(function (u) { return u.recvSn; })) h += '<div class="flags"><div class="flag">🤝 고객사 직교환 — 불량품을 이미 받았으면 반품·회수 절차 없이 바로 검사로 넘길 수 있어요. <button class="btn sm pri" data-act="qcRecvNow" data-id="' + esc(c.id) + '">불량품 받음 → 검사로</button></div></div>';
   if (tds.length) h += '<div class="flags">' + tds.map(function (t) { return '<div class="flag">📌 할 일 #' + esc(t.no) + ' — ' + esc(t.text) + ' <span class="muted">(' + esc(md(t.createdAt)) + ')</span> <button class="btn sm" data-act="todoDone" data-id="' + esc(t.id) + '">완료</button></div>'; }).join('') + '</div>';
   h += '<div class="sec" style="border:0"><h4>기본 정보 ' + (c.slackUrl ? '<a class="btn sm" target="_blank" href="' + esc(c.slackUrl) + '">Slack ↗</a>' : '') + (c.torderRow ? '<a class="btn sm" target="_blank" href="' + esc(S.data.meta.torderUrl) + '#gid=0&range=A' + esc(c.torderRow) + '">티오더 시트 ' + esc(c.torderRow) + '행 ↗</a>' : '') + '</h4>' +
@@ -1749,6 +1751,7 @@ function inspectForm(u, many) {
     '<span style="flex:1"></span>' + (S.view === 'inspect' ? '' : '<button class="btn sm" data-act="case" data-id="' + esc(c.id) + '">AS 건 ' + esc(cid(c)) + '</button>') + '</div><div class="bd">' +
     (S.view === 'inspect' ? '' : '<div class="note" style="margin-bottom:12px"><b>' + esc(c.store) + '</b> · <b>불량 인입 사유 ' + esc(c.reasonCode || '-') + '</b>' + ' · 출고 ' + md(c.outDate) + ' · 입고 ' + md(c.recvDate) + (sibs.length > 1 ? ' · 동일 건 ' + sibs.length + 'EA' : '') +
     (c.symptom || (inbox && inbox.symptom) ? '<div style="margin-top:6px;white-space:pre-wrap;max-height:90px;overflow:auto">' + esc(String(c.symptom || inbox.symptom).slice(0, 400)) + '</div>' : '') + '</div>') +
+    shipRejWarn(many ? many.map(function (x) { return x.recvSn || x.origSn; }) : [u.recvSn || u.origSn]) +
     '<div class="fld"><span>최종 판정 (불량 / 정상)</span>' + chips('verdict', L.VERDICTS, u.verdict, vcls) + '</div>' +
     '<div class="row" style="margin:12px 0"><label class="fld"><span>양산 차수 ' + (many ? '<b style="color:var(--green)">· S/N별 자동</b>' : autoLot ? '<b style="color:var(--green)">· S/N 자동</b>' : '<b style="color:var(--amber)">· 등록 구간 없음</b>') + '</span><select class="inp" id="in_lot">' + (many ? '<option value="" selected>' + esc(manyLot) + '</option>' : '') + lotChoices.filter(function (l) { return !many || l; }).map(function (l) { return '<option ' + (!many && l === lotV ? 'selected' : '') + '>' + esc(l) + '</option>'; }).join('') + '</select></label>' +
     '<label class="fld"><span>측정 용량 (정격 대비 %)</span><input class="inp" id="in_cap" type="number" min="0" max="120" step="1" value="' + esc(u.capPct || '') + '" style="width:110px" placeholder="예: 76"></label>' +
@@ -2156,6 +2159,71 @@ function lotBatchPreview() {
   pv.innerHTML = '<b>' + n.toLocaleString() + '개</b>' + (rg.length > 1 ? ' · 구간 ' + rg.length + '개' : '') + ' · 이 배치의 AS 접수 S/N <b>' + hitAs.toLocaleString() + '개</b>' +
     (over.length ? ' · <span style="color:var(--red)">이미 등록된 차수와 겹침: ' + esc(over.slice(0, 3).join(', ')) + '</span>' : '');
 }
+function shipRejOf(sn) { return IDX.shipRej ? IDX.shipRej[sn] : null; }
+function shipRejWarn(sns, drawer) {
+  var seen = {}, hit = (sns || []).filter(function (sn) { if (!sn || seen[sn]) return false; seen[sn] = 1; return !!shipRejOf(sn); }).map(shipRejOf);
+  if (!hit.length) return '';
+  var t = '⚠ 출하 검사 불합격 이력 S/N — ' + hit.map(function (r) { return r.sn + ' (' + md(r.at) + ' ' + (r.why || '불합격') + (r.disp ? ' · ' + r.disp : '') + ')'; }).join(', ') + ' · 납품 전에 걸러져야 할 제품이 나갔을 수 있어요';
+  return drawer ? '<div class="flags"><div class="flag r">' + esc(t) + '</div></div>' : '<div class="flag r" style="margin-bottom:10px">' + esc(t) + '</div>';
+}
+function shipLotStat(l) {
+  var o = { sample: 0, rej: 0, rejS: 0 };
+  (S.data.shipinsp || []).forEach(function (i) { if (i.lotId === l.id) { o.sample += +i.sample || 0; o.rejS += +i.fail || 0; } });
+  (S.data.shiprej || []).forEach(function (r) { if (r.lotId === l.id) o.rej++; });
+  return o;
+}
+function ltShipBtn(t) {
+  if (!t || !t.sn || t.purpose !== '입고 QC' || CS()) return '';
+  var j = ltJudge(t); if (!j || j.cls !== 'bad') return '';
+  if (shipRejOf(t.sn)) return ' <span class="small" style="color:var(--red)">출하 불합격 등록됨</span>';
+  return ' <button class="btn sm" style="border-color:var(--red);color:var(--red)" data-act="shipRejLt" data-sn="' + esc(t.sn) + '" data-mah="' + Math.round(+t.mah || 0) + '" data-why="' + esc(j.why) + '">출하 불합격 등록</button>';
+}
+function shipCands() {
+  if (!S.shipLt) return null;
+  var last = {};
+  S.shipLt.forEach(function (t) { if (t.purpose !== '입고 QC' || !t.sn) return; var k = String(t.startAt || t.createdAt); if (!last[t.sn] || k > last[t.sn].k) last[t.sn] = { k: k, t: t }; });
+  return Object.keys(last).map(function (sn) { var t = last[sn].t, j = ltJudge(t); return j && j.cls === 'bad' && !shipRejOf(sn) ? { t: t, j: j } : null; }).filter(Boolean)
+    .sort(function (a, b) { return String(b.t.startAt).localeCompare(String(a.t.startAt)); });
+}
+function shipQcCard() {
+  var lots = (S.data.lots || []).slice().sort(function (a, b) { return String(a.model).localeCompare(String(b.model)) || String(a.prefix).localeCompare(String(b.prefix)) || (+a.fromNo - +b.fromNo); });
+  var rej = (S.data.shiprej || []).slice().sort(function (a, b) { return String(b.at).localeCompare(String(a.at)) || String(b.createdAt).localeCompare(String(a.createdAt)); });
+  var insp = (S.data.shipinsp || []).slice().sort(function (a, b) { return String(b.at).localeCompare(String(a.at)) || String(b.createdAt).localeCompare(String(a.createdAt)); });
+  var sN = insp.reduce(function (a, i) { return a + (+i.sample || 0); }, 0), sF = insp.reduce(function (a, i) { return a + (+i.fail || 0); }, 0);
+  var open = rej.filter(function (r) { return !r.disp || /예정|대기|미정/.test(r.disp); }).length;
+  var cands = shipCands();
+  var h = '<div class="card" style="margin-top:14px"><div class="hd"><h3>납품(출하) 검사</h3><span class="muted small">고객사로 나가기 전 신품 샘플 검사 · 불합격 S/N을 남기면 차수별 출하 불량률이 나오고, 나중에 그 S/N이 AS로 들어오면 경고가 떠요</span></div><div class="bd">' +
+    '<div class="row"><label class="small nowrap">검사일 <input class="inp" id="sqAt" type="date" value="' + esc(today()) + '" style="width:150px"></label>' +
+    '<label class="small nowrap">차수 <select class="inp" id="sqLot"><option value="">S/N으로 자동</option>' + lots.map(function (l) { return '<option value="' + esc(l.id) + '"' + (S.sqLot === l.id ? ' selected' : '') + '>' + esc(l.name + ' · ' + prodLabel(l.model) + (l.color ? ' ' + l.color : '') + ' (' + stockSn(l, l.fromNo).slice(-6) + '~' + stockSn(l, l.toNo).slice(-6) + ')') + '</option>'; }).join('') + '</select></label>' +
+    '<label class="small nowrap">샘플 검사 수량 <input class="inp" id="sqSample" type="number" min="0" placeholder="예: 32" style="width:90px"></label></div>' +
+    '<div class="row" style="margin-top:8px;align-items:flex-start"><textarea class="inp mono" id="sqSns" rows="2" placeholder="불합격 S/N (없으면 비워 두세요) · 예: P20VAWH260405029, P20VAWH260405030 · 차수를 고르면 끝번호만(05029)·구간(05029~05031)도 돼요" style="flex:1;min-width:240px"></textarea>' +
+    '<label class="fld"><span>불합격 사유</span><select class="inp" id="sqWhy">' + QC_REJ_WHY.map(function (x) { return '<option>' + x + '</option>'; }).join('') + '</select></label>' +
+    '<label class="fld"><span>처리</span><select class="inp" id="sqDisp">' + QC_REJ_DISP.map(function (x) { return '<option' + (x === '보관(처리 미정)' ? ' selected' : '') + '>' + x + '</option>'; }).join('') + '</select></label></div>' +
+    '<div class="row" style="margin-top:8px"><input class="inp" id="sqNote" placeholder="메모 (검사 항목·측정값·검사자 · 예: 3A/0.7V 용량 11,800mAh)" style="flex:1;min-width:200px"><button class="btn pri" data-act="shipQc">기록</button></div>' +
+    '<div class="small muted" style="margin-top:6px">샘플만 검사하고 불량이 없으면 수량만 넣고 기록하세요. 불량만 따로 올릴 땐 수량을 비워도 돼요.</div></div>';
+  h += '<div class="bd" style="border-top:1px solid var(--line)"><div class="row"><b class="small">용량 시험 불합격 (납품 검사)</b><span style="flex:1"></span><button class="btn sm" data-act="shipCand">' + (cands ? '다시 불러오기' : '용량 시험 기록에서 불러오기') + '</button></div>' +
+    (cands === null ? '<div class="small muted" style="margin-top:4px">용량 시험에서 시험 구분 [납품 검사]로 잰 것 중 마지막 결과가 불합격인 S/N을 찾아요.</div>'
+      : !cands.length ? '<div class="small" style="margin-top:4px;color:var(--green)">아직 출하 불합격으로 안 올린 용량 시험 불합격이 없어요.</div>'
+        : '<div class="tw" style="margin-top:6px"><table class="t"><thead><tr><th>시험일</th><th>S/N</th><th>용량</th><th>판정</th><th></th></tr></thead><tbody>' + cands.map(function (x) {
+          return '<tr><td class="nowrap">' + esc(ymd(x.t.startAt)) + '</td><td class="mono small">' + esc(x.t.sn) + lotTag(x.t.sn) + '</td><td class="nowrap">' + Math.round(+x.t.mah).toLocaleString() + 'mAh</td><td class="small" style="color:var(--red)">' + esc(x.j.why) + '</td>' +
+            '<td><button class="btn sm pri" data-act="shipRejLt" data-sn="' + esc(x.t.sn) + '" data-mah="' + Math.round(+x.t.mah) + '" data-why="' + esc(x.j.why) + '">불합격 등록</button></td></tr>';
+        }).join('') + '</tbody></table></div>') + '</div>';
+  if (rej.length || insp.length) {
+    h += '<div class="bd" style="border-top:1px solid var(--line);padding-bottom:0"><div class="row"><b>출하 불합격 ' + rej.length + '개</b><span class="small muted">' + (sN ? '샘플 ' + sN.toLocaleString() + '개 검사 · 샘플 불합격률 ' + (sF / sN * 100).toFixed(1) + '%' : '') + (open ? ' · <b style="color:var(--amber)">처리 남음 ' + open + '</b>' : '') + '</span><span style="flex:1"></span>' +
+      (rej.length ? '<button class="btn sm" data-act="shipRejXlsx">엑셀로 내려받기</button>' : '') + (insp.length ? ' <button class="btn sm" data-act="shipInspShow">' + (S.shipInspOpen ? '검사 기록 닫기' : '샘플 검사 기록 ' + insp.length + '건') + '</button>' : '') + '</div></div>';
+    if (S.shipInspOpen && insp.length) h += '<div class="tw"><table class="t"><thead><tr><th>검사일</th><th>차수</th><th>샘플</th><th>불합격</th><th>메모</th><th>기록</th><th></th></tr></thead><tbody>' + insp.map(function (i) {
+      return '<tr><td class="nowrap">' + esc(ymd(i.at)) + '</td><td>' + esc(i.lot || '-') + '</td><td>' + esc(i.sample) + '</td><td>' + esc(i.fail || '0') + '</td><td class="small">' + esc(i.note || '') + '</td><td class="small muted">' + esc(i.actor || '') + '</td>' +
+        '<td><button class="btn sm" data-act="shipInspDel" data-id="' + esc(i.id) + '">삭제</button></td></tr>';
+    }).join('') + '</tbody></table></div>';
+    if (rej.length) h += '<div class="tw" style="max-height:420px"><table class="t"><thead><tr><th>검사일</th><th>S/N</th><th>차수</th><th>불합격 사유</th><th>처리</th><th>메모</th><th></th></tr></thead><tbody>' + rej.slice(0, 300).map(function (r) {
+      return '<tr><td class="nowrap">' + esc(ymd(r.at)) + '</td><td class="mono small">' + esc(r.sn) + '</td><td>' + (r.lot ? '<span class="lotTag" style="margin:0">' + esc(r.lot) + '</span>' : '<span class="small" style="color:var(--amber)">차수 없음</span>') + '</td>' +
+        '<td>' + esc(r.why || '-') + (r.mah ? ' <span class="small muted">' + (+r.mah).toLocaleString() + 'mAh</span>' : '') + '</td>' +
+        '<td><select class="inp sm" data-shipdisp="' + esc(r.id) + '">' + QC_REJ_DISP.concat(r.disp && QC_REJ_DISP.indexOf(r.disp) < 0 ? [r.disp] : []).map(function (d) { return '<option ' + (d === r.disp ? 'selected' : '') + '>' + esc(d) + '</option>'; }).join('') + '</select></td>' +
+        '<td class="small">' + esc(r.note || '') + '</td><td><button class="btn sm" data-act="shipRejDel" data-id="' + esc(r.id) + '" data-sn="' + esc(r.sn) + '" title="잘못 올린 S/N이면 지워요">취소</button></td></tr>';
+    }).join('') + '</tbody></table></div>';
+  }
+  return h + '</div>';
+}
 function lotCard() {
   var lots = (S.data.lots || []).slice().sort(function (a, b) { return String(a.model).localeCompare(String(b.model)) || String(a.prefix).localeCompare(String(b.prefix)) || (+a.fromNo - +b.fromNo); });
   var seen = {}, st = {}, none = 0;
@@ -2173,11 +2241,12 @@ function lotCard() {
     '<input class="inp mono" id="lotFrom" placeholder="시작 S/N·번호" value="' + esc(ed ? stockSn(ed, ed.fromNo) : '') + '" style="flex:1;min-width:150px"><span>~</span><input class="inp mono" id="lotTo" placeholder="끝 S/N·번호" value="' + esc(ed ? stockSn(ed, ed.toNo) : '') + '" style="flex:1;min-width:150px">' +
     '<label class="small nowrap">생산일 <input class="inp" id="lotMade" type="date" value="' + esc(ed ? ed.madeAt : '') + '" style="width:150px"></label><input class="inp" id="lotNote" placeholder="메모 (공장·셀 등)" value="' + esc(ed ? ed.note : '') + '" style="flex:1;min-width:120px">' +
     '<button class="btn pri" data-act="lotSave" data-id="' + esc(ed ? ed.id : '') + '">' + (ed ? '수정 저장' : '차수 등록') + '</button>' + (ed ? '<button class="btn" data-act="lotEdit" data-id="">취소</button>' : '') + '</div></div>' : '');
-  h += lots.length ? '<div class="tw"><table class="t"><thead><tr><th>차수</th><th>모델</th><th>S/N 구간</th><th>생산일</th><th>생산 수량</th><th>AS 접수 S/N</th><th>접수율</th><th>판정 불량 / 정상</th><th>메모</th><th></th></tr></thead><tbody>' +
+  h += lots.length ? '<div class="tw"><table class="t"><thead><tr><th>차수</th><th>모델</th><th>S/N 구간</th><th>생산일</th><th>생산 수량</th><th>출하 검사<br><span class="muted small">샘플 / 불합격</span></th><th>AS 접수 S/N</th><th>접수율</th><th>판정 불량 / 정상</th><th>메모</th><th></th></tr></thead><tbody>' +
     lots.map(function (l) {
-      var x = st[l.id] || { n: 0, bad: 0, ok: 0 };
+      var x = st[l.id] || { n: 0, bad: 0, ok: 0 }, sq = shipLotStat(l);
       return '<tr><td><span class="lotTag" style="margin:0">' + esc(l.name) + '</span></td><td>' + mtag(l.model) + colorTag(l.color || colorOfSn(stockSn(l, l.fromNo))) + '</td><td class="mono small">' + esc(stockSn(l, l.fromNo)) + '<br>~ ' + esc(stockSn(l, l.toNo)) + '</td>' +
-        '<td class="nowrap">' + esc(ymd(l.madeAt) || '-') + '</td><td>' + (+l.qty).toLocaleString() + '</td><td><b>' + x.n.toLocaleString() + '</b></td>' +
+        '<td class="nowrap">' + esc(ymd(l.madeAt) || '-') + '</td><td>' + (+l.qty).toLocaleString() + '</td>' +
+        '<td class="nowrap">' + (sq.sample || sq.rej ? (sq.sample ? sq.sample.toLocaleString() : '-') + ' / <b style="color:' + (sq.rej ? 'var(--red)' : 'var(--green)') + '">' + sq.rej + '</b>' + (sq.sample && sq.rejS ? ' <span class="small muted">(' + (sq.rejS / sq.sample * 100).toFixed(1) + '%)</span>' : '') : '<span class="muted">-</span>') + '</td><td><b>' + x.n.toLocaleString() + '</b></td>' +
         '<td>' + (+l.qty ? (x.n / +l.qty * 100).toFixed(2) + '%' : '-') + '</td><td><span style="color:var(--red)">' + x.bad + '</span> / <span style="color:var(--green)">' + x.ok + '</span></td>' +
         '<td class="small">' + esc(l.note || '') + '</td><td class="nowrap"><button class="btn sm" data-act="lotEdit" data-id="' + esc(l.id) + '">수정</button> <button class="btn sm" data-act="lotDel" data-id="' + esc(l.id) + '">삭제</button></td></tr>';
     }).join('') + '</tbody></table></div>' + (none ? '<div class="small muted" style="padding:10px 14px">등록된 차수에 해당하지 않는 AS S/N ' + none + '개 — 빠진 차수 구간이 있으면 추가해 주세요.</div>' : '')
@@ -2370,7 +2439,7 @@ function vDeliv() {
       '<div class="d small">' + (st ? 'AS 접수 ' + as.toLocaleString() + (sn ? ' S/N' : 'EA') + ' · 접수율 <b>' + (as / st * 100).toFixed(2) + '%</b>' : setLink) + '</div>' +
       (sn ? '<div class="d small muted">양산 차수 ' + Object.keys(lotC[p.id] || {}).length + '개 · 등록 S/N ' + ln.toLocaleString() + (st && ln < st ? ' · <span style="color:var(--orange,#c26a00)">차수 미등록 ' + (st - ln).toLocaleString() + '</span>' : '') + '</div>' : '<div class="d small muted">S/N 없이 수량으로 관리</div>') + '</div>';
   }).join('') + '</div>';
-  return h + lotCard();
+  return h + shipQcCard() + lotCard();
 }
 function vStockRep() {
   var X = stockCalc(), tot = 0, usedN = 0, left = 0, gapN = 0;
@@ -2853,6 +2922,41 @@ var ACT = {
     if (!askGate_(d.sn + ' 입고 제외를 취소하고 재고로 되돌릴까요?', function () { ACT.qcRejUndo(d, b); })) return;
     run('stockRej', { id: d.id, sn: d.sn, del: true }, d.sn + ' — 재고로 되돌렸어요.', b);
   },
+  shipQc: function (d, b) {
+    var sns = $('#sqSns').value.trim(), sample = $('#sqSample').value.trim();
+    if (!sns && !+sample) return toast('샘플 수량이나 불합격 S/N을 입력해 주세요.', true);
+    run('shipQc', { lotId: $('#sqLot').value, at: $('#sqAt').value, sample: sample, sns: sns, why: $('#sqWhy').value, disp: $('#sqDisp').value, note: $('#sqNote').value.trim() }, function (r) {
+      r = r || {};
+      var m = (r.insp ? '샘플 ' + r.insp.sample + '개 검사 · ' : '') + '불합격 ' + (r.added || []).length + '개 기록했어요.';
+      if (r.skipped && r.skipped.length) m += ' (이미 등록된 ' + r.skipped.length + '개 건너뜀)';
+      if (r.noLot && r.noLot.length) m += ' · 차수 구간이 없는 S/N ' + r.noLot.length + '개 — 아래 양산 차수에 구간을 등록하면 자동으로 붙어요';
+      return m;
+    }, b).catch(function () { });
+  },
+  shipCand: function (d, b) {
+    if (b) b.disabled = true;
+    call('ltQuery', { all: 1 }).then(function (r) { S.shipLt = (r && r.tests) || []; render(); }, function (e) { toast(e.message || String(e), true); if (b) b.disabled = false; });
+  },
+  shipRejLt: function (d, b) {
+    ask_(d.sn + '\n용량 시험 ' + (+d.mah).toLocaleString() + 'mAh — ' + (d.why || '불합격') + '\n\n출하(납품) 불합격으로 등록할까요? 나중에 이 S/N이 AS로 들어오면 경고가 떠요.', { title: '출하 불합격 등록', yes: '등록' }).then(function (ok) {
+      if (!ok) return;
+      run('shipQc', { at: today(), items: [{ sn: d.sn, why: '용량 미달', disp: '보관(처리 미정)', mah: d.mah, src: 'loadtest', note: '용량 시험 ' + (+d.mah).toLocaleString() + 'mAh · ' + (d.why || '') }] }, d.sn + ' 출하 불합격으로 등록했어요.', b);
+    });
+  },
+  shipRejDel: function (d, b) {
+    if (!askGate_(d.sn + ' 출하 불합격 기록을 지울까요?', function () { ACT.shipRejDel(d, b); })) return;
+    run('shipRejEdit', { id: d.id, del: true }, d.sn + ' 기록을 지웠어요.', b);
+  },
+  shipInspShow: function () { S.shipInspOpen = !S.shipInspOpen; render(); },
+  shipInspDel: function (d, b) {
+    if (!askGate_('이 샘플 검사 기록을 지울까요? (불합격 S/N 기록은 그대로 남아요)', function () { ACT.shipInspDel(d, b); })) return;
+    run('shipRejEdit', { inspId: d.id }, '검사 기록을 지웠어요.', b);
+  },
+  shipRejXlsx: function () {
+    var rows = [['검사일', '기종', 'S/N', '양산 차수', '불합격 사유', '용량(mAh)', '처리', '처리일', '메모', '기록자']];
+    (S.data.shiprej || []).slice().sort(function (a, b) { return String(a.at).localeCompare(String(b.at)); }).forEach(function (r) { rows.push([ymd(r.at), prodLabel(r.model || modelOfSn(r.sn)), r.sn, r.lot || '', r.why || '', r.mah || '', r.disp || '', r.doneAt || '', r.note || '', r.actor || '']); });
+    saveBlob_(xlsxBlob_(rows, '출하 불합격', [12, 16, 22, 10, 18, 10, 16, 12, 36, 12]), 'ship_reject_' + today().replace(/-/g, '') + '.xlsx');
+  },
   qcRejXlsx: function () {
     var rows = [['검사일', '기종', 'S/N', '불합격 사유', '처리', '처리일', '기록자', '입고 구간']];
     (S.data.stock || []).forEach(function (r) { qcRejOf(r).forEach(function (e) { rows.push([ymd(e.at), prodLabel(r.model || modelOfSn(e.sn)), e.sn, e.why || '', e.disp || '', e.doneAt || '', e.by || '', stockSn(r, r.fromNo) + ' ~ ' + String(r.toNo).slice(-5)]); }); });
@@ -3239,6 +3343,8 @@ document.addEventListener('change', function (e) {
   if (e.target.id === 'modelF') { S.model = e.target.value; render(); }
   if (e.target.id === 'anMonths') { S.an.months = +e.target.value; render(); }
   if (e.target.id === 'resP') { S.resP = e.target.value; render(); }
+  if (e.target.getAttribute && e.target.getAttribute('data-shipdisp')) run('shipRejEdit', { id: e.target.getAttribute('data-shipdisp'), disp: e.target.value }, '처리 → ' + e.target.value);
+  if (e.target.id === 'sqLot') S.sqLot = e.target.value;
   if (e.target.getAttribute && e.target.getAttribute('data-rejdisp')) { var rp = e.target.getAttribute('data-rejdisp').split('|'); run('stockRej', { id: rp[0], sn: rp[1], disp: e.target.value }, rp[1] + ' 처리 → ' + e.target.value); }
   if (e.target.id === 'lbModel' || e.target.id === 'stModel') { var cs = $(e.target.id === 'lbModel' ? '#lbColor' : '#stColor'); if (cs) { cs.innerHTML = colorOpts(e.target.value); cs.style.display = prodColors(e.target.value).length ? '' : 'none'; } }
   if (e.target.id === 'lbModel') lotBatchPreview();
@@ -3755,7 +3861,7 @@ function ltDraw(D) {
       (R.sag ? '<br><b>⚠ 출력 전압 저하</b> <span class="small">시험 중간에 시작보다 ' + (R.vStart - R.vMinMid).toFixed(2) + 'V 떨어졌어요 (케이블이 아니라 보조배터리 출력 문제일 수 있음)</span>' : '') +
       (low ? '<br>' + ltLowMsg(R.wh) : '') +
       (short ? '<br><b>⚠ 시험이 ' + Math.round(R.sec / 60) + '분 만에 끝났어요</b> <span class="small">연결이 빠졌거나 완충이 안 된 상태일 수 있어 자동 저장하지 않았어요.</span>' : '') +
-      '<div style="margin-top:6px">' + (D.saved ? '<span style="color:var(--green);font-weight:700">✓ 저장됨</span> <button class="btn sm" data-act="ltRep" data-sn="' + esc(sn) + '">📄 성적서</button>' : D.saving ? '<span class="muted">저장 중…</span>' :
+      '<div style="margin-top:6px">' + (D.saved ? '<span style="color:var(--green);font-weight:700">✓ 저장됨</span> <button class="btn sm" data-act="ltRep" data-sn="' + esc(sn) + '">📄 성적서</button>' + ltShipBtn({ mah: R.mah, wh: R.wh, cur: c.cur, cut: c.cut, purpose: c.purpose, sn: sn }) : D.saving ? '<span class="muted">저장 중…</span>' :
         (D.saveErr ? '<span style="color:var(--red)">' + esc(D.saveErr) + '</span> ' : '') + (sn ? '<button class="btn sm pri" data-lt="save">이 결과 저장</button>' : '<span class="muted">S/N을 넣으면 저장할 수 있어요</span>')) + '</div></div>';
   }
   k('res').innerHTML = res;
@@ -3816,7 +3922,7 @@ function ltRemoteCard(d, i) {
   if (ck && ck.v1 != null && (run || d.state === 'done')) msg += '<div class="small" style="margin-top:6px;color:' + (ck.ok ? 'var(--green)' : 'var(--amber)') + '">' + (ck.ok ? '✓ 케이블 점검 통과' : '⚠ 케이블 점검 무시하고 시험') + ' · 1A 기준 ' + (+ck.v1).toFixed(2) + 'V</div>';
   if (R) msg += '<div class="ltbox ' + (R.sag || R.wh < LT_LOW_WH ? 'warn' : 'ok') + '"><b>결과</b> ' + R.wh.toFixed(2) + 'Wh · ' + Math.round(R.mah).toLocaleString() + 'mAh · ' + ltHms(R.sec) + '<br>' + ltConvTxt(R.mah) + (ltJudge({ mah: R.mah, wh: R.wh, cur: c.cur, cut: c.cut, purpose: c.purpose, sn: sn }) ? '<br>' + ltJudgeHtml({ mah: R.mah, wh: R.wh, cur: c.cur, cut: c.cut, purpose: c.purpose, sn: sn }) : '') +
     '<br><span class="small">평균 ' + (+R.avgV).toFixed(2) + 'V · 중간 최저 ' + (+R.vMinMid).toFixed(2) + 'V · ' + esc(d.why || '') + '</span>' + (R.sag ? '<br><b>⚠ 출력 전압 저하</b>' : '') + (R.wh < LT_LOW_WH ? '<br>' + ltLowMsg(R.wh) : '') +
-    '<div style="margin-top:4px">' + (d.saved ? '<span style="color:var(--green);font-weight:700">✓ 저장됨</span> <button class="btn sm" data-act="ltRep" data-sn="' + esc(sn) + '">📄 성적서</button>' : d.saveErr ? '<span style="color:var(--red)">' + esc(d.saveErr) + '</span>' : '<span class="muted">저장 대기</span>') + '</div></div>';
+    '<div style="margin-top:4px">' + (d.saved ? '<span style="color:var(--green);font-weight:700">✓ 저장됨</span> <button class="btn sm" data-act="ltRep" data-sn="' + esc(sn) + '">📄 성적서</button>' + ltShipBtn({ mah: R.mah, wh: R.wh, cur: c.cur, cut: c.cut, purpose: c.purpose, sn: sn }) : d.saveErr ? '<span style="color:var(--red)">' + esc(d.saveErr) + '</span>' : '<span class="muted">저장 대기</span>') + '</div></div>';
   return '<div class="card ltdev"><div class="hd"><span class="ltno">' + esc(d.no) + '</span><b>DL24</b>' + (sn ? mtag(modelOfSn(sn)) : '') + '<span style="flex:1"></span><span class="ltpill ' + st[0] + '">' + st[1] + '</span></div><div class="bd">' +
     '<div class="mono" style="font-weight:700;margin-bottom:4px">' + (sn ? esc(sn) : '<span class="muted">S/N 없음</span>') + '</div>' +
     (sn ? '<div class="lthist small">' + ltHistHtml(sn, d.cid) + '</div>' : '') +
