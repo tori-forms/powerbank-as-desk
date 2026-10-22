@@ -3669,7 +3669,7 @@ function ltAgentApply(x) {
   var D = LT.devs.filter(function (d) { return d.no === x.no; })[0];
   if (!D) { D = { no: x.no, agent: true, log: [], sn: '' }; LT.devs.push(D); LT.devs.sort(function (a, b) { return a.no - b.no; }); ltCard(D); }
   var prevSaved = D.saved, prevSn = D.sn, prevState = D.state;
-  ['state', 'live', 'mode', 'setCur', 'setCut', 'err', 'lost', 'check', 'cond', 'result', 'saved', 'saving', 'saveErr', 'msg', 'startAt', 'endAt', 'why', 'cid', 'base'].forEach(function (k) { D[k] = x[k]; });
+  ['state', 'live', 'mode', 'setCur', 'setCut', 'err', 'lost', 'check', 'cond', 'result', 'saved', 'saving', 'saveErr', 'msg', 'startAt', 'endAt', 'why', 'cid', 'base', 'pauseMs', 'pausedAt', 'pauses', 'partial', 'resuming'].forEach(function (k) { D[k] = x[k]; });
   D.arm = x.armCut != null ? { cut: x.armCut } : null;
   var inp = D.el.querySelector('[data-k=sn]'), fresh = Date.now() - (D.snAt || 0) < 4000;
   if (document.activeElement !== inp && !(fresh && (x.sn || '') !== D.sn)) { D.sn = x.sn || ''; if (inp.value !== D.sn) inp.value = D.sn; }
@@ -3885,6 +3885,7 @@ function ltCard(D) {
     var b = e.target.closest('[data-lt]'); if (!b) return;
     var a = b.getAttribute('data-lt');
     if (a === 'purauto') { D.purManual = false; D.pur = ''; D.snAt = Date.now(); if (LT.agent) ltAgentCmd(D, 'sn', { sn: ltNorm(sn.value) || D.sn, purSel: '', purSn: '' }); ltDraw(D); return; }
+    if (a === 'resume') { var pv = D.partial || D.result || {}; return ask_((D.cond && D.cond.sn || D.sn) + '\n지금까지 ' + (+pv.wh || 0).toFixed(2) + 'Wh · ' + Math.round(+pv.mah || 0).toLocaleString() + 'mAh\n\n같은 조건(' + (D.cond ? D.cond.cur + 'A · 차단 ' + D.cond.cut + 'V' : '') + ')으로 이어서 잴까요? 보조배터리는 그대로 두세요 (다시 충전하면 안 돼요).', { title: '이어서 시험', yes: '이어서 시험' }).then(function (ok) { if (ok) ltAgentCmd(D, 'resume'); }); }
     if (a === 'go') ltAskFull([D]).then(function (ok) { if (ok) ltStart(D); }); else if (a === 'stop') ltStop(D); else if (a === 'skip') ltStart(D, true); else if (a === 'save') ltSave(D);
   });
   ltDraw(D);
@@ -3904,10 +3905,10 @@ function ltSetSn(D, v) {
 function ltDraw(D) {
   var el = D.el; if (!el) return;
   var k = function (n) { return el.querySelector('[data-k=' + n + ']'); }, L = D.live, R = D.result, c = D.cond || {};
-  var st = D.err ? ['bad', D.lost ? '연결 끊김' : '통신 오류'] : D.state === 'arm' ? ['wait', '출력 대기'] : D.state === 'check' ? ['run', '케이블 점검 중'] : D.state === 'run' ? ['run', '시험 중'] : D.state === 'done' ? ['ok', '완료'] : ['idle', L && L.on ? '부하 ON (대기)' : '대기'];
+  var st = D.err ? ['bad', D.lost ? '연결 끊김' : '통신 오류'] : D.state === 'arm' ? ['wait', D.resuming ? '이어서 시험 대기' : '출력 대기'] : D.state === 'check' ? ['run', D.resuming ? '이어서 시험 준비' : '케이블 점검 중'] : D.state === 'run' ? ['run', D.pauses ? '시험 중 (이어서)' : '시험 중'] : D.state === 'paused' ? ['wait', '중간 멈춤'] : D.state === 'done' ? ['ok', '완료'] : ['idle', L && L.on ? '부하 ON (대기)' : '대기'];
   k('pill').className = 'ltpill ' + st[0]; k('pill').textContent = st[1];
   var next = D.state === 'done' && D.sn && c.sn && D.sn !== c.sn;
-  var snNow = (D.state === 'run' || D.state === 'done') && c.sn && !next ? c.sn : D.sn;
+  var snNow = (D.state === 'run' || D.state === 'done' || D.state === 'paused') && c.sn && !next ? c.sn : D.sn;
   k('model').innerHTML = snNow ? mtag(modelOfSn(snNow)) : '';
   k('hist').innerHTML = snNow ? ltHistHtml(snNow, D.cid) : '';
   var curPur = (D.state === 'run' || D.state === 'done') && c.purpose && !next ? c.purpose : ltPurOf(D), ps = k('pur');
@@ -3917,16 +3918,20 @@ function ltDraw(D) {
   if (L) {
     k('v').textContent = L.v.toFixed(3) + 'V'; k('a').textContent = L.a.toFixed(3) + 'A'; k('w').textContent = (L.v * L.a).toFixed(2) + 'W';
     var b = D.base || { wh: L.wh, mah: L.mah }, live = D.state === 'run';
-    k('wh').textContent = R ? R.wh.toFixed(2) : live ? (L.wh - b.wh).toFixed(2) : '-';
-    k('mah').textContent = R ? Math.round(R.mah).toLocaleString() : live ? Math.round(L.mah - b.mah).toLocaleString() : '-';
+    var pt = D.partial;
+    k('wh').textContent = R && D.state === 'done' ? R.wh.toFixed(2) : live ? (L.wh - b.wh).toFixed(2) : pt ? pt.wh.toFixed(2) : '-';
+    k('mah').textContent = R && D.state === 'done' ? Math.round(R.mah).toLocaleString() : live ? Math.round(L.mah - b.mah).toLocaleString() : pt ? Math.round(pt.mah).toLocaleString() : '-';
   }
-  k('tm').textContent = D.startAt && (D.state === 'run' || D.state === 'done') ? ltHms(((D.state === 'done' ? D.endAt : Date.now()) - D.startAt) / 1000) : '-';
-  k('meta').textContent = (D.state === 'run' || D.state === 'done' ? '조건 ' + c.cur + 'A · 차단 ' + c.cut + 'V · ' + (LT_PUR_LABEL[c.purpose] || c.purpose || '') + ' · ' : '') +
+  var tEnd = D.state === 'done' ? D.endAt : D.state === 'paused' ? (D.partial ? D.partial.t : D.pausedAt) : Date.now();
+  k('tm').textContent = D.startAt && (D.state === 'run' || D.state === 'done' || D.state === 'paused') ? (D.state === 'done' && R ? ltHms(R.sec) : ltHms((tEnd - D.startAt - (D.pauseMs || 0)) / 1000)) : '-';
+  k('meta').textContent = (D.state === 'run' || D.state === 'done' || D.state === 'paused' ? '조건 ' + c.cur + 'A · 차단 ' + c.cut + 'V · ' + (LT_PUR_LABEL[c.purpose] || c.purpose || '') + ' · ' : '') +
     (D.setCur !== undefined ? '장비 설정 ' + (['CC', 'CV', 'CR', 'CP'][D.mode] || '?') + ' ' + D.setCur.toFixed(2) + 'A / 차단 ' + D.setCut.toFixed(2) + 'V' : '') + (L ? ' · MOS ' + L.temp.toFixed(1) + '℃' : '');
   var msg = '', ck = D.check;
   if (D.err) msg += '<div class="ltbox bad">' + esc(D.err) + '</div>';
   if (D.msg) msg += '<div class="ltbox ' + D.msg[0] + '">' + esc(D.msg[1]) + '</div>';
-  if (D.state === 'arm') msg += '<div class="ltbox warn">⏳ <b>출력 대기 중</b> — 보조배터리를 연결하거나 전원 버튼을 누르면 1초 안에 자동으로 시작해요.<br><span class="small">지금 전압 ' + (L ? L.v.toFixed(2) : '-') + 'V · 대기 상태(0V 근처)여도 괜찮아요. 취소하려면 ■ 정지</span></div>';
+  if (D.state === 'paused') msg += '<div class="row" style="margin-top:6px;gap:6px"><button class="btn pri sm" data-lt="resume">▶ 이어서 시험</button><button class="btn sm" data-lt="stop">■ 여기서 종료 (지금까지 값으로 저장)</button></div>';
+  if (D.state === 'arm' && D.resuming) msg += '<div class="ltbox warn">⏳ <b>이어서 시험 — 출력 대기 중</b> — 보조배터리 출력이 켜지면 바로 이어서 재요. 꺼져 있으면 전원 버튼을 눌러 주세요. 취소하려면 ■ 정지</div>';
+  else if (D.state === 'arm') msg += '<div class="ltbox warn">⏳ <b>출력 대기 중</b> — 보조배터리를 연결하거나 전원 버튼을 누르면 1초 안에 자동으로 시작해요.<br><span class="small">지금 전압 ' + (L ? L.v.toFixed(2) : '-') + 'V · 대기 상태(0V 근처)여도 괜찮아요. 취소하려면 ■ 정지</span></div>';
   if (ck && !ck.ok && !ck.skip && D.state === 'idle') msg += '<div class="ltbox bad"><b>케이블 교체 필요</b> — 1A 기준 ' + ck.v1.toFixed(2) + 'V (기준 ' + LT_CABLE_MIN.toFixed(2) + 'V 이상)<br>' +
     '<span class="small">무부하 ' + ck.voc.toFixed(2) + 'V → ' + ck.i.toFixed(2) + 'A에서 ' + ck.vload.toFixed(2) + 'V (경로 저항 ' + ck.r.toFixed(2) + 'Ω). 케이블을 바꾸고 ▶ 시작을 다시 눌러 주세요.</span>' +
     '<div style="margin-top:6px"><button class="btn sm" data-lt="skip">점검 무시하고 시작</button></div></div>';
@@ -3940,6 +3945,7 @@ function ltDraw(D) {
       (vs ? '<br><b>최초 시험 대비 ' + vs.pct + '%</b> <span class="small">(최초 ' + ymd(vs.first.startAt) + ' ' + (+vs.first.wh).toFixed(1) + 'Wh)</span>' : '') +
       (R.sag ? '<br><b>⚠ 출력 전압 저하</b> <span class="small">시험 중간에 시작보다 ' + (R.vStart - R.vMinMid).toFixed(2) + 'V 떨어졌어요 (케이블이 아니라 보조배터리 출력 문제일 수 있음)</span>' : '') +
       (low ? '<br>' + ltLowMsg(R.wh) : '') +
+      (LT.agent && D.state === 'done' && L && !L.on && L.v >= LT_ARM_MIN_V && !next && D.cid ? '<div class="ltbox warn" style="margin:8px 0 0">보조배터리 출력이 아직 <b>' + L.v.toFixed(2) + 'V</b>로 살아 있어요 — 다 닳아서 끝난 게 아니라 <b>중간에 끊긴</b> 것일 수 있어요 (보호 동작·케이블 접촉·장비 알람). <button class="btn sm pri" data-lt="resume" style="margin-left:6px">▶ 이어서 시험</button><div class="small" style="margin-top:4px">이어서 재면 지금 결과(' + R.wh.toFixed(2) + 'Wh)에 더해지고, 끝나면 같은 기록이 고쳐 저장돼요.</div></div>' : '') +
       (short ? '<br><b>⚠ 시험이 ' + Math.round(R.sec / 60) + '분 만에 끝났어요</b> <span class="small">연결이 빠졌거나 완충이 안 된 상태일 수 있어 자동 저장하지 않았어요.</span>' : '') +
       '<div style="margin-top:6px">' + (D.saved ? '<span style="color:var(--green);font-weight:700">✓ 저장됨</span> <button class="btn sm" data-act="ltRep" data-sn="' + esc(sn) + '">📄 성적서</button>' + ltShipBtn({ mah: R.mah, wh: R.wh, cur: c.cur, cut: c.cut, purpose: c.purpose, sn: sn }) : D.saving ? '<span class="muted">저장 중…</span>' :
         (D.saveErr ? '<span style="color:var(--red)">' + esc(D.saveErr) + '</span> ' : '') + (sn ? '<button class="btn sm pri" data-lt="save">이 결과 저장</button>' : '<span class="muted">S/N을 넣으면 저장할 수 있어요</span>')) + '</div></div>';
@@ -3983,13 +3989,13 @@ function ltRemoteStart() {
 }
 function ltRemoteAge() { return LTR.live ? (LTR.live.age || 0) + Math.round((Date.now() - LTR.got) / 1000) : 0; }
 function ltRemoteState(d) {
-  return d.err ? ['bad', d.lost ? '연결 끊김' : '통신 오류'] : d.state === 'arm' ? ['wait', '출력 대기'] : d.state === 'check' ? ['run', '케이블 점검 중'] : d.state === 'run' ? ['run', '시험 중'] : d.state === 'done' ? ['ok', '완료'] : ['idle', '대기'];
+  return d.err ? ['bad', d.lost ? '연결 끊김' : '통신 오류'] : d.state === 'arm' ? ['wait', d.resuming ? '이어서 시험 대기' : '출력 대기'] : d.state === 'check' ? ['run', '케이블 점검 중'] : d.state === 'run' ? ['run', '시험 중'] : d.state === 'paused' ? ['wait', '중간 멈춤'] : d.state === 'done' ? ['ok', '완료'] : ['idle', '대기'];
 }
 function ltRemoteSec(d) {
   if (!d.startAt) return null;
   if (d.state === 'done' && d.result) return d.result.sec;
   if (d.state !== 'run') return null;
-  return ((LTR.live.agentAt || LTR.live.ms) - d.startAt) / 1000;
+  return ((LTR.live.agentAt || LTR.live.ms) - d.startAt - (d.pauseMs || 0)) / 1000;
 }
 function ltRemoteCard(d, i) {
   var L = d.live, R = d.result, c = d.cond || {}, st = ltRemoteState(d), sn = (d.state === 'run' || d.state === 'done') && c.sn ? c.sn : d.sn;
@@ -4037,7 +4043,7 @@ function vLoadtest() {
     : '<div class="ltbox ok" style="margin-bottom:10px">✓ <b>PC 기록 프로그램 연결됨</b> v' + esc(LT.agent.version) + ' — 이 화면을 닫거나 새로고침해도 기록은 계속돼요. 시험이 끝나면 프로그램이 결과를 바로 저장해요.' + (LT.agent.pending ? ' (저장 대기 ' + LT.agent.pending + '건)' : '') + '</div>')
     : remoteOnly ? '' : '<div class="ltbox warn" style="margin-bottom:10px"><b>브라우저 기록 모드</b> — PC 기록 프로그램이 꺼져 있어서 이 화면이 직접 기록해요. <b>이 탭을 닫거나 새로고침하면 그동안 기록이 끊겨요.</b> 시험 PC에서는 기록 프로그램을 켜 두세요.</div>';
   var f = function (l, h) { return '<label class="fld"><span>' + l + '</span>' + h + '</label>'; };
-  return '<div class="card"><div class="hd"><h3>폼즈 보조배터리 로드테스트</h3><span class="muted small">ATORCH DL24 · ' + (remoteOnly ? '서버 PC ' + LTR.live.devices.length : 'USB 연결 ' + LT.devs.length) + '대</span><span style="flex:1"></span>' +
+  return '<div class="card"><div class="hd"><h3>폼즈 보조배터리 로드테스트</h3><span class="muted small">ATORCH DL24 · ' + (remoteOnly ? '서버 PC ' + LTR.live.devices.length : 'USB 연결 ' + LT.devs.length) + '대' + (LT.agent && +LT.agent.hidCount > LT.devs.length ? ' · <b style="color:var(--amber)">PC 인식 ' + LT.agent.hidCount + '대 — 응답 없는 장비 ' + (LT.agent.hidCount - LT.devs.length) + '대</b>' : '') + '</span><span style="flex:1"></span>' +
     '<button class="btn sm pri" data-act="ltRep">📄 성적서 (원하는 S/N만)</button><button class="btn sm" data-act="ltXlsx">엑셀 다운로드 (S/N별 전체 기록)</button></div><div class="bd">' +
     mode + (hid || remoteOnly ? '' : '<div class="ltbox bad" style="margin-bottom:10px">이 브라우저는 USB 장비 연결을 지원하지 않아요. PC 크롬(또는 엣지)에서 열어 주세요. 기록 조회·엑셀은 그대로 쓸 수 있어요.</div>') +
     (remoteOnly ? '<div class="small muted">시험 조작은 서버 PC(기록 프로그램이 켜진 PC)에서 해요. 이 PC에서는 아래에서 진행 상황을 실시간으로 볼 수 있어요.</div><details style="margin-top:10px"><summary class="small" style="cursor:pointer">이 PC에 장비를 직접 연결해서 시험하기</summary>' : '') +
@@ -4045,7 +4051,7 @@ function vLoadtest() {
     f('방전 전류 (A, CC)', '<input class="inp" id="ltCur" type="number" step="0.1" min="0.1" max="5" value="' + esc(ltVal('ltCur', LT_STD.cur)) + '" style="width:90px">') +
     f('차단 전압 (V)', '<input class="inp" id="ltCut" type="number" step="0.1" min="0.5" max="20" value="' + esc(ltVal('ltCut', LT_STD.cut)) + '" style="width:90px">') +
     f('케이블', '<input class="inp" id="ltCable" value="' + esc(ltVal('ltCable', LT_STD.cable)) + '" style="width:170px">') +
-    (hid ? (LT.agent ? '' : '<button class="btn pri" data-act="ltAdd">＋ 장비 추가 (USB)</button>') + '<button class="btn" data-act="ltAll">▶ 전체 시작</button><button class="btn red" data-act="ltStopAll">■ 전체 정지</button>' + (LT.agent ? '<button class="btn" data-act="ltAssign" title="실물 1번 테스트기부터 차례로 배터리를 꽂으면 그 순서대로 1, 2, 3… 번호가 붙어요">칸 번호 지정</button><button class="btn" data-act="ltRenum" title="연결 끊긴 칸을 지우고 칸 번호를 1부터 다시 매겨요 (시험 중이 아닐 때만)">칸 번호 정리</button>' : '') : '') + '</div>' + (remoteOnly ? '</details>' : '') +
+    (hid ? (LT.agent ? '' : '<button class="btn pri" data-act="ltAdd">＋ 장비 추가 (USB)</button>') + '<button class="btn" data-act="ltAll">▶ 전체 시작</button><button class="btn red" data-act="ltStopAll">■ 전체 정지</button>' + (LT.agent ? '<button class="btn" data-act="ltAssign" title="실물 1번 테스트기부터 차례로 배터리를 꽂으면 그 순서대로 1, 2, 3… 번호가 붙어요">칸 번호 지정</button><button class="btn" data-act="ltRescan" title="응답 없는 장비·시험 중이 아닌 장비만 USB 연결을 새로 해요. 시험 중인 장비는 그대로 이어져요">🔌 장비 다시 찾기</button><button class="btn" data-act="ltRenum" title="연결 끊긴 칸을 지우고 칸 번호를 1부터 다시 매겨요 (시험 중이 아닐 때만)">칸 번호 정리</button>' : '') : '') + '</div>' + (remoteOnly ? '</details>' : '') +
     '<details style="margin-top:12px"><summary class="small" style="cursor:pointer;font-weight:600">사용 방법 · 표준 조건</summary><ol class="small" style="margin:8px 0 0;padding-left:18px;color:var(--ink2);line-height:1.7">' +
     '<li>표준 조건: <b>고객사(티오더) 시험과 같은 CC 3.0A · 차단 0.7V</b> (보호회로가 출력을 끌 때까지) · A 포트 5V 출력 · 시험용 A-to-C 30cm 케이블(3A급 굵은 선, 장비마다 고정) · 100% 완충 · 실온</li>' +
     '<li>판정(고객사 기준): 기준 용량 19,000mAh · <b>측정 12,000mAh(3.7V 환산 16,216mAh) 이상 합격</b>, 12,000~12,360(여유 3% 미만)은 <b>합격(여유 적음)</b> — 케이블·온도 차이로 고객사 측정에서 미달할 수 있어요. 회수분은 고객사 최소 대비 80% 이상 정상 노화, 미만 성능 불량.</li>' +
@@ -4314,6 +4320,14 @@ ACT.ltAssign = function () {
   ask_('실물 테스트기에 붙인 번호대로 칸 번호를 맞춥니다.\n\n1. 모든 테스트기에서 배터리를 빼 주세요.\n2. [시작]을 누른 뒤 1번 테스트기부터 차례로 배터리를 꽂으세요 (배터리 1개로 옮겨 가며 꽂아도 돼요).\n3. 전압이 잡히는 순서대로 1, 2, 3… 번 칸이 돼요.\n\n장비를 같은 USB 포트에 두면 다음에도 번호가 그대로예요.', { title: '칸 번호 지정', yes: '시작' }).then(function (ok) {
     if (!ok) return;
     ltAgentCmd(null, 'assignStart').then(function (r) { if (r) ltAssignPaint(r.assign); });
+  });
+};
+ACT.ltRescan = function (d, b) {
+  if (b) b.disabled = true;
+  ltAgentCmd(null, 'rescan').then(function (r) {
+    if (b) b.disabled = false; if (!r) return;
+    setTimeout(ltAgentPoll, 1500);
+    toast('장비 다시 찾기: PC가 인식한 DL24 ' + r.hid + '대 · 응답하는 장비 ' + r.live + '대' + (r.hid > r.live ? ' — 응답 없는 장비는 몇 초 안에 다시 연결을 시도해요' : '') + '. 시험 중인 장비는 그대로예요.');
   });
 };
 ACT.ltAssignStop = function () { ltAgentCmd(null, 'assignStop').then(function (r) { if (r) ltAssignPaint(r.assign); }); };
