@@ -885,10 +885,10 @@ function counts() {
 }
 
 var VIEWS = [
-  ['home', '▦', '대시보드'], ['inbox', '✉', '인입함'], ['ship', '⇢', '출고'], ['ret', '⇠', '회수'], ['inspect', '⚗', '회수분 검사'], ['results', '✔', '검사 결과'], ['loadtest', '⚡', '용량 테스트'],
+  ['home', '▦', '대시보드'], ['inbox', '✉', '인입함'], ['ship', '⇢', '출고'], ['ret', '⇠', '회수'], ['inspect', '⚗', '회수분 검사'], ['results', '✔', 'AS 회수분 검사 결과'], ['shipqc', '✓', '납품 검사 결과'], ['loadtest', '⚡', '용량 테스트'],
   ['stock', '▣', '재고'], ['analysis', '▤', '불량 분석'], ['guide', 'ⓘ', '제품 안내'], ['settings', '⚙', '설정·동기화']
 ];
-var CS_HIDE = { inbox: 1, inspect: 1, stock: 1, settings: 1, guide: 1, loadtest: 1 };
+var CS_HIDE = { inbox: 1, inspect: 1, stock: 1, settings: 1, guide: 1, loadtest: 1, shipqc: 1 };
 var CS_ACT = { guideP: 1, allCases: 1, resF: 1, resCsv: 1, resOpen: 1, go: 1, 'case': 1, closeDrawer: 1, closeModal: 1, inboxFilter: 1, inboxSel: 1, toggleOld: 1, toTop: 1, slkBig: 1, ship: 1, ret: 1, anModel: 1, searchStore: 1, reload: 1 };
 var CS_IN = { q: 1, modelF: 1, anMonths: 1, resP: 1 };
 function csScrub_() {
@@ -921,9 +921,9 @@ function render() {
   var t = VIEWS.filter(function (v) { return v[0] === S.view; })[0];
   document.body.classList.toggle('cs', CS());
   $('#title').textContent = t[2];
-  var sub = { home: '', inbox: 'Slack #ext-볼타레스-티오더 접수 양식 자동 수집', cases: '교환 출고 → 반품 신청 → 회수 입고', inspect: '바코드 스캔으로 회수 매칭 → 판정 · 원인 · 처분', results: '검사 끝난 회수품 — 판정별로 전산 처리할 때 보세요', guide: '제품 구성 · 사양 · 사용 방법 · 매뉴얼', analysis: '모델별 불량 데이터', stock: '교체 재고(AS 교환용) · 납품 재고(고객사 납품·양산 차수)', settings: '연동 상태와 티오더 시트 동기화' }[S.view] || '';
+  var sub = { home: '', inbox: 'Slack #ext-볼타레스-티오더 접수 양식 자동 수집', cases: '교환 출고 → 반품 신청 → 회수 입고', inspect: '바코드 스캔으로 회수 매칭 → 판정 · 원인 · 처분', results: 'AS로 회수한 제품의 검사 결과 — 판정별로 전산 처리할 때 보세요', shipqc: '신품 납품(출하) 전 샘플 검사 · 용량 시험(납품 검사) 결과 · 불합격 S/N — 사내 전용 (고객사 화면에는 안 보여요)', guide: '제품 구성 · 사양 · 사용 방법 · 매뉴얼', analysis: '모델별 불량 데이터', stock: '교체 재고(AS 교환용) · 납품 재고(고객사 납품·양산 차수)', settings: '연동 상태와 티오더 시트 동기화' }[S.view] || '';
   $('#subtitle').textContent = sub; $('#subtitle').style.display = sub ? '' : 'none';
-  var fn = { home: vHome, inbox: vInbox, ship: vShip, ret: vReturn, inspect: vInspect, results: vResults, guide: vGuide, stock: vStock, analysis: vAnalysis, settings: vSettings, loadtest: vLoadtest }[S.view];
+  var fn = { home: vHome, inbox: vInbox, ship: vShip, ret: vReturn, inspect: vInspect, results: vResults, shipqc: vShipQc, guide: vGuide, stock: vStock, analysis: vAnalysis, settings: vSettings, loadtest: vLoadtest }[S.view];
   if (S.view === 'loadtest') ltBeforeRender();
   $('#view').innerHTML = (DEMO_MODE ? '<div class="flag" style="margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#fff7e6;color:#8a5a00;border:1px solid #ffe2a8"><b>데모 화면</b><span>가상 데이터로 만든 예시예요. 실제 AS 현황이 아닙니다.</span><a href="#" data-act="demoLogin" style="margin-left:auto;color:#8a5a00;text-decoration:underline">관리자 접속</a></div>' : '') + fn();
   if (S.view === 'inbox') { loadInboxDetail(); setTimeout(loadSlackImgs, 30); }
@@ -2242,6 +2242,48 @@ function shipQcCard() {
   }
   return h + '</div>';
 }
+function shipLtLoad_(force) {
+  if (S.shipLtLoading || (S.shipLt && !force)) return;
+  S.shipLtLoading = 1;
+  call('ltQuery', { all: 1 }).then(function (r) { S.shipLt = (r && r.tests) || []; S.shipLtLoading = 0; if (S.view === 'shipqc') render(); },
+    function () { S.shipLt = S.shipLt || []; S.shipLtLoading = 0; });
+}
+function vShipQc() {
+  shipLtLoad_();
+  var lts = (S.shipLt || []).filter(function (t) { return t.purpose === '입고 QC' && t.sn; });
+  var last = {}; lts.forEach(function (t) { var k = String(t.startAt || t.createdAt); if (!last[t.sn] || k > String(last[t.sn].startAt || last[t.sn].createdAt)) last[t.sn] = t; });
+  var lastL = Object.keys(last).map(function (k) { return last[k]; }).sort(function (a, b) { return String(b.startAt).localeCompare(String(a.startAt)); });
+  var jd = lastL.map(function (t) { return { t: t, j: ltJudge(t) }; });
+  var ltBad = jd.filter(function (x) { return x.j && x.j.cls === 'bad'; }).length, ltOk = jd.filter(function (x) { return x.j && x.j.cls !== 'bad'; }).length;
+  var insp = S.data.shipinsp || [], rej = S.data.shiprej || [];
+  var sN = insp.reduce(function (a, i) { return a + (+i.sample || 0); }, 0), sF = insp.filter(function (i) { return +i.sample; }).reduce(function (a, i) { var n = rej.filter(function (r) { return r.inspId === i.id; }).length; return a + (n || +i.fail || 0); }, 0);
+  var open = rej.filter(function (r) { return !r.disp || /예정|대기|미정/.test(r.disp); }).length;
+  var kp = function (l, v, u, d, col) { return '<div class="kpi" style="cursor:default"><div class="l">' + l + '</div><div class="v"' + (col ? ' style="color:' + col + '"' : '') + '>' + v + '<small>' + u + '</small></div><div class="d small">' + d + '</div></div>'; };
+  var h = '<div class="kpis" style="grid-template-columns:repeat(4,minmax(0,1fr))">' +
+    kp('샘플 검사', sN.toLocaleString(), '개', '검사 ' + insp.length + '회' + (sN ? ' · 샘플 불합격률 <b>' + (sF / sN * 100).toFixed(1) + '%</b>' : '')) +
+    kp('출하 불합격 S/N', rej.length, '개', open ? '<b style="color:var(--amber)">처리 남음 ' + open + '</b>' : '처리 모두 지정됨', rej.length ? 'var(--red)' : '') +
+    kp('용량 시험 (납품 검사)', lastL.length, '대', S.shipLt ? '합격 ' + ltOk + ' · <b style="color:' + (ltBad ? 'var(--red)' : 'inherit') + '">불합격 ' + ltBad + '</b> <span class="muted">(S/N별 마지막 시험)</span>' : '불러오는 중…') +
+    kp('불합격 미등록', (shipCands() || []).length, '개', '용량 시험 불합격인데 출하 불합격으로 안 올린 S/N', (shipCands() || []).length ? 'var(--amber)' : '') +
+    '</div>';
+  h += shipQcCard();
+  var lots = (S.data.lots || []).slice().sort(function (a, b) { return String(a.model).localeCompare(String(b.model)) || String(a.prefix).localeCompare(String(b.prefix)) || (+a.fromNo - +b.fromNo); });
+  var ltByLot = {}; jd.forEach(function (x) { var l = lotOf(x.t.sn); var k = l ? l.id : '-'; var o = ltByLot[k] = ltByLot[k] || { n: 0, bad: 0, mah: 0 }; o.n++; o.mah += +x.t.mah || 0; if (x.j && x.j.cls === 'bad') o.bad++; });
+  var rowsL = lots.map(function (l) { var q = shipLotStat(l), lt = ltByLot[l.id]; if (!q.sample && !q.rej && !lt) return ''; return '<tr><td><span class="lotTag" style="margin:0">' + esc(l.name) + '</span></td><td>' + mtag(l.model) + colorTag(l.color || colorOfSn(stockSn(l, l.fromNo))) + '</td><td>' + (q.rounds || 0) + '회</td><td>' + (q.sample ? q.sample.toLocaleString() : '-') + '</td><td><b style="color:' + (q.rej ? 'var(--red)' : 'inherit') + '">' + q.rej + '</b></td><td>' + (q.sample ? (q.rejS / q.sample * 100).toFixed(1) + '%' : '-') + '</td><td>' + (lt ? lt.n + '대 · 평균 ' + Math.round(lt.mah / lt.n).toLocaleString() + 'mAh' + (lt.bad ? ' · <b style="color:var(--red)">불합격 ' + lt.bad + '</b>' : '') : '-') + '</td></tr>'; }).join('');
+  h += '<div class="card" style="margin-top:14px"><div class="hd"><h3>양산 차수별 납품 검사</h3><span class="muted small">샘플 검사 회차·불합격 · 용량 시험(납품 검사) 평균</span></div>' + (rowsL ? '<div class="tw"><table class="t"><thead><tr><th>차수</th><th>모델</th><th>검사 회차</th><th>샘플</th><th>불합격</th><th>샘플 불합격률</th><th>용량 시험</th></tr></thead><tbody>' + rowsL + '</tbody></table></div>' : '<div class="empty">아직 차수별 납품 검사 기록이 없어요.</div>') + '</div>';
+  var f = S.shipLtF || 'all', shown = jd.filter(function (x) { return f === 'all' || (f === 'bad' ? x.j && x.j.cls === 'bad' : !(x.j && x.j.cls === 'bad')); });
+  h += '<div class="card" style="margin-top:14px"><div class="hd"><h3>용량 시험 결과 — 납품 검사</h3><span class="muted small">용량 테스트에서 시험 구분 [납품 검사]로 잰 것 · S/N별 마지막 시험</span><span style="flex:1"></span>' +
+    [['all', '전체'], ['bad', '불합격'], ['ok', '합격']].map(function (t) { return '<button class="btn sm' + (f === t[0] ? ' pri' : '') + '" data-act="shipLtF" data-v="' + t[0] + '">' + t[1] + '</button>'; }).join(' ') +
+    ' <button class="btn sm" data-act="shipLtReload">새로고침</button></div>' +
+    (!S.shipLt ? '<div class="empty">불러오는 중…</div>' : !shown.length ? '<div class="empty">해당 시험 기록이 없어요.</div>' :
+      '<div class="tw" style="max-height:520px"><table class="t"><thead><tr><th>시험일</th><th>S/N</th><th>조건</th><th>용량</th><th>판정</th><th>출하 불합격</th><th></th></tr></thead><tbody>' + shown.slice(0, 400).map(function (x) {
+        var t = x.t, j = x.j, col = !j ? 'inherit' : j.cls === 'ok' ? 'var(--green)' : j.cls === 'warn' ? 'var(--amber)' : 'var(--red)', r = shipRejOf(t.sn);
+        return '<tr><td class="nowrap">' + esc(ymd(t.startAt || t.createdAt)) + '</td><td class="mono small">' + esc(t.sn) + lotTag(t.sn) + '</td><td class="small nowrap">' + esc((+t.cur).toFixed(1) + 'A · ' + (+t.cut).toFixed(1) + 'V') + '</td>' +
+          '<td class="nowrap">' + (+t.wh).toFixed(1) + 'Wh · ' + Math.round(+t.mah).toLocaleString() + 'mAh</td><td><b style="color:' + col + '">' + esc(j ? j.txt : '-') + '</b>' + (j ? '<div class="small muted">' + esc(j.why) + '</div>' : '') + '</td>' +
+          '<td>' + (r ? '<span class="small" style="color:var(--red)">등록됨 · ' + esc(r.disp || '') + '</span>' : (j && j.cls === 'bad' ? '<button class="btn sm" data-act="shipRejLt" data-sn="' + esc(t.sn) + '" data-mah="' + Math.round(+t.mah) + '" data-why="' + esc(j.why) + '">불합격 등록</button>' : '-')) + '</td>' +
+          '<td><button class="btn sm" data-act="ltRep" data-sn="' + esc(t.sn) + '">📄 성적서</button></td></tr>';
+      }).join('') + '</tbody></table></div>') + '</div>';
+  return h;
+}
 function lotCard() {
   var lots = (S.data.lots || []).slice().sort(function (a, b) { return String(a.model).localeCompare(String(b.model)) || String(a.prefix).localeCompare(String(b.prefix)) || (+a.fromNo - +b.fromNo); });
   var seen = {}, st = {}, none = 0;
@@ -2457,7 +2499,7 @@ function vDeliv() {
       '<div class="d small">' + (st ? 'AS 접수 ' + as.toLocaleString() + (sn ? ' S/N' : 'EA') + ' · 접수율 <b>' + (as / st * 100).toFixed(2) + '%</b>' : setLink) + '</div>' +
       (sn ? '<div class="d small muted">양산 차수 ' + Object.keys(lotC[p.id] || {}).length + '개 · 등록 S/N ' + ln.toLocaleString() + (st && ln < st ? ' · <span style="color:var(--orange,#c26a00)">차수 미등록 ' + (st - ln).toLocaleString() + '</span>' : '') + '</div>' : '<div class="d small muted">S/N 없이 수량으로 관리</div>') + '</div>';
   }).join('') + '</div>';
-  return h + shipQcCard() + lotCard();
+  return h + '<div class="note" style="margin-top:14px">신품 샘플 검사·출하 불합격 기록은 <a href="#" data-act="go" data-v="shipqc" style="color:var(--blue)">납품 검사 결과</a> 탭에서 해요. 아래 차수 표의 출하 검사 칸은 거기 기록이 합산된 거예요.</div>' + lotCard();
 }
 function vStockRep() {
   var X = stockCalc(), tot = 0, usedN = 0, left = 0, gapN = 0;
@@ -2956,6 +2998,8 @@ var ACT = {
   },
   sqAdd: function () { var F = sqForm(), last = F.rows[F.rows.length - 1] || {}; F.rows.push({ sn: '', why: '', disp: last.disp || '보관(처리 미정)', note: '' }); render(); var x = document.querySelector('[data-sqr="' + (F.rows.length - 1) + '|sn"]'); if (x) x.focus(); },
   sqDel: function (d) { var F = sqForm(); F.rows.splice(+d.v, 1); render(); },
+  shipLtF: function (d) { S.shipLtF = d.v; render(); },
+  shipLtReload: function () { shipLtLoad_(true); },
   shipCand: function (d, b) {
     if (b) b.disabled = true;
     call('ltQuery', { all: 1 }).then(function (r) { S.shipLt = (r && r.tests) || []; render(); }, function (e) { toast(e.message || String(e), true); if (b) b.disabled = false; });
