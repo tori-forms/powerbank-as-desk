@@ -3655,7 +3655,6 @@ document.addEventListener('change', function (e) {
   if (e.target.id === 'ltPF' || e.target.id === 'ltPT') { var lp = ltPer_(); lp[e.target.id === 'ltPF' ? 'from' : 'to'] = e.target.value; ltRefreshPerCard(); }
   if (e.target.id === 'ltPP') { ltPer_().pur = e.target.value; ltRefreshPerCard(); }
   if (e.target.id === 'ltPJ') { ltPer_().judge = e.target.value; ltRefreshPerCard(); }
-  if (e.target.id === 'ltPX') { ltPer_().prac = e.target.checked; ltRefreshPerCard(); }
   if (e.target.getAttribute && e.target.getAttribute('data-plsel')) { S.pl.sel[e.target.getAttribute('data-plsel')] = e.target.checked; render(); }
   if (e.target.getAttribute && e.target.getAttribute('data-plall')) { var pk = e.target.getAttribute('data-plall'), ck = e.target.checked; (S.data.pallets || []).forEach(function (p) { if (p.loc === pk || (S.pl.showDone && p.loc === 'done')) S.pl.sel[p.id] = ck; }); render(); }
   if (e.target.getAttribute && e.target.getAttribute('data-plshowdone')) { S.pl.showDone = e.target.checked; render(); }
@@ -4278,7 +4277,7 @@ function vLoadtest() {
     : remoteOnly ? '' : '<div class="ltbox warn" style="margin-bottom:10px"><b>브라우저 기록 모드</b> — PC 기록 프로그램이 꺼져 있어서 이 화면이 직접 기록해요. <b>이 탭을 닫거나 새로고침하면 그동안 기록이 끊겨요.</b> 시험 PC에서는 기록 프로그램을 켜 두세요.</div>';
   var f = function (l, h) { return '<label class="fld"><span>' + l + '</span>' + h + '</label>'; };
   return '<div class="card"><div class="hd"><h3>폼즈 보조배터리 로드테스트</h3><span class="muted small">ATORCH DL24 · ' + (remoteOnly ? '서버 PC ' + LTR.live.devices.length : 'USB 연결 ' + LT.devs.length) + '대' + (LT.agent && +LT.agent.hidCount > LT.devs.length ? ' · <b style="color:var(--amber)">PC 인식 ' + LT.agent.hidCount + '대 — 응답 없는 장비 ' + (LT.agent.hidCount - LT.devs.length) + '대</b>' : '') + '</span><span style="flex:1"></span>' +
-    '<button class="btn sm pri" data-act="ltRep">📄 성적서 (원하는 S/N만)</button><button class="btn sm" data-act="ltXlsx">엑셀 다운로드 (S/N별 전체 기록)</button><label class="small nowrap" style="display:flex;align-items:center;gap:4px;margin-left:6px" title="S/N 칸에 제품 S/N이 아닌 이름(TEST·샘플 등)으로 돌린 시험"><input type="checkbox" id="ltXlsAll"' + (LT.xlsAll ? ' checked' : '') + '> 연습 기록도 포함</label></div><div class="bd">' +
+    '<button class="btn sm pri" data-act="ltRep">📄 성적서 (원하는 S/N만)</button><button class="btn sm" data-act="ltXlsx">엑셀 다운로드 (S/N별 전체 기록)</button></div><div class="bd">' +
     mode + (hid || remoteOnly ? '' : '<div class="ltbox bad" style="margin-bottom:10px">이 브라우저는 USB 장비 연결을 지원하지 않아요. PC 크롬(또는 엣지)에서 열어 주세요. 기록 조회·엑셀은 그대로 쓸 수 있어요.</div>') +
     (remoteOnly ? '<div class="small muted">시험 조작은 서버 PC(기록 프로그램이 켜진 PC)에서 해요. 이 PC에서는 아래에서 진행 상황을 실시간으로 볼 수 있어요.</div><details style="margin-top:10px"><summary class="small" style="cursor:pointer">이 PC에 장비를 직접 연결해서 시험하기</summary>' : '') +
     '<div class="row" style="align-items:flex-end;gap:10px;flex-wrap:wrap;margin-top:' + (remoteOnly ? '10px' : '0') + '">' +
@@ -4383,12 +4382,10 @@ function ltInspFill() {
 function ltRealSn(sn) { return !!modelOfSn(sn) && !!snSplit(sn); }
 function ltXlsx() {
   toast('엑셀 만드는 중…');
-  var inc = $('#ltXlsAll') ? $('#ltXlsAll').checked : !!LT.xlsAll; LT.xlsAll = inc;
   return call('ltQuery', { all: 1 }).then(function (r) {
-    var all0 = r.tests || [], prac = all0.filter(function (x) { return !ltRealSn(x.sn); }).length;
-    var t = all0.filter(function (x) { return inc || ltRealSn(x.sn); }).sort(function (a, b) { return a.sn.localeCompare(b.sn) || String(a.startAt).localeCompare(String(b.startAt)); });
-    if (!t.length) return toast(prac && !inc ? '제품 S/N으로 저장된 시험이 없어요. (연습 기록 ' + prac + '건은 뺐어요)' : '저장된 시험 기록이 없어요.', true);
-    ltXlsxBuild_(t, 'Forms_LoadTest_' + today().replace(/-/g, '') + '.xlsx', '', prac && !inc ? ' (연습 기록 ' + prac + '건은 뺐어요)' : '');
+    var t = (r.tests || []).filter(function (x) { return ltRealSn(x.sn); }).sort(function (a, b) { return a.sn.localeCompare(b.sn) || String(a.startAt).localeCompare(String(b.startAt)); });
+    if (!t.length) return toast('저장된 시험 기록이 없어요.', true);
+    ltXlsxBuild_(t, 'Forms_LoadTest_' + today().replace(/-/g, '') + '.xlsx', '');
   }).catch(function (e) { toast(e.message, true); });
 }
 function ltXlsxBuild_(t, fname, label, extra) {
@@ -4425,7 +4422,7 @@ function ltPerRange_(k) {
   return null;
 }
 function ltPer_() {
-  var P = LT.per = LT.per || { k: 'month', from: '', to: '', pur: '', judge: '', prac: false };
+  var P = LT.per = LT.per || { k: 'month', from: '', to: '', pur: '', judge: '' };
   if (P.k !== 'custom') { var r = ltPerRange_(P.k); P.from = r[0]; P.to = r[1]; }
   return P;
 }
@@ -4436,7 +4433,7 @@ function ltPerRows_() {
     if (P.from && d < P.from) return false;
     if (P.to && d > P.to) return false;
     if (P.pur && t.purpose !== P.pur) return false;
-    if (!P.prac && !ltRealSn(t.sn)) return false;
+    if (!ltRealSn(t.sn)) return false;
     if (P.judge) { var j = ltJudge(t); if (P.judge === 'bad' ? !(j && j.cls === 'bad') : !(j && j.cls === 'ok')) return false; }
     return true;
   }).sort(function (a, b) { return String(b.startAt).localeCompare(String(a.startAt)); });
@@ -4455,8 +4452,7 @@ function ltPerCard() {
     '<div class="row" style="gap:6px;flex-wrap:wrap;align-items:center">' + btn('today', '오늘') + btn('yday', '어제') + btn('d7', '최근 7일') + btn('week', '이번 주') + btn('month', '이번 달') + btn('lmonth', '지난달') + btn('custom', '직접 지정') +
     '<input class="inp" type="date" id="ltPF" value="' + esc(P.from) + '" style="width:150px"' + (P.k === 'custom' ? '' : ' disabled') + '><span>~</span><input class="inp" type="date" id="ltPT" value="' + esc(P.to) + '" style="width:150px"' + (P.k === 'custom' ? '' : ' disabled') + '></div>' +
     '<div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center"><select class="inp sm" id="ltPP"><option value="">시험 구분 전체</option>' + LT_PURPOSES.map(function (p) { return '<option value="' + esc(p) + '"' + (P.pur === p ? ' selected' : '') + '>' + esc(LT_PUR_LABEL[p] || p) + '</option>'; }).join('') + '</select>' +
-    '<select class="inp sm" id="ltPJ"><option value="">판정 전체</option><option value="ok"' + (P.judge === 'ok' ? ' selected' : '') + '>합격만</option><option value="bad"' + (P.judge === 'bad' ? ' selected' : '') + '>불합격만</option></select>' +
-    '<label class="small nowrap" style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="ltPX"' + (P.prac ? ' checked' : '') + '> 연습 기록도 포함</label></div>';
+    '<select class="inp sm" id="ltPJ"><option value="">판정 전체</option><option value="ok"' + (P.judge === 'ok' ? ' selected' : '') + '>합격만</option><option value="bad"' + (P.judge === 'bad' ? ' selected' : '') + '>불합격만</option></select>' + '</div>';
   if (!LT.perAll) return h + '<div class="empty" style="margin-top:10px">불러오는 중…</div></div></div>';
   var rows = ltPerRows_(), sns = {}, ok = 0, bad = 0, warn = 0, sumC = 0;
   rows.forEach(function (t) { sns[t.sn] = 1; var j = ltJudge(t); if (j) { if (j.cls === 'ok') ok++; else if (j.cls === 'bad') bad++; else warn++; } sumC += ltConv(t.mah); });
