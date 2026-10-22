@@ -3652,6 +3652,10 @@ document.addEventListener('change', function (e) {
   if (e.target.id === 'anMonths') { S.an.months = +e.target.value; render(); }
   if (e.target.id === 'anFrom' || e.target.id === 'anTo') { S.an[e.target.id === 'anFrom' ? 'from' : 'to'] = e.target.value; render(); }
   if (e.target.id === 'resP') { S.resP = e.target.value; render(); }
+  if (e.target.id === 'ltPF' || e.target.id === 'ltPT') { var lp = ltPer_(); lp[e.target.id === 'ltPF' ? 'from' : 'to'] = e.target.value; ltRefreshPerCard(); }
+  if (e.target.id === 'ltPP') { ltPer_().pur = e.target.value; ltRefreshPerCard(); }
+  if (e.target.id === 'ltPJ') { ltPer_().judge = e.target.value; ltRefreshPerCard(); }
+  if (e.target.id === 'ltPX') { ltPer_().prac = e.target.checked; ltRefreshPerCard(); }
   if (e.target.getAttribute && e.target.getAttribute('data-plsel')) { S.pl.sel[e.target.getAttribute('data-plsel')] = e.target.checked; render(); }
   if (e.target.getAttribute && e.target.getAttribute('data-plall')) { var pk = e.target.getAttribute('data-plall'), ck = e.target.checked; (S.data.pallets || []).forEach(function (p) { if (p.loc === pk || (S.pl.showDone && p.loc === 'done')) S.pl.sel[p.id] = ck; }); render(); }
   if (e.target.getAttribute && e.target.getAttribute('data-plshowdone')) { S.pl.showDone = e.target.checked; render(); }
@@ -4298,7 +4302,7 @@ function vLoadtest() {
     '<li>차단 전압에 닿아 장비가 멈추면 자동 완료되고 결과가 바로 저장돼요. 시험 중에는 이 창을 닫지 마세요 (다른 탭·최소화는 괜찮아요). PC 절전은 꺼 주세요.</li></ol></details></div></div>' +
     '<div id="ltRemote"></div><div id="ltAssign"></div>' +
     '<div class="ltgrid" id="ltGrid">' + (LT.devs.length || remoteOnly ? '' : '<div class="card"><div class="empty">' + (LT.agent ? 'PC 기록 프로그램에 연결된 DL24가 없어요. 장비 전원과 USB를 꽂아 주세요. (몇 초 안에 자동으로 나타나요)' : '연결된 장비가 없어요. ＋ 장비 추가 (USB)를 눌러 주세요.') + '</div></div>') + '</div>' +
-    '<div id="ltHistCard">' + ltHistCard() + '</div>';
+    '<div id="ltPerCard">' + ltPerCard() + '</div><div id="ltHistCard">' + ltHistCard() + '</div>';
 }
 function ltTable(rows, showSn) {
   return '<div class="tw"><table class="t"><thead><tr><th>시험일시</th>' + (showSn ? '<th>S/N</th>' : '') + '<th>구분</th><th>조건</th><th>케이블 점검</th><th>Wh</th><th>mAh</th><th title="5V 출력 mAh × 5 ÷ 3.7 (품질팀 성적서와 같은 계산)">3.7V 환산 mAh</th><th>판정</th><th>시간</th><th>평균 V</th><th>중간 최저 V</th><th>최고 ℃</th><th>종료</th><th>담당</th></tr></thead><tbody>' +
@@ -4384,6 +4388,11 @@ function ltXlsx() {
     var all0 = r.tests || [], prac = all0.filter(function (x) { return !ltRealSn(x.sn); }).length;
     var t = all0.filter(function (x) { return inc || ltRealSn(x.sn); }).sort(function (a, b) { return a.sn.localeCompare(b.sn) || String(a.startAt).localeCompare(String(b.startAt)); });
     if (!t.length) return toast(prac && !inc ? '제품 S/N으로 저장된 시험이 없어요. (연습 기록 ' + prac + '건은 뺐어요)' : '저장된 시험 기록이 없어요.', true);
+    ltXlsxBuild_(t, 'Forms_LoadTest_' + today().replace(/-/g, '') + '.xlsx', '', prac && !inc ? ' (연습 기록 ' + prac + '건은 뺐어요)' : '');
+  }).catch(function (e) { toast(e.message, true); });
+}
+function ltXlsxBuild_(t, fname, label, extra) {
+  t = t.slice().sort(function (a, b) { return a.sn.localeCompare(b.sn) || String(a.startAt).localeCompare(String(b.startAt)); });
     var N = function (v, d) { v = parseFloat(v); return isFinite(v) ? Math.round(v * Math.pow(10, d)) / Math.pow(10, d) : ''; };
     var dt = function (s) { return String(s || '').replace('T', ' ').slice(0, 16); };
     var by = {}; t.forEach(function (x) { (by[x.sn] = by[x.sn] || []).push(x); });
@@ -4402,10 +4411,79 @@ function ltXlsx() {
     saveBlob_(xlsxBook_([
       { name: 'S-N별 요약', rows: sum, widths: [22, 16, 9, 16, 11, 12, 10, 10, 16, 11, 12, 10, 10, 12, 12] },
       { name: '시험 기록', rows: rec, widths: [22, 16, 11, 16, 16, 11, 11, 18, 18, 12, 10, 10, 22, 12, 12, 34, 10, 11, 11, 14, 11, 26, 8, 10, 30] }
-    ]), 'Forms_LoadTest_' + today().replace(/-/g, '') + '.xlsx');
-    toast('S/N ' + (sum.length - 1) + '개 · 시험 ' + t.length + '건을 엑셀로 내려받았어요.' + (prac && !inc ? ' (연습 기록 ' + prac + '건은 뺐어요)' : ''));
-  }).catch(function (e) { toast(e.message, true); });
+    ]), fname);
+    toast((label ? label + ' · ' : '') + 'S/N ' + (sum.length - 1) + '개 · 시험 ' + t.length + '건을 엑셀로 내려받았어요.' + (extra || ''));
 }
+function ltPerRange_(k) {
+  var t = today(), d = new Date(t + 'T00:00:00'), f = function (x) { return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
+  if (k === 'today') return [t, t];
+  if (k === 'yday') { var y = new Date(d); y.setDate(y.getDate() - 1); return [f(y), f(y)]; }
+  if (k === 'week') { var w = new Date(d); w.setDate(w.getDate() - ((w.getDay() + 6) % 7)); return [f(w), t]; }
+  if (k === 'month') return [t.slice(0, 8) + '01', t];
+  if (k === 'lmonth') { var a = new Date(d.getFullYear(), d.getMonth() - 1, 1), b = new Date(d.getFullYear(), d.getMonth(), 0); return [f(a), f(b)]; }
+  if (k === 'd7') { var s7 = new Date(d); s7.setDate(s7.getDate() - 6); return [f(s7), t]; }
+  return null;
+}
+function ltPer_() {
+  var P = LT.per = LT.per || { k: 'month', from: '', to: '', pur: '', judge: '', prac: false };
+  if (P.k !== 'custom') { var r = ltPerRange_(P.k); P.from = r[0]; P.to = r[1]; }
+  return P;
+}
+function ltPerRows_() {
+  var P = ltPer_();
+  return (LT.perAll || []).filter(function (t) {
+    var d = String(t.startAt || t.createdAt || '').slice(0, 10);
+    if (P.from && d < P.from) return false;
+    if (P.to && d > P.to) return false;
+    if (P.pur && t.purpose !== P.pur) return false;
+    if (!P.prac && !ltRealSn(t.sn)) return false;
+    if (P.judge) { var j = ltJudge(t); if (P.judge === 'bad' ? !(j && j.cls === 'bad') : !(j && j.cls === 'ok')) return false; }
+    return true;
+  }).sort(function (a, b) { return String(b.startAt).localeCompare(String(a.startAt)); });
+}
+function ltPerLoad_(force) {
+  if (LT.perLoading || (LT.perAll && !force)) return;
+  LT.perLoading = true;
+  call('ltQuery', { all: 1 }).then(function (r) { LT.perAll = r.tests || []; LT.perLoading = false; ltRefreshPerCard(); },
+    function (e) { LT.perLoading = false; LT.perAll = LT.perAll || []; toast(e.message || String(e), true); ltRefreshPerCard(); });
+}
+function ltPerCard() {
+  var P = ltPer_(); ltPerLoad_();
+  var btn = function (k, l) { return '<button class="btn sm' + (P.k === k ? ' pri' : '') + '" data-act="ltPerK" data-v="' + k + '">' + l + '</button>'; };
+  var h = '<div class="card" style="margin-top:14px"><div class="hd"><h3>기간별 시험 기록</h3><span class="muted small">하루·며칠·한 달 단위로 골라서 목록·엑셀·성적서로 뽑아요 (시험 시작일 기준)</span><span style="flex:1"></span>' +
+    '<button class="btn sm" data-act="ltPerReload">↻ 새로 불러오기</button></div><div class="bd">' +
+    '<div class="row" style="gap:6px;flex-wrap:wrap;align-items:center">' + btn('today', '오늘') + btn('yday', '어제') + btn('d7', '최근 7일') + btn('week', '이번 주') + btn('month', '이번 달') + btn('lmonth', '지난달') + btn('custom', '직접 지정') +
+    '<input class="inp" type="date" id="ltPF" value="' + esc(P.from) + '" style="width:150px"' + (P.k === 'custom' ? '' : ' disabled') + '><span>~</span><input class="inp" type="date" id="ltPT" value="' + esc(P.to) + '" style="width:150px"' + (P.k === 'custom' ? '' : ' disabled') + '></div>' +
+    '<div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center"><select class="inp sm" id="ltPP"><option value="">시험 구분 전체</option>' + LT_PURPOSES.map(function (p) { return '<option value="' + esc(p) + '"' + (P.pur === p ? ' selected' : '') + '>' + esc(LT_PUR_LABEL[p] || p) + '</option>'; }).join('') + '</select>' +
+    '<select class="inp sm" id="ltPJ"><option value="">판정 전체</option><option value="ok"' + (P.judge === 'ok' ? ' selected' : '') + '>합격만</option><option value="bad"' + (P.judge === 'bad' ? ' selected' : '') + '>불합격만</option></select>' +
+    '<label class="small nowrap" style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="ltPX"' + (P.prac ? ' checked' : '') + '> 연습 기록도 포함</label></div>';
+  if (!LT.perAll) return h + '<div class="empty" style="margin-top:10px">불러오는 중…</div></div></div>';
+  var rows = ltPerRows_(), sns = {}, ok = 0, bad = 0, warn = 0, sumC = 0;
+  rows.forEach(function (t) { sns[t.sn] = 1; var j = ltJudge(t); if (j) { if (j.cls === 'ok') ok++; else if (j.cls === 'bad') bad++; else warn++; } sumC += ltConv(t.mah); });
+  var days = {}; rows.forEach(function (t) { var d = String(t.startAt).slice(0, 10); days[d] = (days[d] || 0) + 1; });
+  h += '<div class="row" style="gap:16px;margin-top:12px;flex-wrap:wrap;align-items:center"><span><b>' + esc(ymd(P.from)) + ' ~ ' + esc(ymd(P.to)) + '</b></span><span>시험 <b>' + rows.length + '건</b> · S/N ' + Object.keys(sns).length + '개</span>' +
+    (rows.length ? '<span>합격 <b style="color:var(--green)">' + ok + '</b>' + (warn ? ' · 주의 <b style="color:var(--amber)">' + warn + '</b>' : '') + ' · 불합격 <b style="color:var(--red)">' + bad + '</b></span><span class="muted small">평균 3.7V 환산 ' + Math.round(sumC / rows.length).toLocaleString() + 'mAh</span>' : '') +
+    '<span style="flex:1"></span><button class="btn sm"' + (rows.length ? '' : ' disabled') + ' data-act="ltPerXlsx">엑셀 (이 기간)</button><button class="btn sm pri"' + (rows.length ? '' : ' disabled') + ' data-act="ltPerRep">📄 성적서 (이 기간)</button></div>';
+  if (Object.keys(days).length > 1) h += '<div class="small muted" style="margin-top:6px">날짜별 ' + Object.keys(days).sort().map(function (d) { return md(d) + ' ' + days[d] + '건'; }).join(' · ') + '</div>';
+  h += rows.length ? '<div style="margin-top:10px;max-height:520px;overflow:auto">' + ltTable(rows, true) + '</div>' : '<div class="empty" style="margin-top:10px">이 기간에 저장된 시험이 없어요.</div>';
+  return h + '</div></div>';
+}
+function ltRefreshPerCard() { var box = $('#ltPerCard'); if (box) box.innerHTML = ltPerCard(); }
+ACT.ltPerK = function (d) { var P = ltPer_(); P.k = d.v; if (d.v === 'custom' && !P.from) { P.from = P.to = today(); } ltRefreshPerCard(); };
+ACT.ltPerReload = function () { ltPerLoad_(true); toast('기록을 새로 불러와요.'); };
+ACT.ltPerXlsx = function () {
+  var P = ltPer_(), rows = ltPerRows_();
+  if (!rows.length) return toast('이 기간에 시험이 없어요.', true);
+  ltXlsxBuild_(rows.slice().reverse(), 'Forms_LoadTest_' + P.from.replace(/-/g, '') + '-' + P.to.replace(/-/g, '') + '.xlsx', P.from + ' ~ ' + P.to);
+};
+ACT.ltPerRep = function () {
+  var rows = ltPerRows_();
+  if (!rows.length) return toast('이 기간에 시험이 없어요.', true);
+  var ids = {}; rows.forEach(function (t) { ids[t.id] = 1; });
+  var sns = rows.map(function (t) { return t.sn; }).filter(function (s, i, a) { return a.indexOf(s) === i; });
+  if (sns.length > 150) return toast('S/N이 ' + sns.length + '개예요. 성적서는 한 번에 150개까지 — 기간을 나눠 주세요.', true);
+  ltReport(sns, 'ids', ids);
+};
 function xlsxBook_(sheets) {
   var X = function (v) { return String(v == null ? '' : v).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
   var col = function (i) { var n = ''; i++; while (i) { var m = (i - 1) % 26; n = String.fromCharCode(65 + m) + n; i = Math.floor((i - 1) / 26); } return n; };
@@ -4471,7 +4549,7 @@ ACT.ltRepGo = function () {
   var m = document.querySelector('input[name=lrMode]:checked');
   closeModal(); ltReport(sns, m ? m.value : 'last');
 };
-function ltReport(sns, mode) {
+function ltReport(sns, mode, ids) {
   var w = null; try { w = window.open('', '_blank'); } catch (e) { }
   if (w) { try { w.document.write('<p style="font:15px sans-serif;padding:30px">성적서 만드는 중… (' + sns.length + '개)</p>'); } catch (e) { } }
   toast('성적서 만드는 중… (' + sns.length + '개)');
@@ -4483,7 +4561,8 @@ function ltReport(sns, mode) {
   };
   return next().then(function () {
     var rows = [], none = [];
-    sns.forEach(function (sn) { var t = res[sn] || []; if (!t.length) { none.push(sn); return; } (mode === 'all' ? t : [t[t.length - 1]]).forEach(function (x) { rows.push(x); }); });
+    sns.forEach(function (sn) { var t = res[sn] || []; if (!t.length) { none.push(sn); return; } (mode === 'ids' ? t.filter(function (x) { return ids[x.id]; }) : mode === 'all' ? t : [t[t.length - 1]]).forEach(function (x) { rows.push(x); }); });
+    if (mode === 'ids') rows.sort(function (a, b) { return String(a.startAt).localeCompare(String(b.startAt)); });
     if (!rows.length) { if (w) w.close(); return toast('저장된 시험 기록이 없어요: ' + none.join(', '), true); }
     var html = ltReportHtml(rows, none);
     if (w && !w.closed) { w.document.open(); w.document.write(html); w.document.close(); }
