@@ -2601,7 +2601,7 @@ function stockSumCard_(C) {
   (S.data.pallets || []).forEach(function (p) { if (p.loc === 'done') return; add(p.model, p.kind, p.loc, (L[p.id] || {}).left || 0); var k = p.model + '|' + p.kind + '|' + p.loc; (pl[k] = pl[k] || []).push(p); });
   ['b1', 'wh'].forEach(function (loc) { Object.keys(C.unc[loc] || {}).forEach(function (m) { if (C.unc[loc][m]) add(m, 'rep', loc, C.unc[loc][m]); }); });
   models.sort(function (a, b) { return prodIdx(a) - prodIdx(b); });
-  var cols = [['rep', 'b1'], ['rep', 'wh'], ['deliv', 'b1'], ['deliv', 'wh']], F = stockF_();
+  var cols = [['deliv', 'b1'], ['deliv', 'wh'], ['rep', 'b1'], ['rep', 'wh']], F = stockF_();
   var sumOf = function (c) { return models.reduce(function (a, x) { return a + (cell[x + '|' + c[0] + '|' + c[1]] || 0); }, 0); };
   var td = function (m, c, i) {
     var k = m + '|' + c[0] + '|' + c[1], n = m ? cell[k] || 0 : sumOf(c), on = S.stockView !== 'rec' && F.kind === c[0] && F.loc === c[1] && F.model === (m || 'all');
@@ -2612,13 +2612,13 @@ function stockSumCard_(C) {
   var th = 'style="text-align:center;padding:6px 10px"';
   return '<div class="card"><div class="hd" style="padding-bottom:6px"><h3>재고 한눈에</h3><span class="muted small">숫자를 누르면 아래에서 그 재고만 보여요 · 출고 완료 파렛트 제외</span></div>' +
     (models.length ? '<div class="tw"><table class="t" style="table-layout:fixed;width:100%"><colgroup><col style="width:150px"><col><col><col><col></colgroup><thead>' +
-      '<tr><th rowspan="2" style="padding:6px 10px;vertical-align:middle">기종</th><th colspan="2" ' + th + '>교체용 (AS 교환) · ' + (sumOf(cols[0]) + sumOf(cols[1])).toLocaleString() + '</th><th colspan="2" ' + th.replace('style="', 'style="border-left:2px solid var(--line);') + '>납품용 (고객사 신품) · ' + (sumOf(cols[2]) + sumOf(cols[3])).toLocaleString() + '</th></tr>' +
+      '<tr><th rowspan="2" style="padding:6px 10px;vertical-align:middle">기종</th><th colspan="2" ' + th + '>납품용 (고객사 신품) · ' + (sumOf(cols[0]) + sumOf(cols[1])).toLocaleString() + '</th><th colspan="2" ' + th.replace('style="', 'style="border-left:2px solid var(--line);') + '>교체용 (AS 교환) · ' + (sumOf(cols[2]) + sumOf(cols[3])).toLocaleString() + '</th></tr>' +
       '<tr>' + cols.map(function (c, i) { return '<th style="text-align:center;padding:4px 10px;' + (i === 2 ? 'border-left:2px solid var(--line);' : '') + '">' + PL_LOC[c[1]].i + ' ' + PL_LOC[c[1]].s + '</th>'; }).join('') + '</tr></thead><tbody>' +
       models.map(function (m) { return '<tr><td style="padding:8px 10px">' + mtag(m) + '</td>' + cols.map(function (c, i) { return td(m, c, i); }).join('') + '</tr>'; }).join('') +
       '<tr style="background:var(--line2)"><td style="padding:8px 10px"><b>합계</b></td>' + cols.map(function (c, i) { return td('', c, i); }).join('') + '</tr></tbody></table></div>'
       : '<div class="empty">등록된 재고가 없어요. 아래에서 파렛트를 등록해 주세요.</div>') + '</div>';
 }
-function stockF_() { var F = S.stockF = S.stockF || { kind: 'rep', loc: 'all', model: 'all' }; return F; }
+function stockF_() { var F = S.stockF = S.stockF || { kind: 'deliv', loc: 'all', model: 'all' }; return F; }
 function stDefectForm_() {
   var dl = '<datalist id="stWhyList">' + QC_REJ_WHY.map(function (x) { return '<option value="' + esc(x) + '">'; }).join('') + '</datalist>';
   return '<div style="margin-top:12px;padding:10px 12px;border:1px dashed var(--red);border-radius:12px;background:var(--redSoft)">' + dl +
@@ -2679,7 +2679,7 @@ function vStockKind(kind) {
 }
 function vStock() {
   var sv = S.stockView === 'rec' ? 'rec' : stockF_().kind;
-  var h = stockSumCard_(plCalc_()) + '<div class="tabs" style="margin:14px 0">' + [['rep', '교체용 재고 (AS 교환)'], ['deliv', '납품용 재고 (고객사 신품)'], ['rec', '입고·출고 기록 · 양산 차수']].map(function (t) { return '<button class="' + (sv === t[0] ? 'on' : '') + '" data-act="stockView" data-v="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div>';
+  var h = stockSumCard_(plCalc_()) + '<div class="tabs" style="margin:14px 0">' + [['deliv', '납품용 재고 (고객사 신품)'], ['rep', '교체용 재고 (AS 교환)'], ['rec', '입고·출고 기록 · 양산 차수']].map(function (t) { return '<button class="' + (sv === t[0] ? 'on' : '') + '" data-act="stockView" data-v="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div>';
   if (sv !== 'rec') return h + vStockKind(sv);
   var rv = S.stockRec === 'deliv' ? 'deliv' : 'rep';
   h += '<div class="row" style="gap:6px;margin-bottom:14px">' + [['rep', '교체 재고 S/N 구간 · 수입검사 · 별도 출고'], ['deliv', '납품 수량 · 양산 차수']].map(function (t) { return '<button class="btn sm' + (rv === t[0] ? ' pri' : '') + '" data-act="stockRec" data-v="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div>';
