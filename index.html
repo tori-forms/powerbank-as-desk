@@ -2344,7 +2344,7 @@ function shipQcCard() {
 function shipLtLoad_(force) {
   if (S.shipLtLoading || (S.shipLt && !force)) return;
   S.shipLtLoading = 1;
-  call('ltQuery', { all: 1 }).then(function (r) { S.shipLt = (r && r.tests) || []; S.shipLtLoading = 0; if (S.view === 'shipqc') render(); },
+  ltQ_({ all: 1 }).then(function (r) { S.shipLt = (r && r.tests) || []; S.shipLtLoading = 0; if (S.view === 'shipqc') render(); },
     function () { S.shipLt = S.shipLt || []; S.shipLtLoading = 0; });
 }
 function vShipQc() {
@@ -2353,7 +2353,7 @@ function vShipQc() {
   var last = {}; lts.forEach(function (t) { var k = String(t.startAt || t.createdAt); if (!last[t.sn] || k > String(last[t.sn].startAt || last[t.sn].createdAt)) last[t.sn] = t; });
   var lastL = Object.keys(last).map(function (k) { return last[k]; }).sort(function (a, b) { return String(b.startAt).localeCompare(String(a.startAt)); });
   var jd = lastL.map(function (t) { return { t: t, j: ltJudge(t) }; });
-  var ltBad = jd.filter(function (x) { return x.j && x.j.cls === 'bad'; }).length, ltOk = jd.filter(function (x) { return x.j && x.j.cls !== 'bad'; }).length;
+  var ltBad = jd.filter(function (x) { return x.j && x.j.cls === 'bad'; }).length, ltOk = jd.filter(function (x) { return x.j && (x.j.cls === 'ok' || x.j.cls === 'warn'); }).length; var ltRe = jd.filter(function (x) { return x.j && x.j.cls === 'retest'; }).length;
   var insp = S.data.shipinsp || [], rej = S.data.shiprej || [];
   var sN = insp.reduce(function (a, i) { return a + (+i.sample || 0); }, 0), sF = insp.filter(function (i) { return +i.sample; }).reduce(function (a, i) { var n = rej.filter(function (r) { return r.inspId === i.id; }).length; return a + (n || +i.fail || 0); }, 0);
   var open = rej.filter(function (r) { return !r.disp || /예정|대기|미정/.test(r.disp); }).length;
@@ -2361,7 +2361,7 @@ function vShipQc() {
   var h = '<div class="kpis" style="grid-template-columns:repeat(4,minmax(0,1fr))">' +
     kp('샘플 검사', sN.toLocaleString(), '개', '검사 ' + insp.length + '회' + (sN ? ' · 샘플 불합격률 <b>' + (sF / sN * 100).toFixed(1) + '%</b>' : '')) +
     kp('출하 불합격 S/N', rej.length, '개', open ? '<b style="color:var(--amber)">처리 남음 ' + open + '</b>' : '처리 모두 지정됨', rej.length ? 'var(--red)' : '') +
-    kp('용량 시험 (납품 검사)', lastL.length, '대', S.shipLt ? '합격 ' + ltOk + ' · <b style="color:' + (ltBad ? 'var(--red)' : 'inherit') + '">불합격 ' + ltBad + '</b> <span class="muted">(S/N별 마지막 시험)</span>' : '불러오는 중…') +
+    kp('용량 시험 (납품 검사)', lastL.length, '대', S.shipLt ? '합격 ' + ltOk + (ltRe ? ' · <b style="color:var(--amber)">재시험 필요 ' + ltRe + '</b>' : '') + ' · <b style="color:' + (ltBad ? 'var(--red)' : 'inherit') + '">불합격 ' + ltBad + '</b> <span class="muted">(S/N별 마지막 시험)</span>' : '불러오는 중…') +
     kp('불합격 미등록', (shipCands() || []).length, '개', '용량 시험 불합격인데 출하 불합격으로 안 올린 S/N', (shipCands() || []).length ? 'var(--amber)' : '') +
     '</div>';
   h += shipQcCard();
@@ -3231,7 +3231,7 @@ var ACT = {
   shipLtReload: function () { shipLtLoad_(true); },
   shipCand: function (d, b) {
     if (b) b.disabled = true;
-    call('ltQuery', { all: 1 }).then(function (r) { S.shipLt = (r && r.tests) || []; render(); }, function (e) { toast(e.message || String(e), true); if (b) b.disabled = false; });
+    ltQ_({ all: 1 }).then(function (r) { S.shipLt = (r && r.tests) || []; render(); }, function (e) { toast(e.message || String(e), true); if (b) b.disabled = false; });
   },
   shipRejLt: function (d, b) {
     ask_(d.sn + '\n용량 시험 ' + (+d.mah).toLocaleString() + 'mAh — ' + (d.why || '불합격') + '\n\n출하(납품) 불합격으로 등록할까요? 나중에 이 S/N이 AS로 들어오면 경고가 떠요.', { title: '출하 불합격 등록', yes: '등록' }).then(function (ok) {
@@ -3718,7 +3718,29 @@ var LT_CUST = { cur: 3, cut: 0.7, min: 12000, ref: 19000 };
 var LT_CUST_MARGIN = 0.03;
 function ltIsCust(t) { return Math.abs(+t.cur - LT_CUST.cur) < 0.05 && +t.cut <= 1.0; }
 function ltCondName(cur, cut) { return ltIsCust({ cur: cur, cut: cut }) ? '고객사 기준' : Math.abs(+cur - LT_BASE.cur) < 0.05 && Math.abs(+cut - LT_BASE.cut) < 0.05 ? '품질팀 기준' : '임의 조건(판정 참고용)'; }
+var LT_REG = {};
+function ltReg_(r) {
+  var add = function (t) { if (!t || !t.id || !t.sn) return; var k = t.sn + '|' + t.purpose; (LT_REG[k] = LT_REG[k] || {})[t.id] = t; };
+  ((r && r.tests) || []).forEach(add);
+  Object.keys((r && r.bySn) || {}).forEach(function (s) { (r.bySn[s] || []).forEach(add); });
+}
+function ltQ_(p) { return call('ltQuery', p).then(function (r) { ltReg_(r); return r; }); }
+function ltFinal_(rows) {
+  var last = {};
+  rows.forEach(function (t) { var k = t.sn + '|' + t.purpose; if (!last[k] || String(t.startAt || t.createdAt) > String(last[k].startAt || last[k].createdAt)) last[k] = t; });
+  return rows.filter(function (t) { return last[t.sn + '|' + t.purpose] === t; });
+}
 function ltJudge(t) {
+  var j = ltJudge1_(t);
+  if (!j || j.cls !== 'bad' || !ltRealSn(t.sn)) return j;
+  var at = String(t.startAt || t.createdAt), reg = LT_REG[t.sn + '|' + t.purpose] || {};
+  var prev = Object.keys(reg).map(function (k) { return reg[k]; }).filter(function (x) { return x.id !== t.id && String(x.startAt || x.createdAt) < at; })
+    .sort(function (a, b) { return String(b.startAt || b.createdAt).localeCompare(String(a.startAt || a.createdAt)); })[0];
+  var pj = prev && ltJudge1_(prev);
+  if (pj && pj.cls === 'bad') return { cls: 'bad', txt: j.txt + ' (2회 연속)', why: j.why };
+  return { cls: 'retest', txt: '재시험 필요', why: '1차 미달 — 다시 시험해서 또 미달이면 ' + j.txt + ' · ' + j.why };
+}
+function ltJudge1_(t) {
   var c = ltConv(t.mah), sn = String(t.sn || '');
   if (!(+t.wh >= LT_LOW_WH)) return null;
   if (sn && !/^P20/.test(sn)) return null;
@@ -3739,7 +3761,7 @@ function ltJudge(t) {
   if (!std) r = [r[0], r[1] + '(참고)', r[2] + ' · 표준 조건(2A·4.0V)이 아니라 참고용'];
   return { cls: r[0], txt: r[1], why: r[2] };
 }
-function ltJudgeHtml(t) { var j = ltJudge(t); if (!j) return ''; var col = j.cls === 'ok' ? 'var(--green)' : j.cls === 'warn' ? 'var(--amber)' : 'var(--red)'; return '<b style="color:' + col + '">판정: ' + j.txt + '</b> <span class="small">' + j.why + '</span>'; }
+function ltJudgeHtml(t) { var j = ltJudge(t); if (!j) return ''; var col = j.cls === 'ok' ? 'var(--green)' : j.cls === 'warn' || j.cls === 'retest' ? 'var(--amber)' : 'var(--red)'; return '<b style="color:' + col + '">판정: ' + j.txt + '</b> <span class="small">' + j.why + '</span>'; }
 function ltConvTxt(mah) { var c = ltConv(mah); return '3.7V 환산 <b>' + Math.round(c).toLocaleString() + 'mAh</b> (표기 ' + LT_RATED_MAH.toLocaleString() + 'mAh의 ' + (c / LT_RATED_MAH * 100).toFixed(1) + '%)'; }
 var LT_STD = { cur: '3.0', cut: '0.7', cable: 'A-to-C 30cm (시험용)' };
 (function () { if (ls('ltStd') !== '3A07') { ls('ltCur', LT_STD.cur); ls('ltCut', LT_STD.cut); ls('ltStd', '3A07'); } if (ls('ltStdCable') !== 'c30') { ls('ltCable', LT_STD.cable); ls('ltStdCable', 'c30'); } })();
@@ -4061,11 +4083,11 @@ function ltLoadHist(sns) {
   sns = (sns || []).filter(function (s, i, a) { return s && !(s in LT.hist) && a.indexOf(s) === i; });
   if (!sns.length) return Promise.resolve();
   sns.forEach(function (s) { LT.hist[s] = null; });
-  return call('ltQuery', { sns: sns }).then(function (r) { sns.forEach(function (s) { LT.hist[s] = ((r && r.bySn) || {})[s] || []; }); },
+  return ltQ_({ sns: sns }).then(function (r) { sns.forEach(function (s) { LT.hist[s] = ((r && r.bySn) || {})[s] || []; }); },
     function () { sns.forEach(function (s) { delete LT.hist[s]; }); });
 }
 function ltLoadRecent() {
-  return call('ltQuery', { recent: 1 }).then(function (r) { LT.recent = r.tests || []; LT.total = r.total || 0; if (S.view === 'loadtest' && !LT.q) ltRefreshHistCard(); }, function () { LT.recent = LT.recent || []; });
+  return ltQ_({ recent: 1 }).then(function (r) { LT.recent = r.tests || []; LT.total = r.total || 0; if (S.view === 'loadtest' && !LT.q) ltRefreshHistCard(); }, function () { LT.recent = LT.recent || []; });
 }
 function ltOne(t) { return ymd(t.startAt) + ' ' + esc(LT_PUR_LABEL[t.purpose] || t.purpose) + ' <b>' + (+t.wh).toFixed(1) + 'Wh</b> · ' + Math.round(+t.mah).toLocaleString() + 'mAh <span class="muted">(' + (+t.cur) + 'A)</span>'; }
 function ltHistHtml(sn, exceptCid) {
@@ -4349,7 +4371,7 @@ function ltQuery(sn) {
   LT.q = ltNorm(sn); LT.histFull = null; ltRefreshHistCard();
   if (!LT.q) return ltLoadRecent();
   var want = LT.q;
-  call('ltQuery', { sn: want }).then(function (r) { if (LT.q !== want) return; LT.histFull = { sn: want, tests: r.tests || [] }; ltRefreshHistCard(); }, function (e) { toast(e.message, true); });
+  ltQ_({ sn: want }).then(function (r) { if (LT.q !== want) return; LT.histFull = { sn: want, tests: r.tests || [] }; ltRefreshHistCard(); }, function (e) { toast(e.message, true); });
 }
 function ltBeforeRender() {
   var a = document.activeElement;
@@ -4384,8 +4406,8 @@ function ltInspFill() {
 function ltRealSn(sn) { return !!modelOfSn(sn) && !!snSplit(sn); }
 function ltXlsx() {
   toast('엑셀 만드는 중…');
-  return call('ltQuery', { all: 1 }).then(function (r) {
-    var t = (r.tests || []).filter(function (x) { return ltRealSn(x.sn); }).sort(function (a, b) { return a.sn.localeCompare(b.sn) || String(a.startAt).localeCompare(String(b.startAt)); });
+  return ltQ_({ all: 1 }).then(function (r) {
+    var t = ltFinal_((r.tests || []).filter(function (x) { return ltRealSn(x.sn); })).sort(function (a, b) { return a.sn.localeCompare(b.sn) || String(a.startAt).localeCompare(String(b.startAt)); });
     if (!t.length) return toast('저장된 시험 기록이 없어요.', true);
     ltXlsxBuild_(t, 'Forms_LoadTest_' + today().replace(/-/g, '') + '.xlsx', '');
   }).catch(function (e) { toast(e.message, true); });
@@ -4443,7 +4465,7 @@ function ltPerRows_() {
 function ltPerLoad_(force) {
   if (LT.perLoading || (LT.perAll && !force)) return;
   LT.perLoading = true;
-  call('ltQuery', { all: 1 }).then(function (r) { LT.perAll = r.tests || []; LT.perLoading = false; ltRefreshPerCard(); },
+  ltQ_({ all: 1 }).then(function (r) { LT.perAll = r.tests || []; LT.perLoading = false; ltRefreshPerCard(); },
     function (e) { LT.perLoading = false; LT.perAll = LT.perAll || []; toast(e.message || String(e), true); ltRefreshPerCard(); });
 }
 function ltPerCard() {
@@ -4477,12 +4499,12 @@ ACT.ltPracDel = function (d, b) {
   run('ltDelPractice', { ids: ids }, '연습 기록을 지웠어요.', b).then(function () { ltPerLoad_(true); }).catch(function () { });
 };
 ACT.ltPerXlsx = function () {
-  var P = ltPer_(), rows = ltPerRows_();
+  var P = ltPer_(), rows = ltFinal_(ltPerRows_());
   if (!rows.length) return toast('이 기간에 시험이 없어요.', true);
   ltXlsxBuild_(rows.slice().reverse(), 'Forms_LoadTest_' + P.from.replace(/-/g, '') + '-' + P.to.replace(/-/g, '') + '.xlsx', P.from + ' ~ ' + P.to);
 };
 ACT.ltPerRep = function () {
-  var rows = ltPerRows_();
+  var rows = ltFinal_(ltPerRows_());
   if (!rows.length) return toast('이 기간에 시험이 없어요.', true);
   var ids = {}; rows.forEach(function (t) { ids[t.id] = 1; });
   var sns = rows.map(function (t) { return t.sn; }).filter(function (s, i, a) { return a.indexOf(s) === i; });
@@ -4562,7 +4584,7 @@ function ltReport(sns, mode, ids) {
   var next = function () {
     var batch = sns.slice(i, i + 4); i += 4;
     if (!batch.length) return Promise.resolve();
-    return Promise.all(batch.map(function (sn) { return call('ltQuery', { sn: sn }).then(function (r) { res[sn] = r.tests || []; }, function () { res[sn] = []; }); })).then(next);
+    return Promise.all(batch.map(function (sn) { return ltQ_({ sn: sn }).then(function (r) { res[sn] = r.tests || []; }, function () { res[sn] = []; }); })).then(next);
   };
   return next().then(function () {
     var rows = [], none = [];
