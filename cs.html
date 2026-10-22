@@ -2096,7 +2096,8 @@ function vResults() {
     '<button class="btn" data-act="resCsv">엑셀 받기</button></div>' +
     '<div class="card"><div class="tw"><table class="t"><thead><tr><th>검사일</th><th>매장</th><th>모델</th><th>수량</th><th>판정</th><th>증상</th><th>원인</th><th>처분</th><th>검사 의견</th></tr></thead><tbody>' +
     (rows || '<tr><td colspan="9"><div class="empty">해당 기간에 검사 끝난 회수품이 없습니다.</div></td></tr>') + '</tbody></table></div></div>' +
-    '<div class="note" style="margin-top:10px">AS 건(인입) 단위로 묶어서 보여줘요. 줄을 누르면 S/N별 결과가 펼쳐져요.' + (groups.length > 300 ? ' 최근 300건만 보여요. 전체는 엑셀로 받아 주세요.' : '') + '</div>';
+    '<div class="note" style="margin-top:10px">AS 건(인입) 단위로 묶어서 보여줘요. 줄을 누르면 S/N별 결과가 펼쳐져요.' + (groups.length > 300 ? ' 최근 300건만 보여요. 전체는 엑셀로 받아 주세요.' : '') + '</div>' +
+    (CS() ? '' : '<div id="ltPerCard">' + ltPerCard('회수분 검사') + '</div>');
 }
 function resCsv_() {
   var f = S.resF || 'all', list = resList_().filter(function (u) { return f === 'all' || u.verdict === f; });
@@ -2290,10 +2291,87 @@ function shipCands() {
     .sort(function (a, b) { return String(b.t.startAt).localeCompare(String(a.t.startAt)); });
 }
 function sqForm() {
-  if (!S.sq) S.sq = { at: today(), lotId: '', sample: '', note: '', rows: [] };
+  if (!S.sq) S.sq = { at: today(), lotId: '', sample: '', note: '', rows: [], ssn: '' };
   if (!S.sq.rows.length) S.sq.rows.push({ sn: '', why: '', disp: '보관(처리 미정)', note: '' });
   return S.sq;
 }
+function sqLot_() { var F = sqForm(); return (S.data.lots || []).filter(function (l) { return l.id === F.lotId; })[0] || null; }
+function sqSns_(txt, lot) {
+  var out = [], err = '';
+  var one = function (tok) {
+    tok = String(tok || '').trim().toUpperCase(); if (!tok) return null;
+    if (/^\d+$/.test(tok) && lot) { if (tok.length > +lot.digits) tok = tok.slice(-(+lot.digits)); var p10 = Math.pow(10, tok.length), n = Math.floor(+lot.fromNo / p10) * p10 + +tok; if (n < +lot.fromNo) n += p10; return { prefix: lot.prefix, digits: +lot.digits, num: n }; }
+    if (/^\d+$/.test(tok)) { err = '번호만 쓰려면 차수를 먼저 골라 주세요: ' + tok; return null; }
+    var sp = snSplit(tok); if (!sp) err = 'S/N 형식을 알 수 없어요: ' + tok; return sp;
+  };
+  String(txt || '').replace(/\s*[~～]\s*/g, '~').split(/[\s,;]+/).forEach(function (t) {
+    if (!t || err) return;
+    var ab = t.split('~'), a = one(ab[0]), b = ab.length > 1 ? one(ab[1]) : a;
+    if (!a || err) return;
+    if (!b || b.prefix !== a.prefix || b.digits !== a.digits) { err = '구간 앞뒤 S/N이 맞지 않아요: ' + t; return; }
+    var lo = Math.min(a.num, b.num), hi = Math.max(a.num, b.num);
+    if (hi - lo > 500) { err = '구간이 너무 길어요 (500개까지): ' + t; return; }
+    for (var k = lo; k <= hi; k++) { var sn = stockSn(a, k); if (out.indexOf(sn) < 0) out.push(sn); }
+  });
+  return err || out;
+}
+function palletOfSn_(sn) {
+  var sp = snSplit(sn); if (!sp) return null;
+  return (S.data.pallets || []).filter(function (p) { return p.kind === 'deliv' && p.prefix === sp.prefix && +p.digits === sp.digits && sp.num >= +p.fromNo && sp.num <= +p.toNo; })[0] || null;
+}
+function plName_(p) { return (p.lot ? p.lot + ' ' : '') + p.no + '번 파렛트'; }
+function ltLastOf_(sn, pur) { var b = null; (S.shipLt || []).forEach(function (t) { if (t.sn === sn && t.purpose === pur && (!b || String(t.startAt || t.createdAt) > String(b.startAt || b.createdAt))) b = t; }); return b; }
+function sqState_(sn) { var t = ltLastOf_(sn, '입고 QC'), j = t && ltJudge(t); return { t: t, j: j, k: !t || !j ? 'none' : j.cls === 'bad' ? 'bad' : j.cls === 'retest' ? 're' : 'ok' }; }
+var SQ_K = { ok: ['합격', 'var(--green)'], re: ['재시험 필요', 'var(--amber)'], bad: ['불합격', 'var(--red)'], none: ['시험 전', 'var(--muted,#8b95a1)'] };
+function sqPrev_() {
+  var F = sqForm(); if (!String(F.ssn || '').trim()) return '';
+  if (!S.shipLt) { shipLtLoad_(); return '<div class="small muted" style="margin-top:6px">용량 시험 기록 불러오는 중…</div>'; }
+  var lot = sqLot_(), sns = sqSns_(F.ssn, lot);
+  if (typeof sns === 'string') return '<div class="small" style="color:var(--red);margin-top:6px">' + esc(sns) + '</div>';
+  var c = { ok: 0, re: 0, bad: 0, none: 0 }, lots = {}, pls = {}, outLot = 0;
+  var tr = sns.map(function (sn, i) {
+    var l = lotOf(sn), p = palletOfSn_(sn), st = sqState_(sn), r = shipRejOf(sn), off = lot && (!l || l.id !== lot.id); c[st.k]++;
+    if (l) lots[l.name] = 1; if (p) pls[plName_(p)] = 1; if (off) outLot++;
+    if (i >= 300) return '';
+    return '<tr><td>' + (i + 1) + '</td><td class="mono small">' + esc(sn) + '</td><td>' + (l ? '<span class="lotTag" style="margin:0">' + esc(l.name) + '</span>' : '<span class="small" style="color:var(--amber)">차수 없음</span>') + (off ? ' <span class="small" style="color:var(--red)">고른 차수 아님</span>' : '') + '</td>' +
+      '<td>' + (p ? esc(plName_(p)) + ' <span class="small muted">' + esc((PL_LOC[p.loc] || {}).s || '') + '</span>' : '<span class="small muted">파렛트 미등록</span>') + '</td>' +
+      '<td class="nowrap small">' + (st.t ? esc(ymd(st.t.startAt || st.t.createdAt)) + ' · ' + Math.round(+st.t.mah).toLocaleString() + 'mAh' : '-') + '</td>' +
+      '<td><b style="color:' + SQ_K[st.k][1] + '">' + SQ_K[st.k][0] + '</b></td><td class="small">' + (r ? '<span style="color:var(--red)">출하 불합격 · ' + esc(r.why || '') + '</span>' : '') + '</td></tr>';
+  }).join('');
+  return '<div class="small" style="margin:8px 0 6px">샘플 <b>' + sns.length + '</b>개 · 차수 ' + (Object.keys(lots).join(', ') || '-') + ' · ' + (Object.keys(pls).join(', ') || '파렛트 미등록') +
+    ' — ' + ['ok', 're', 'bad', 'none'].filter(function (k) { return c[k]; }).map(function (k) { return '<b style="color:' + SQ_K[k][1] + '">' + SQ_K[k][0] + ' ' + c[k] + '</b>'; }).join(' · ') +
+    (outLot ? ' · <b style="color:var(--red)">고른 차수 밖 ' + outLot + '개</b>' : '') + '</div>' +
+    '<div class="tw" style="max-height:320px"><table class="t"><thead><tr><th>No</th><th>S/N</th><th>양산 차수</th><th>파렛트</th><th>용량 시험</th><th>판정</th><th></th></tr></thead><tbody>' + tr + '</tbody></table></div>' +
+    (sns.length > 300 ? '<div class="small muted">300개까지만 보여요.</div>' : '');
+}
+function plSamples_(p) {
+  var inR = function (sn) { var sp = snSplit(sn); return !!sp && sp.prefix === p.prefix && sp.digits === +p.digits && sp.num >= +p.fromNo && sp.num <= +p.toNo; };
+  var set = {};
+  (S.data.shipinsp || []).forEach(function (i) { String(i.sns || '').split(/\s+/).forEach(function (sn) { if (sn && inR(sn)) set[sn] = 1; }); });
+  (S.shipLt || []).forEach(function (t) { if (t.purpose === '입고 QC' && inR(t.sn)) set[t.sn] = 1; });
+  (S.data.shiprej || []).forEach(function (r) { if (inR(r.sn)) set[r.sn] = 1; });
+  return Object.keys(set).sort();
+}
+function plStat_(p) {
+  var o = { sns: plSamples_(p), ok: 0, re: 0, bad: 0, none: 0, rej: [] };
+  o.sns.forEach(function (sn) { o[sqState_(sn).k]++; var r = shipRejOf(sn); if (r) o.rej.push(r); });
+  o.pass = !!o.sns.length && !o.re && !o.bad && !o.none && !o.rej.length;
+  return o;
+}
+function shipPlCard_() {
+  var ps = (S.data.pallets || []).filter(function (p) { return p.kind === 'deliv'; }).sort(function (a, b) { return String(a.model).localeCompare(String(b.model)) || String(a.lot).localeCompare(String(b.lot)) || (+a.no - +b.no); });
+  var h = '<div class="card" style="margin-top:14px"><div class="hd"><h3>파렛트별 출하 성적서</h3><span class="muted small">파렛트 S/N 구간 안의 샘플(샘플 검사 S/N · 용량 시험 · 출하 불합격)을 모아 성적서 1장 · 재고 › 창고 탭에서 등록한 납품 파렛트</span></div>';
+  if (!ps.length) return h + '<div class="empty">아직 등록된 납품 파렛트가 없어요. 재고 › 창고 탭에서 파렛트를 등록하면 여기에 떠요.</div></div>';
+  if (!S.shipLt) return h + '<div class="empty">용량 시험 기록 불러오는 중…</div></div>';
+  return h + '<div class="tw"><table class="t"><thead><tr><th>파렛트</th><th>모델</th><th>S/N 구간</th><th>수량</th><th>위치</th><th>샘플</th><th>결과</th><th></th></tr></thead><tbody>' + ps.map(function (p) {
+    var o = plStat_(p), n = o.sns.length;
+    var res = !n ? '<span class="muted small">샘플 없음</span>' : ['ok', 're', 'bad', 'none'].filter(function (k) { return o[k]; }).map(function (k) { return '<span style="color:' + SQ_K[k][1] + '">' + SQ_K[k][0] + ' ' + o[k] + '</span>'; }).join(' · ') + (o.rej.length ? ' · <b style="color:var(--red)">출하 불합격 ' + o.rej.length + '</b>' : '');
+    return '<tr><td><b>' + esc(plName_(p)) + '</b></td><td>' + mtag(p.model) + '</td><td class="mono small">' + esc(stockSn(p, p.fromNo)) + ' ~ ' + esc(String(stockSn(p, p.toNo)).slice(-6)) + '</td><td>' + (+p.qty || 0).toLocaleString() + '</td>' +
+      '<td class="small">' + esc((PL_LOC[p.loc] || {}).s || p.loc || '') + '</td><td>' + n + '개</td><td class="small">' + res + (n ? (o.pass ? ' <b style="color:var(--green)">→ 출하 가능</b>' : ' <b style="color:var(--amber)">→ 보류</b>') : '') + '</td>' +
+      '<td class="nowrap"><button class="btn sm pri" data-act="plRep" data-id="' + esc(p.id) + '"' + (n ? '' : ' disabled') + '>📄 출하 성적서</button> <button class="btn sm" data-act="plXlsx" data-id="' + esc(p.id) + '"' + (n ? '' : ' disabled') + '>엑셀</button></td></tr>';
+  }).join('') + '</tbody></table></div></div>';
+}
+function plById_(id) { return (S.data.pallets || []).filter(function (p) { return p.id === id; })[0]; }
 function shipQcCard() {
   var lots = (S.data.lots || []).slice().sort(function (a, b) { return String(a.model).localeCompare(String(b.model)) || String(a.prefix).localeCompare(String(b.prefix)) || (+a.fromNo - +b.fromNo); });
   var rej = (S.data.shiprej || []).slice().sort(function (a, b) { return String(b.at).localeCompare(String(a.at)) || String(b.createdAt).localeCompare(String(a.createdAt)); });
@@ -2307,6 +2385,8 @@ function shipQcCard() {
     '<label class="small nowrap">차수 <select class="inp" data-sq="lotId"><option value="">S/N으로 자동</option>' + lots.map(function (l) { return '<option value="' + esc(l.id) + '"' + (F.lotId === l.id ? ' selected' : '') + '>' + esc(l.name + ' · ' + prodLabel(l.model) + (l.color ? ' ' + l.color : '') + ' (' + stockSn(l, l.fromNo).slice(-6) + '~' + stockSn(l, l.toNo).slice(-6) + ')') + '</option>'; }).join('') + '</select></label>' +
     '<label class="small nowrap">이번 샘플 수량 <input class="inp" data-sq="sample" type="number" min="0" value="' + esc(F.sample) + '" placeholder="예: 32" style="width:90px"></label>' +
     '<input class="inp" data-sq="note" value="' + esc(F.note) + '" placeholder="이번 검사 메모 (검사 항목·조건·검사자)" style="flex:1;min-width:180px"></div>' +
+    '<div style="margin-top:10px"><div class="small" style="margin-bottom:6px"><b>샘플 S/N</b> · 스캔하거나 붙여 넣기 (한 줄에 하나 · 구간 <span class="mono">P20BOTA250071001~P20BOTA250071020</span> 가능) · 넣으면 양산 차수·파렛트·용량 시험 결과가 바로 떠요. 넣으면 샘플 수량은 비워도 돼요.</div>' +
+    '<textarea class="inp mono" data-sq="ssn" rows="3" style="width:100%" placeholder="P20BOTA250071001">' + esc(F.ssn || '') + '</textarea><div id="sqPrev">' + sqPrev_() + '</div></div>' +
     '<div style="margin-top:10px;padding:10px;border:1px dashed var(--red);border-radius:10px;background:var(--redSoft)"><div class="small" style="margin-bottom:6px"><b style="color:var(--red)">불합격 S/N</b> · 한 줄에 하나씩, 사유는 줄마다 · 없으면 비워 두세요</div>' +
     F.rows.map(function (r, k) {
       return '<div class="row" style="margin-top:' + (k ? 6 : 0) + 'px"><input class="inp mono" data-sqr="' + k + '|sn" value="' + esc(r.sn) + '" placeholder="S/N (차수 고르면 끝번호만)" style="flex:1.3;min-width:170px">' +
@@ -2364,7 +2444,7 @@ function vShipQc() {
     kp('용량 시험 (납품 검사)', lastL.length, '대', S.shipLt ? '합격 ' + ltOk + (ltRe ? ' · <b style="color:var(--amber)">재시험 필요 ' + ltRe + '</b>' : '') + ' · <b style="color:' + (ltBad ? 'var(--red)' : 'inherit') + '">불합격 ' + ltBad + '</b> <span class="muted">(S/N별 마지막 시험)</span>' : '불러오는 중…') +
     kp('불합격 미등록', (shipCands() || []).length, '개', '용량 시험 불합격인데 출하 불합격으로 안 올린 S/N', (shipCands() || []).length ? 'var(--amber)' : '') +
     '</div>';
-  h += shipQcCard();
+  h += shipQcCard() + shipPlCard_() + '<div id="ltPerCard">' + ltPerCard('입고 QC') + '</div>';
   var lots = (S.data.lots || []).slice().sort(function (a, b) { return String(a.model).localeCompare(String(b.model)) || String(a.prefix).localeCompare(String(b.prefix)) || (+a.fromNo - +b.fromNo); });
   var ltByLot = {}; jd.forEach(function (x) { var l = lotOf(x.t.sn); var k = l ? l.id : '-'; var o = ltByLot[k] = ltByLot[k] || { n: 0, bad: 0, mah: 0 }; o.n++; o.mah += +x.t.mah || 0; if (x.j && x.j.cls === 'bad') o.bad++; });
   var rowsL = lots.map(function (l) { var q = shipLotStat(l), lt = ltByLot[l.id]; if (!q.sample && !q.rej && !lt) return ''; return '<tr><td><span class="lotTag" style="margin:0">' + esc(l.name) + '</span></td><td>' + mtag(l.model) + colorTag(l.color || colorOfSn(stockSn(l, l.fromNo))) + '</td><td>' + (q.rounds || 0) + '회</td><td>' + (q.sample ? q.sample.toLocaleString() : '-') + '</td><td><b style="color:' + (q.rej ? 'var(--red)' : 'inherit') + '">' + q.rej + '</b></td><td>' + (q.sample ? (q.rejS / q.sample * 100).toFixed(1) + '%' : '-') + '</td><td>' + (lt ? lt.n + '대 · 평균 ' + Math.round(lt.mah / lt.n).toLocaleString() + 'mAh' + (lt.bad ? ' · <b style="color:var(--red)">불합격 ' + lt.bad + '</b>' : '') : '-') + '</td></tr>'; }).join('');
@@ -3213,15 +3293,17 @@ var ACT = {
   },
   shipQc: function (d, b) {
     var F = sqForm(), rows = F.rows.filter(function (r) { return String(r.sn).trim(); });
-    if (!rows.length && !+F.sample) return toast('샘플 수량이나 불합격 S/N을 입력해 주세요.', true);
+    var ssn = sqSns_(F.ssn, sqLot_());
+    if (typeof ssn === 'string') return toast(ssn, true);
+    if (!rows.length && !+F.sample && !ssn.length) return toast('샘플 S/N(또는 샘플 수량)이나 불합격 S/N을 입력해 주세요.', true);
     var noWhy = rows.filter(function (r) { return !String(r.why).trim(); });
     if (noWhy.length) return toast('불합격 사유를 적어 주세요: ' + noWhy.map(function (r) { return r.sn; }).join(', '), true);
-    run('shipQc', { round: 1, lotId: F.lotId, at: F.at, sample: F.sample, note: F.note.trim(), items: rows.map(function (r) { return { sn: String(r.sn).trim(), why: String(r.why).trim(), disp: r.disp, note: String(r.note || '').trim() }; }) }, function (r) {
+    run('shipQc', { round: 1, lotId: F.lotId, at: F.at, sample: F.sample, note: F.note.trim(), sampleSns: ssn.join(' '), items: rows.map(function (r) { return { sn: String(r.sn).trim(), why: String(r.why).trim(), disp: r.disp, note: String(r.note || '').trim() }; }) }, function (r) {
       r = r || {};
       var m = (r.insp && +r.insp.sample ? '샘플 ' + r.insp.sample + '개 검사 · ' : '') + '불합격 ' + (r.added || []).length + '개 기록했어요.';
       if (r.skipped && r.skipped.length) m += ' (이미 등록된 ' + r.skipped.length + '개 건너뜀: ' + r.skipped.slice(0, 3).join(', ') + ')';
       if (r.noLot && r.noLot.length) m += ' · 차수 구간이 없는 S/N ' + r.noLot.length + '개 — 아래 양산 차수에 구간을 등록하면 자동으로 붙어요';
-      S.sq = { at: F.at, lotId: F.lotId, sample: '', note: '', rows: [] };
+      S.sq = { at: F.at, lotId: F.lotId, sample: '', note: '', rows: [], ssn: '' };
       return m;
     }, b).catch(function () { });
   },
@@ -3610,10 +3692,11 @@ window.addEventListener('unhandledrejection', function (e) { e.preventDefault();
 var qTimer;
 document.addEventListener('input', sqInput_);
 document.addEventListener('change', sqInput_);
+var sqT_;
 function sqInput_(e) {
   var t = e.target; if (!t.getAttribute || !S.sq) return;
   var k = t.getAttribute('data-sq');
-  if (k) { S.sq[k] = t.value; return; }
+  if (k) { S.sq[k] = t.value; if (k === 'ssn' || k === 'lotId') { clearTimeout(sqT_); sqT_ = setTimeout(function () { var b = $('#sqPrev'); if (b) b.innerHTML = sqPrev_(); }, 300); } return; }
   var rk = t.getAttribute('data-sqr'); if (!rk) return;
   var p = rk.split('|'), i = +p[0], f = p[1], row = S.sq.rows[i]; if (!row) return;
   row[f] = t.value;
@@ -4325,7 +4408,7 @@ function vLoadtest() {
     '<li>차단 전압에 닿아 장비가 멈추면 자동 완료되고 결과가 바로 저장돼요. 시험 중에는 이 창을 닫지 마세요 (다른 탭·최소화는 괜찮아요). PC 절전은 꺼 주세요.</li></ol></details></div></div>' +
     '<div id="ltRemote"></div><div id="ltAssign"></div>' +
     '<div class="ltgrid" id="ltGrid">' + (LT.devs.length || remoteOnly ? '' : '<div class="card"><div class="empty">' + (LT.agent ? 'PC 기록 프로그램에 연결된 DL24가 없어요. 장비 전원과 USB를 꽂아 주세요. (몇 초 안에 자동으로 나타나요)' : '연결된 장비가 없어요. ＋ 장비 추가 (USB)를 눌러 주세요.') + '</div></div>') + '</div>' +
-    '<div id="ltPerCard">' + ltPerCard() + '</div><div id="ltHistCard">' + ltHistCard() + '</div>';
+    '<div id="ltPracBox">' + ltPracLine_() + '</div><div id="ltHistCard">' + ltHistCard() + '</div>';
 }
 function ltTable(rows, showSn) {
   return '<div class="tw"><table class="t"><thead><tr><th>시험일시</th>' + (showSn ? '<th>S/N</th>' : '') + '<th>구분</th><th>조건</th><th>케이블 점검</th><th>Wh</th><th>mAh</th><th title="5V 출력 mAh × 5 ÷ 3.7 (품질팀 성적서와 같은 계산)">3.7V 환산 mAh</th><th>판정</th><th>시간</th><th>평균 V</th><th>중간 최저 V</th><th>최고 ℃</th><th>종료</th><th>담당</th></tr></thead><tbody>' +
@@ -4448,6 +4531,7 @@ function ltPerRange_(k) {
 function ltPer_() {
   var P = LT.per = LT.per || { k: 'month', from: '', to: '', pur: '', judge: '' };
   if (P.k !== 'custom') { var r = ltPerRange_(P.k); P.from = r[0]; P.to = r[1]; }
+  P.pur = LT.perPur || '';
   return P;
 }
 function ltPerRows_() {
@@ -4468,14 +4552,15 @@ function ltPerLoad_(force) {
   ltQ_({ all: 1 }).then(function (r) { LT.perAll = r.tests || []; LT.perLoading = false; ltRefreshPerCard(); },
     function (e) { LT.perLoading = false; LT.perAll = LT.perAll || []; toast(e.message || String(e), true); ltRefreshPerCard(); });
 }
-function ltPerCard() {
+function ltPerCard(pur) {
+  if (pur) LT.perPur = pur;
   var P = ltPer_(); ltPerLoad_();
   var btn = function (k, l) { return '<button class="btn sm' + (P.k === k ? ' pri' : '') + '" data-act="ltPerK" data-v="' + k + '">' + l + '</button>'; };
-  var h = '<div class="card" style="margin-top:14px"><div class="hd"><h3>기간별 시험 기록</h3><span class="muted small">하루·며칠·한 달 단위로 골라서 목록·엑셀·성적서로 뽑아요 (시험 시작일 기준)</span><span style="flex:1"></span>' +
+  var h = '<div class="card" style="margin-top:14px"><div class="hd"><h3>용량 시험 기록 — ' + esc(LT_PUR_LABEL[P.pur] || '전체') + '</h3><span class="muted small">기간을 골라 목록·엑셀·성적서로 뽑아요 (시험 시작일 기준 · 엑셀·성적서는 S/N별 최종 시험만)</span><span style="flex:1"></span>' +
     '<button class="btn sm" data-act="ltPerReload">↻ 새로 불러오기</button></div><div class="bd">' +
     '<div class="row" style="gap:6px;flex-wrap:wrap;align-items:center">' + btn('today', '오늘') + btn('yday', '어제') + btn('d7', '최근 7일') + btn('week', '이번 주') + btn('month', '이번 달') + btn('lmonth', '지난달') + btn('custom', '직접 지정') +
     '<input class="inp" type="date" id="ltPF" value="' + esc(P.from) + '" style="width:150px"' + (P.k === 'custom' ? '' : ' disabled') + '><span>~</span><input class="inp" type="date" id="ltPT" value="' + esc(P.to) + '" style="width:150px"' + (P.k === 'custom' ? '' : ' disabled') + '></div>' +
-    '<div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center"><select class="inp sm" id="ltPP"><option value="">시험 구분 전체</option>' + LT_PURPOSES.map(function (p) { return '<option value="' + esc(p) + '"' + (P.pur === p ? ' selected' : '') + '>' + esc(LT_PUR_LABEL[p] || p) + '</option>'; }).join('') + '</select>' +
+    '<div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center">' +
     '<select class="inp sm" id="ltPJ"><option value="">판정 전체</option><option value="ok"' + (P.judge === 'ok' ? ' selected' : '') + '>합격만</option><option value="bad"' + (P.judge === 'bad' ? ' selected' : '') + '>불합격만</option></select>' + '</div>';
   if (!LT.perAll) return h + '<div class="empty" style="margin-top:10px">불러오는 중…</div></div></div>';
   var rows = ltPerRows_(), sns = {}, ok = 0, bad = 0, warn = 0, sumC = 0;
@@ -4486,11 +4571,32 @@ function ltPerCard() {
     '<span style="flex:1"></span><button class="btn sm"' + (rows.length ? '' : ' disabled') + ' data-act="ltPerXlsx">엑셀 (이 기간)</button><button class="btn sm pri"' + (rows.length ? '' : ' disabled') + ' data-act="ltPerRep">📄 성적서 (이 기간)</button></div>';
   if (Object.keys(days).length > 1) h += '<div class="small muted" style="margin-top:6px">날짜별 ' + Object.keys(days).sort().map(function (d) { return md(d) + ' ' + days[d] + '건'; }).join(' · ') + '</div>';
   h += rows.length ? '<div style="margin-top:10px;max-height:520px;overflow:auto">' + ltTable(rows, true) + '</div>' : '<div class="empty" style="margin-top:10px">이 기간에 저장된 시험이 없어요.</div>';
-  var prac = (LT.perAll || []).filter(function (t) { return !ltRealSn(t.sn); });
-  if (prac.length) h += '<div class="row small muted" style="gap:8px;margin-top:10px;align-items:center">연습 기록 ' + prac.length + '건 (' + prac.map(function (t) { return esc(t.sn || '빈 칸'); }).join(', ') + ') — 목록·엑셀에는 안 나와요.<button class="btn sm" data-act="ltPracDel">서버에서 지우기</button></div>';
   return h + '</div></div>';
 }
-function ltRefreshPerCard() { var box = $('#ltPerCard'); if (box) box.innerHTML = ltPerCard(); }
+function ltRefreshPerCard() { var box = $('#ltPerCard'); if (box) box.innerHTML = ltPerCard(); var pb = $('#ltPracBox'); if (pb) pb.innerHTML = ltPracLine_(); }
+function ltPracLine_() {
+  ltPerLoad_();
+  var prac = (LT.perAll || []).filter(function (t) { return !ltRealSn(t.sn); });
+  return prac.length ? '<div class="card" style="margin-top:14px"><div class="bd row small muted" style="gap:8px;align-items:center">연습 기록 ' + prac.length + '건 (' + prac.map(function (t) { return esc(t.sn || '빈 칸'); }).join(', ') + ') — 결과·엑셀에는 안 나와요.<button class="btn sm" data-act="ltPracDel">서버에서 지우기</button></div></div>' : '';
+}
+ACT.plRep = function (d) {
+  var p = plById_(d.id); if (!p) return;
+  var o = plStat_(p), ids = {}, tested = [], none = [];
+  o.sns.forEach(function (sn) { var t = ltLastOf_(sn, '입고 QC'); if (t) { ids[t.id] = 1; tested.push(sn); } else none.push(sn); });
+  var verdict = o.pass ? '<b style="color:#1fb86c">출하 합격</b>' : '<b style="color:#e08a00">보류</b> — ' + [o.re ? '재시험 필요 ' + o.re + '개' : '', o.bad ? '용량 불합격 ' + o.bad + '개' : '', o.none ? '용량 시험 전 ' + o.none + '개' : '', o.rej.length ? '출하 불합격 ' + o.rej.length + '개' : ''].filter(String).join(' · ');
+  var info = '<div class="box"><b>대상</b> — ' + esc(plName_(p)) + ' · ' + esc(prodLabel(p.model) || p.model) + ' · S/N ' + esc(stockSn(p, p.fromNo)) + ' ~ ' + esc(stockSn(p, p.toNo)) + ' · 수량 ' + (+p.qty || 0).toLocaleString() + '개<br>' +
+    '<b>샘플</b> — ' + o.sns.length + '개 (용량 시험 ' + tested.length + '개)' + (o.rej.length ? '<br><b>출하 불합격</b> — ' + o.rej.map(function (r) { return esc(r.sn + ' ' + (r.why || '')); }).join(', ') : '') + '<br>' +
+    '<b>판정</b> — ' + verdict + '</div>';
+  var opt = { title: '출하 검사 성적서', info: info, none: none, noneLabel: '용량 시험 전' };
+  if (!tested.length) { toast('이 파렛트는 아직 용량 시험한 샘플이 없어요.', true); return; }
+  ltReport(tested, 'ids', ids, opt);
+};
+ACT.plXlsx = function (d) {
+  var p = plById_(d.id); if (!p) return;
+  var rows = plSamples_(p).map(function (sn) { return ltLastOf_(sn, '입고 QC'); }).filter(Boolean);
+  if (!rows.length) return toast('이 파렛트는 아직 용량 시험한 샘플이 없어요.', true);
+  ltXlsxBuild_(rows, 'Forms_ShipQC_' + plName_(p).replace(/\s+/g, '') + '_' + today().replace(/-/g, '') + '.xlsx', plName_(p));
+};
 ACT.ltPerK = function (d) { var P = ltPer_(); P.k = d.v; if (d.v === 'custom' && !P.from) { P.from = P.to = today(); } ltRefreshPerCard(); };
 ACT.ltPerReload = function () { ltPerLoad_(true); toast('기록을 새로 불러와요.'); };
 ACT.ltPracDel = function (d, b) {
@@ -4576,7 +4682,7 @@ ACT.ltRepGo = function () {
   var m = document.querySelector('input[name=lrMode]:checked');
   closeModal(); ltReport(sns, m ? m.value : 'last');
 };
-function ltReport(sns, mode, ids) {
+function ltReport(sns, mode, ids, opt) {
   var w = null; try { w = window.open('', '_blank'); } catch (e) { }
   if (w) { try { w.document.write('<p style="font:15px sans-serif;padding:30px">성적서 만드는 중… (' + sns.length + '개)</p>'); } catch (e) { } }
   toast('성적서 만드는 중… (' + sns.length + '개)');
@@ -4591,7 +4697,7 @@ function ltReport(sns, mode, ids) {
     sns.forEach(function (sn) { var t = res[sn] || []; if (!t.length) { none.push(sn); return; } (mode === 'ids' ? t.filter(function (x) { return ids[x.id]; }) : mode === 'all' ? t : [t[t.length - 1]]).forEach(function (x) { rows.push(x); }); });
     if (mode === 'ids') rows.sort(function (a, b) { return String(a.startAt).localeCompare(String(b.startAt)); });
     if (!rows.length) { if (w) w.close(); return toast('저장된 시험 기록이 없어요: ' + none.join(', '), true); }
-    var html = ltReportHtml(rows, none);
+    var html = ltReportHtml(rows, none, opt);
     if (w && !w.closed) { w.document.open(); w.document.write(html); w.document.close(); }
     else {
       var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([html], { type: 'text/html' })); a.download = '용량시험성적서_' + today().replace(/-/g, '') + '.html'; document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
@@ -4611,7 +4717,8 @@ function ltRepSvg(t) {
   g += '<line x1="' + L + '" y1="' + cy.toFixed(1) + '" x2="' + (W - R) + '" y2="' + cy.toFixed(1) + '" stroke="#f04452" stroke-dasharray="4 3"/><text x="' + (W - R - 2) + '" y="' + (cy - 3).toFixed(1) + '" font-size="10" text-anchor="end" fill="#f04452">차단 ' + (+t.cut).toFixed(1) + 'V</text>';
   return '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" height="' + H + '">' + g + '<polyline fill="none" stroke="#3182f6" stroke-width="1.6" points="' + v.map(function (y, k) { return X(k).toFixed(1) + ',' + Y(y).toFixed(1); }).join(' ') + '"/></svg>';
 }
-function ltReportHtml(rows, none) {
+function ltReportHtml(rows, none, opt) {
+  opt = opt || {}; none = (opt.none || []).concat(none);
   var E = esc, N = function (x, d) { x = +x; return isFinite(x) ? x.toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d }) : '-'; };
   var dt = function (s) { return String(s || '').replace('T', ' ').slice(0, 16); };
   var conv = rows.map(function (t) { return ltConv(t.mah); });
@@ -4619,7 +4726,7 @@ function ltReportHtml(rows, none) {
   var cnt = {}; js.forEach(function (j) { if (j) cnt[j.txt] = (cnt[j.txt] || 0) + 1; });
   var avg = conv.reduce(function (a, b) { return a + b; }, 0) / conv.length;
   var conds = rows.map(function (t) { return (+t.cur).toFixed(1) + 'A · ' + (+t.cut).toFixed(1) + 'V'; }).filter(function (x, i, a) { return a.indexOf(x) === i; });
-  var col = function (j) { return !j ? '' : j.cls === 'ok' ? '#1fb86c' : j.cls === 'warn' ? '#e08a00' : '#f04452'; };
+  var col = function (j) { return !j ? '' : j.cls === 'ok' ? '#1fb86c' : j.cls === 'warn' || j.cls === 'retest' ? '#e08a00' : '#f04452'; };
   var head = '<tr><th>No</th><th>S/N</th><th>모델</th><th>구분</th><th>시험 일시</th><th>조건</th><th>시험 시간</th><th>Wh</th><th>mAh<br><small>(5V 출력)</small></th><th>3.7V 환산<br>mAh</th><th>표기 대비</th><th>판정</th></tr>';
   var body = rows.map(function (t, i) {
     var j = js[i];
@@ -4641,9 +4748,9 @@ function ltReportHtml(rows, none) {
     '.jd{margin-left:auto;border:1.5px solid;border-radius:6px;padding:1px 10px;font-weight:700}.kv td{padding:3px 6px;border-bottom:1px solid #f2f4f6;font-size:11px}.kv td:nth-child(odd){color:#6b7684;width:90px;white-space:nowrap}.nocv{color:#8b95a1;padding:8px 0}' +
     '.bar{position:sticky;top:0;background:#fff;padding:8px 0 12px;display:flex;gap:8px}.bar button{font:inherit;padding:7px 16px;border-radius:8px;border:1px solid #d1d6db;background:#3182f6;color:#fff;font-weight:700;cursor:pointer}' +
     '@media print{body{padding:0}.bar{display:none}@page{size:A4;margin:12mm}}';
-  return '<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>용량 시험 성적서 ' + E(today()) + '</title><style>' + css + '</style></head><body>' +
+  return '<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>' + E(opt.title || '용량 시험 성적서') + ' ' + E(today()) + '</title><style>' + css + '</style></head><body>' +
     '<div class="bar"><button onclick="print()">인쇄 / PDF로 저장</button></div>' +
-    '<h1>보조배터리 용량 시험 성적서</h1><div class="sub">(주)폼즈 · VOLTALES · 발행일 ' + E(today()) + ' · 대상 ' + rows.length + '건</div>' +
+    '<h1>' + E(opt.title || '보조배터리 용량 시험 성적서') + '</h1><div class="sub">(주)폼즈 · VOLTALES · 발행일 ' + E(today()) + ' · 대상 ' + rows.length + '건</div>' + (opt.info || '') +
     '<div class="box"><b>시험 방법</b> — 100% 완충 후 USB-A 출력 → 시험용 A-to-C 30cm 케이블 → ATORCH DL24 전자부하 정전류(CC) 방전, 차단 전압 도달 시 자동 종료 · 실온 · 조건: ' + E(conds.join(' / ')) + '<br>' +
     '<b>환산</b> — 3.7V 환산 mAh = 측정 mAh(5V 출력) × 5 ÷ 3.7 (기존 품질 성적서와 같은 계산) · 표기 용량 ' + N(LT_RATED_MAH, 0) + 'mAh<br>' +
     (rows.some(ltIsCust) ? '<b>고객사 기준</b> (CC 3.0A · 차단 0.7V, 보호회로 종료까지) — 기준 용량 ' + N(LT_CUST.ref, 0) + 'mAh · 측정 ' + N(LT_CUST.min, 0) + 'mAh(3.7V 환산 ' + N(ltConv(LT_CUST.min), 0) + 'mAh) 이상 합격 · 기준보다 3% 안쪽은 \'합격(여유 적음)\'<br>' : '') +
@@ -4651,7 +4758,7 @@ function ltReportHtml(rows, none) {
     '<div class="sum"><div>대상 <b>' + rows.length + '</b>건</div><div>3.7V 환산 평균 <b>' + N(avg, 0) + '</b> mAh</div><div>최저 <b>' + N(Math.min.apply(null, conv), 0) + '</b> · 최고 <b>' + N(Math.max.apply(null, conv), 0) + '</b></div>' +
     Object.keys(cnt).map(function (k) { return '<div>' + E(k) + ' <b>' + cnt[k] + '</b></div>'; }).join('') + '</div>' +
     '<table class="list"><thead>' + head + '</thead><tbody>' + body + '</tbody></table>' +
-    (none.length ? '<div class="sub" style="margin-top:8px">기록 없음: ' + none.map(E).join(', ') + '</div>' : '') +
+    (none.length ? '<div class="sub" style="margin-top:8px">' + E(opt.noneLabel || '기록 없음') + ': ' + none.map(E).join(', ') + '</div>' : '') +
     each + '</body></html>';
 }
 ACT.ltAssign = function () {
