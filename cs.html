@@ -921,7 +921,7 @@ function render() {
   var t = VIEWS.filter(function (v) { return v[0] === S.view; })[0];
   document.body.classList.toggle('cs', CS());
   $('#title').textContent = t[2];
-  var sub = { home: '', inbox: 'Slack #ext-볼타레스-티오더 접수 양식 자동 수집', cases: '교환 출고 → 반품 신청 → 회수 입고', inspect: '바코드 스캔으로 회수 매칭 → 판정 · 원인 · 처분', results: 'AS로 회수한 제품의 검사 결과 — 판정별로 전산 처리할 때 보세요', shipqc: '신품 납품(출하) 전 샘플 검사 · 용량 시험(납품 검사) 결과 · 불합격 S/N — 사내 전용 (고객사 화면에는 안 보여요)', guide: '제품 구성 · 사양 · 사용 방법 · 매뉴얼', analysis: '모델별 불량 데이터', stock: '교체 재고(AS 교환용) · 납품 재고(고객사 납품·양산 차수) — 외주창고·폼즈 지하1층 위치를 파렛트 단위로', settings: '연동 상태와 티오더 시트 동기화' }[S.view] || '';
+  var sub = { home: '', inbox: 'Slack #ext-볼타레스-티오더 접수 양식 자동 수집', cases: '교환 출고 → 반품 신청 → 회수 입고', inspect: '바코드 스캔으로 회수 매칭 → 판정 · 원인 · 처분', results: 'AS로 회수한 제품의 검사 결과 — 판정별로 전산 처리할 때 보세요', shipqc: '신품 납품(출하) 전 샘플 검사 · 용량 시험(납품 검사) 결과 · 불합격 S/N — 사내 전용 (고객사 화면에는 안 보여요)', guide: '제품 구성 · 사양 · 사용 방법 · 매뉴얼', analysis: '모델별 불량 데이터', stock: '폼즈 지하1층 창고 · 3PL 창고에 있는 재고를 파렛트 단위로 — 입고·출고 기록과 양산 차수는 오른쪽 탭', settings: '연동 상태와 티오더 시트 동기화' }[S.view] || '';
   $('#subtitle').textContent = sub; $('#subtitle').style.display = sub ? '' : 'none';
   var fn = { home: vHome, inbox: vInbox, ship: vShip, ret: vReturn, inspect: vInspect, results: vResults, shipqc: vShipQc, guide: vGuide, stock: vStock, analysis: vAnalysis, settings: vSettings, loadtest: vLoadtest }[S.view];
   if (S.view === 'loadtest') ltBeforeRender();
@@ -1858,25 +1858,38 @@ function earlyCard_() {
   var early = rows.filter(function (r) { return r.el !== undefined && r.el >= 0 && r.el <= EARLY_DAYS; });
   var known = rows.filter(function (r) { return r.el !== undefined && r.el >= 0; }), unk = rows.length - known.length;
   var by = {}; early.forEach(function (r) { var k = r.lot ? r.lot.id : '-'; (by[k] = by[k] || []).push(r); });
-  var bucket = [[0, EARLY_DAYS, '0~' + EARLY_DAYS + '일'], [EARLY_DAYS + 1, 30, '11~30일'], [31, 90, '31~90일'], [91, 99999, '91일 이상']].map(function (b) { return [b[2], known.filter(function (r) { return r.el >= b[0] && r.el <= b[1]; }).length]; });
   var totQ = 0, totE = 0;
   var trs = lots.map(function (l) {
     var q = +(l.orderQty || l.qty) || 0, e = (by[l.id] || []).length; totQ += q; totE += e;
-    var bad = (by[l.id] || []).filter(function (r) { return r.verdict === '불량'; }).length;
+    var vc = { '불량': 0, '정상': 0, '외력/사용자 과실': 0, '': 0 }; (by[l.id] || []).forEach(function (r) { var v = r.verdict || ''; if (!(v in vc)) v = ''; vc[v]++; });
+    var vtxt = e ? [['불량', 'var(--red)'], ['정상', 'var(--green)'], ['외력/사용자 과실', 'var(--amber,#c26a00)'], ['', 'var(--muted,#8b95a1)']].filter(function (k) { return vc[k[0]]; }).map(function (k) { return '<span style="color:' + k[1] + '">' + (k[0] === '외력/사용자 과실' ? '외력' : k[0] || '검사 전') + ' ' + vc[k[0]] + '</span>'; }).join(' · ') : '-';
     return '<tr><td><span class="lotTag" style="margin:0">' + esc(l.name) + '</span></td><td>' + mtag(l.model) + colorTag(l.color || colorOfSn(stockSn(l, l.fromNo))) + '</td>' +
       '<td>' + q.toLocaleString() + (l.shipStatus === 'shipping' ? ' <span class="small" style="color:var(--amber)">출하 진행 중</span>' : '') + '</td>' +
-      '<td><b style="color:' + (e ? 'var(--red)' : 'inherit') + '">' + e + '</b>' + (e ? ' <span class="small muted">(검사 불량 ' + bad + ')</span>' : '') + '</td><td><b>' + (q ? (e / q * 100).toFixed(3) + '%' : '-') + '</b></td></tr>';
+      '<td><b style="color:' + (e ? 'var(--red)' : 'inherit') + '">' + e + '</b></td><td><b>' + (q ? (e / q * 100).toFixed(3) + '%' : '-') + '</b></td><td class="small">' + vtxt + '</td></tr>';
   }).join('');
   var noLot = (by['-'] || []).length;
   var det = early.slice().sort(function (a, b) { return String(b.fail).localeCompare(String(a.fail)); });
   return '<div class="card" style="margin-top:14px"><div class="hd"><h3>초도 불량 — 사용 시작 후 ' + EARLY_DAYS + '일 이내 접수</h3><span class="muted small">모수 = 발주 차수별 발주 수량 · 사용 시작일 = 매장 설치일 (교환으로 나간 제품은 교환품 출고일) · 고객사 IQC 불량은 0일</span></div>' +
-    '<div class="bd"><div class="small" style="margin-bottom:8px">경과일 분포 ' + bucket.map(function (b) { return '<span class="pill p-gray">' + b[0] + ' ' + b[1] + '</span>'; }).join(' ') + (unk ? ' <span class="muted">· 날짜 정보 없음 ' + unk + '개(제외)</span>' : '') + '</div>' +
-    (trs ? '<div class="tw"><table class="t"><thead><tr><th>발주 차수</th><th>모델</th><th>발주 수량</th><th>초도 불량</th><th>초도 불량률</th></tr></thead><tbody>' + trs +
-      '<tr style="font-weight:700"><td colspan="2">합계</td><td>' + totQ.toLocaleString() + '</td><td>' + totE + '</td><td>' + (totQ ? (totE / totQ * 100).toFixed(3) + '%' : '-') + '</td></tr></tbody></table></div>' : '<div class="empty">발주 차수가 등록돼 있지 않아요.</div>') +
+    '<div class="bd"><div class="small muted" style="margin-bottom:8px"><b style="color:var(--ink)">초도 불량</b> = 사용 시작 후 ' + EARLY_DAYS + '일 안에 AS 접수된 수량 (고객사 기준, 우리 검사 결과와 상관없이 셈) · <b style="color:var(--ink)">회수 검사 결과</b> = 그중 회수해서 우리가 검사한 판정' + (unk ? ' · 날짜 정보 없는 ' + unk + '개는 제외' : '') + '</div>' +
+    (trs ? '<div class="tw"><table class="t"><thead><tr><th>발주 차수</th><th>모델</th><th>발주 수량</th><th>초도 불량</th><th>초도 불량률</th><th>회수 검사 결과</th></tr></thead><tbody>' + trs +
+      '<tr style="font-weight:700"><td colspan="2">합계</td><td>' + totQ.toLocaleString() + '</td><td>' + totE + '</td><td>' + (totQ ? (totE / totQ * 100).toFixed(3) + '%' : '-') + '</td><td></td></tr></tbody></table></div>' : '<div class="empty">발주 차수가 등록돼 있지 않아요.</div>') +
     (noLot ? '<div class="small muted" style="margin-top:6px">차수 구간에 없는 S/N의 초도 불량 ' + noLot + '개는 합계에서 빠졌어요.</div>' : '') +
     (det.length ? '<details style="margin-top:10px"><summary class="small" style="cursor:pointer;font-weight:600">초도 불량 ' + det.length + '개 상세 보기</summary><div class="tw" style="margin-top:6px;max-height:420px"><table class="t"><thead><tr><th>접수일</th><th>매장</th><th>S/N</th><th>차수</th><th>사용 시작일</th><th>경과</th><th>검사 판정</th></tr></thead><tbody>' +
       det.map(function (r) { return '<tr><td class="nowrap">' + esc(ymd(r.fail)) + '</td><td>' + esc(r.store || '') + '</td><td class="mono small">' + esc(r.sn) + '</td><td>' + (r.lot ? esc(r.lot.name) : '-') + '</td><td class="small nowrap">' + esc(ymd(r.start)) + ' <span class="muted">' + esc(r.kind) + '</span></td><td><b>' + r.el + '일</b></td><td>' + (r.verdict ? '<span style="color:' + (r.verdict === '불량' ? 'var(--red)' : 'var(--green)') + '">' + esc(r.verdict) + '</span>' : '<span class="muted">검사 전</span>') + '</td></tr>'; }).join('') +
       '</tbody></table></div></details>' : '') + '</div></div>';
+}
+function earlyDistCard_() {
+  var A = S.an || {}, rows = earlyCalc_().filter(function (r) { return (A.model === 'all' || !A.model || r.model === A.model) && r.el !== undefined && r.el >= 0; });
+  var B = [[0, 3, '0~3일'], [4, 7, '4~7일'], [8, EARLY_DAYS, '8~' + EARLY_DAYS + '일'], [EARLY_DAYS + 1, 30, '11~30일'], [31, 60, '31~60일'], [61, 90, '61~90일'], [91, 180, '91~180일'], [181, 99999, '181일~']];
+  var cnt = B.map(function (b) { return rows.filter(function (r) { return r.el >= b[0] && r.el <= b[1]; }).length; });
+  var mx = Math.max.apply(null, cnt.concat([1])), early = cnt[0] + cnt[1] + cnt[2];
+  return '<div class="card" style="margin-top:14px"><div class="hd"><h3>사용 시작 → AS 접수 경과일</h3><span class="muted small">회수된 ' + rows.length + '개 기준 · 빨간 막대 = 초도 불량(' + EARLY_DAYS + '일 이내) ' + early + '개</span></div><div class="bd">' +
+    '<div style="display:flex;align-items:flex-end;gap:10px;height:180px;padding:0 4px">' + B.map(function (b, i) {
+      var hpx = Math.round(cnt[i] / mx * 140), red = b[1] <= EARLY_DAYS;
+      return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%"><div class="small" style="font-weight:700;margin-bottom:4px;color:' + (red ? 'var(--red)' : 'inherit') + '">' + cnt[i] + '</div>' +
+        '<div style="width:100%;max-width:56px;height:' + Math.max(hpx, cnt[i] ? 3 : 0) + 'px;border-radius:6px 6px 0 0;background:' + (red ? '#f04452' : '#b0b8c1') + '"></div></div>';
+    }).join('') + '</div>' +
+    '<div style="display:flex;gap:10px;padding:6px 4px 0;border-top:1px solid var(--line)">' + B.map(function (b) { return '<div class="small muted" style="flex:1;text-align:center">' + b[2] + '</div>'; }).join('') + '</div></div></div>';
 }
 function vAnalysis() {
   var A = S.an, RG = anRange_(A), months = RG.months, since = RG.since, until = RG.until;
@@ -1960,9 +1973,9 @@ function vAnalysis() {
     '<div class="card"><div class="hd"><h3>반복 AS 매장</h3><span class="muted small">2건 이상</span></div>' + (rep.length ? '<div class="tw"><table class="t"><thead><tr><th>매장</th><th>건</th><th>EA</th><th>불량</th><th>정상</th></tr></thead><tbody>' +
       rep.map(function (x) { return '<tr class="click" data-act="searchStore" data-v="' + esc(x.name) + '"><td>' + esc(x.name) + '</td><td>' + x.n + '</td><td>' + x.q + '</td><td style="color:var(--red)">' + x.bad + '</td><td style="color:var(--green)">' + x.ok + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<div class="empty">없음</div>') + '</div>' +
     defenseCard_(ms, since, mOk, until) + '</div>';
-  h += earlyCard_();
+  h += earlyCard_() + earlyDistCard_();
   if (!CS()) h += inspLeadCard_(tested);
-  if (!CS()) h += '<div class="note" style="margin-top:14px">양산 차수별 AS 접수율은 <a href="#" data-act="goDeliv" style="color:var(--blue)">재고 › 납품 재고</a>에서 볼 수 있어요.</div>';
+  if (!CS()) h += '<div class="note" style="margin-top:14px">양산 차수별 AS 접수율은 <a href="#" data-act="goDeliv" style="color:var(--blue)">재고 › 입고·출고 기록 · 양산 차수</a>에서 볼 수 있어요.</div>';
   var top = cItems[0];
   var notes = [];
   if (!CS() && tested.length >= 10) notes.push('정상 비율 ' + pct(ok.length, tested.length) + '% — 교환 후 재현되지 않는 비중입니다. 인입 단계에서 케이블 교차·직렬 충전·잔량 0% 재충전 확인 여부를 방어 기준으로 삼으면 교환 수량을 줄일 수 있습니다.');
@@ -2562,84 +2575,120 @@ function stockCalc() {
   noSn.sort(function (a, b) { return String(b.c.outDate).localeCompare(String(a.c.outDate)); });
   return { list: list, dup: dup, unreg: unreg, noSn: noSn, used: used };
 }
-var PL_LOC = { wh: { t: '외주창고', i: '🏭', c: 'var(--green)' }, b1: { t: '폼즈 지하1층 창고', i: '🏢', c: '#7c3aed' }, done: { t: '출고 완료', i: '✓', c: 'var(--muted,#8b95a1)' } };
+var PL_LOC = { b1: { t: '폼즈 지하1층 창고', s: '지하1층', i: '🏢', c: '#7c3aed' }, wh: { t: '3PL 창고', s: '3PL', i: '🏭', c: 'var(--green)' }, done: { t: '출고 완료', s: '출고 완료', i: '✓', c: 'var(--muted,#8b95a1)' } };
+var PL_KIND = { rep: '교체용(AS)', deliv: '납품용(신품)' };
 function plSn(o, n) { return o.prefix + ('0000000000000' + n).slice(-(+o.digits)); }
-function plLeft_(kind) {
-  var out = {};
-  var ps = (S.data.pallets || []).filter(function (p) { return p.kind === kind; });
-  if (!ps.length) return out;
-  if (kind === 'rep') {
-    var X = stockCalc(), used = X.used || {}, rej = {};
-    (S.data.stock || []).forEach(function (r) { qcRejOf(r).forEach(function (e) { rej[e.sn] = 1; }); });
-    ps.forEach(function (p) { var n = 0, u = 0; for (var k = +p.fromNo; k <= +p.toNo; k++) { var sn = plSn(p, k); if (rej[sn]) continue; if (used[sn]) u++; else n++; } out[p.id] = { left: p.loc === 'done' ? 0 : n, used: u }; });
-  } else {
-    var rj = {}; (S.data.shiprej || []).forEach(function (r) { rj[String(r.sn).toUpperCase()] = 1; });
-    ps.forEach(function (p) { var b = 0; for (var k = +p.fromNo; k <= +p.toNo; k++) if (rj[plSn(p, k)]) b++; out[p.id] = { left: p.loc === 'done' ? 0 : +p.qty - b, used: 0, rej: b }; });
-  }
-  return out;
-}
 function plName(p) { return (p.lot ? p.lot + ' ' : '') + p.no + '번'; }
-function palletCard_(kind) {
+function plCalc_() {
+  var X = stockCalc(), used = X.used || {}, rej = {}, out = {}, srej = {};
+  (S.data.stock || []).forEach(function (r) { qcRejOf(r).forEach(function (e) { rej[e.sn] = 1; }); });
+  (S.data.shiprej || []).forEach(function (r) { srej[String(r.sn).toUpperCase()] = 1; });
+  var ps = S.data.pallets || [];
+  ps.forEach(function (p) {
+    var n = 0, u = 0, b = 0;
+    for (var k = +p.fromNo; k <= +p.toNo; k++) {
+      var sn = plSn(p, k);
+      if (p.kind === 'rep') { if (rej[sn]) { b++; continue; } if (used[sn]) u++; else n++; }
+      else { if (srej[sn]) b++; else n++; }
+    }
+    out[p.id] = { left: p.loc === 'done' ? 0 : n, used: u, rej: b };
+  });
+  var unc = { wh: {}, b1: {} }, rp = ps.filter(function (p) { return p.kind === 'rep'; });
+  X.list.forEach(function (x) {
+    var r = x.r, m = r.model || modelOfSn(stockSn(r, r.fromNo)) || '기타', keep = {};
+    if (r.keep) { var kr = snRangesTxt(r.keep, r.model); if (typeof kr !== 'string') kr.forEach(function (y) { for (var k = y.lo; k <= y.hi; k++) keep[k] = 1; }); }
+    var pr = rp.filter(function (p) { return p.prefix === r.prefix && +p.digits === +r.digits && !(+p.toNo < +r.fromNo || +p.fromNo > +r.toNo); });
+    for (var k = +r.fromNo; k <= +r.toNo; k++) {
+      var sn = stockSn(r, k);
+      if (rej[sn] || used[sn]) continue;
+      if (pr.some(function (p) { return k >= +p.fromNo && k <= +p.toNo; })) continue;
+      var loc = x.wh && !keep[k] ? 'wh' : 'b1';
+      unc[loc][m] = (unc[loc][m] || 0) + 1;
+    }
+  });
+  return { p: out, unc: unc };
+}
+function plRegForm_(loc) {
+  var ml = SN_PRODS(), mx = 0; (S.data.pallets || []).forEach(function (p) { if (+p.no > mx) mx = +p.no; });
+  return '<div style="padding:12px;border:1px dashed var(--line);border-radius:12px;margin-bottom:14px"><div class="small" style="margin-bottom:8px"><b>파렛트 등록</b> — S/N 구간 전체와 파렛트당 수량을 넣으면 첫 번호부터 차례로 나눠 등록해요. (예: 30001~33000, 파렛트당 1000, 첫 번호 2 → 2·3·4번 파렛트)</div>' +
+    '<div class="row"><select class="inp" id="plKind"><option value="rep">교체용(AS 교환)</option><option value="deliv">납품용(고객사 신품)</option></select><select class="inp" id="plModel">' + prodOpts((ml[0] || {}).id, ml) + '</select>' +
+    '<input class="inp mono" id="plFrom" placeholder="시작 S/N·번호" style="flex:1;min-width:120px"><span>~</span><input class="inp mono" id="plTo" placeholder="끝 S/N·번호" style="flex:1;min-width:120px"></div>' +
+    '<div class="row" style="margin-top:8px"><label class="small nowrap">파렛트당 수량 <input class="inp" id="plPer" type="number" min="1" placeholder="비우면 1파렛트" style="width:120px"></label>' +
+    '<label class="small nowrap">첫 파렛트 번호 <input class="inp" id="plStart" type="number" min="1" value="' + (mx + 1) + '" style="width:80px"></label>' +
+    '<select class="inp" id="plLoc"><option value="b1"' + (loc === 'b1' ? ' selected' : '') + '>🏢 폼즈 지하1층 창고</option><option value="wh"' + (loc === 'wh' ? ' selected' : '') + '>🏭 3PL 창고</option></select>' +
+    '<input class="inp" id="plAt" type="date" value="' + esc(today()) + '" style="width:150px" title="들어온 날짜">' +
+    '<input class="inp" id="plNote" placeholder="메모 (선택)" style="flex:1;min-width:120px"><button class="btn pri" data-act="plAdd">등록</button></div></div>';
+}
+function vStockLoc(loc) {
   var P = S.pl = S.pl || { sel: {}, form: null, edit: null, log: null };
-  var sm = kind === 'rep' && S.stockM && S.stockM !== 'all' ? S.stockM : 'all';
-  var ps = (S.data.pallets || []).filter(function (p) { return p.kind === kind && (sm === 'all' || p.model === sm); })
-    .sort(function (a, b) { return String(a.model).localeCompare(String(b.model)) || String(a.prefix).localeCompare(String(b.prefix)) || (+a.fromNo - +b.fromNo); });
-  var L = plLeft_(kind), title = kind === 'rep' ? '교체 재고' : '납품 재고';
-  var h = '<div class="card" style="margin-bottom:14px"><div class="hd"><h3>' + title + ' 위치 · 파렛트</h3><span class="muted small">파렛트마다 S/N 구간을 넣어 두면 ' + (kind === 'rep' ? 'AS 교환·별도 출고된 S/N만큼 남은 수량이 자동으로 줄어요' : '출하 불합격 S/N은 남은 수량에서 빠져요') + '</span><span style="flex:1"></span>' +
-    '<button class="btn sm' + (P.form === kind ? '' : ' pri') + '" data-act="plForm" data-v="' + kind + '">' + (P.form === kind ? '닫기' : '＋ 파렛트 등록') + '</button></div><div class="bd">';
-  if (P.form === kind) {
-    var ml = SN_PRODS(), m0 = sm !== 'all' ? sm : (ml[0] || {}).id;
-    h += '<div style="padding:12px;border:1px dashed var(--line);border-radius:12px;margin-bottom:14px"><div class="small" style="margin-bottom:8px"><b>파렛트 등록</b> — S/N 구간 전체와 파렛트당 수량을 넣으면 첫 번호부터 차례로 나눠 등록해요. (예: 30001~33000, 파렛트당 1000, 첫 번호 2 → 2·3·4번 파렛트)</div>' +
-      '<div class="row"><select class="inp" id="plModel">' + prodOpts(m0, ml) + '</select><input class="inp mono" id="plFrom" placeholder="시작 S/N·번호" style="flex:1;min-width:120px"><span>~</span><input class="inp mono" id="plTo" placeholder="끝 S/N·번호" style="flex:1;min-width:120px"></div>' +
-      '<div class="row" style="margin-top:8px"><label class="small nowrap">파렛트당 수량 <input class="inp" id="plPer" type="number" min="1" placeholder="비우면 1파렛트" style="width:120px"></label>' +
-      '<label class="small nowrap">첫 파렛트 번호 <input class="inp" id="plStart" type="number" min="1" value="' + (function () { var mx = 0; (S.data.pallets || []).forEach(function (p) { if (p.kind === kind && +p.no > mx) mx = +p.no; }); return mx + 1; })() + '" style="width:80px"></label>' +
-      '<select class="inp" id="plLoc"><option value="b1">🏢 폼즈 지하1층 창고</option><option value="wh">🏭 외주창고</option></select>' +
-      '<input class="inp" id="plAt" type="date" value="' + esc(today()) + '" style="width:150px" title="입고(옮긴) 날짜">' +
-      '<input class="inp" id="plNote" placeholder="메모 (선택)" style="flex:1;min-width:120px"><button class="btn pri" data-act="plAdd" data-v="' + kind + '">등록</button></div>' +
-      '<div class="small muted" id="plPrev" style="margin-top:6px"></div></div>';
-  }
-  if (!ps.length) return h + '<div class="empty">등록된 파렛트가 없어요. [＋ 파렛트 등록]으로 파렛트별 S/N 구간과 위치를 넣어 주세요.</div></div></div>';
-  var box = function (loc) {
-    var xs = ps.filter(function (p) { return p.loc === loc; }), by = {}, tot = 0;
-    xs.forEach(function (p) { var l = (L[p.id] || {}).left || 0; tot += l; (by[p.model] = by[p.model] || []).push(p); });
-    return '<div style="flex:1;min-width:260px;padding:14px 16px;border-radius:14px;background:var(--line2)"><div class="small" style="font-weight:700;color:' + PL_LOC[loc].c + '">' + PL_LOC[loc].i + ' ' + PL_LOC[loc].t + '</div>' +
-      '<div style="font-size:28px;font-weight:800;line-height:1.3">' + tot.toLocaleString() + '<small style="font-size:14px;font-weight:600"> 개 · ' + xs.length + '파렛트</small></div>' +
-      (xs.length ? Object.keys(by).map(function (m) {
-        var q = by[m].reduce(function (a, p) { return a + ((L[p.id] || {}).left || 0); }, 0);
-        return '<div style="margin-top:8px">' + mtag(m) + ' <b>' + q.toLocaleString() + '</b>개<div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:4px">' + by[m].map(function (p) {
-          var l = (L[p.id] || {}).left || 0;
-          return '<span class="pill p-gray" title="' + esc(plSn(p, p.fromNo) + ' ~ ' + plSn(p, p.toNo)) + '">' + esc(plName(p)) + ' <b>' + l.toLocaleString() + '</b>' + (l < +p.qty ? '<span class="muted">/' + (+p.qty).toLocaleString() + '</span>' : '') + '</span>';
-        }).join('') + '</div></div>';
-      }).join('') : '<div class="small muted" style="margin-top:6px">없음</div>') + '</div>';
-  };
-  h += '<div style="display:flex;gap:12px;flex-wrap:wrap">' + box('wh') + box('b1') + '</div>';
-  var nSel = ps.filter(function (p) { return P.sel[p.id]; }).length, done = ps.filter(function (p) { return p.loc === 'done'; }).length;
-  h += '<div class="row" style="margin-top:14px;align-items:center;gap:6px"><span class="small"><b>' + nSel + '</b>개 선택 →</span>' +
-    '<button class="btn sm" data-act="plMove" data-v="wh"' + (nSel ? '' : ' disabled') + '>🏭 외주창고로</button><button class="btn sm" data-act="plMove" data-v="b1"' + (nSel ? '' : ' disabled') + '>🏢 지하1층으로</button><button class="btn sm" data-act="plMove" data-v="done"' + (nSel ? '' : ' disabled') + '>✓ ' + (kind === 'deliv' ? '고객사 납품 완료' : '출고 완료(소진)') + '</button>' +
+  var C = plCalc_(), L = C.p, unc = C.unc[loc] || {};
+  var all = S.data.pallets || [];
+  var ps = all.filter(function (p) { return p.loc === loc || (P.showDone && p.loc === 'done'); })
+    .sort(function (a, b) { return (a.loc === 'done') - (b.loc === 'done') || String(a.kind).localeCompare(String(b.kind)) || String(a.model).localeCompare(String(b.model)) || String(a.prefix).localeCompare(String(b.prefix)) || (+a.fromNo - +b.fromNo); });
+  var here = all.filter(function (p) { return p.loc === loc; });
+  var sum = { rep: 0, deliv: 0 }, pn = { rep: 0, deliv: 0 }, uncN = 0, rows = {};
+  here.forEach(function (p) { var l = (L[p.id] || {}).left || 0; sum[p.kind] += l; pn[p.kind]++; var k = p.model + '|' + p.kind; rows[k] = rows[k] || { m: p.model, kind: p.kind, n: 0, q: 0, list: [] }; rows[k].n++; rows[k].q += l; rows[k].list.push(p); });
+  Object.keys(unc).forEach(function (m) { uncN += unc[m]; var k = m + '|rep'; rows[k] = rows[k] || { m: m, kind: 'rep', n: 0, q: 0, list: [] }; rows[k].unc = unc[m]; });
+  var tot = sum.rep + sum.deliv + uncN, o = PL_LOC[loc];
+  var h = '<div class="kpis" style="grid-template-columns:repeat(4,minmax(0,1fr))">' +
+    '<div class="kpi" style="cursor:default"><div class="l">' + o.i + ' ' + o.t + ' 보유</div><div class="v" style="color:' + o.c + '">' + tot.toLocaleString() + '<small>개</small></div><div class="d small muted">파렛트 ' + here.length + '개' + (uncN ? ' · 파렛트 미등록 ' + uncN.toLocaleString() + '개 포함' : '') + '</div></div>' +
+    '<div class="kpi" style="cursor:default"><div class="l">교체용 (AS 교환)</div><div class="v">' + (sum.rep + uncN).toLocaleString() + '<small>개</small></div><div class="d small muted">파렛트 ' + pn.rep + '개' + (uncN ? ' · 미등록 ' + uncN.toLocaleString() : '') + '</div></div>' +
+    '<div class="kpi" style="cursor:default"><div class="l">납품용 (고객사 신품)</div><div class="v">' + sum.deliv.toLocaleString() + '<small>개</small></div><div class="d small muted">파렛트 ' + pn.deliv + '개</div></div>' +
+    '<div class="kpi" style="cursor:default"><div class="l">' + (loc === 'b1' ? '🏭 3PL 창고' : '🏢 폼즈 지하1층') + '에는</div><div class="v">' + (function () { var t = 0; all.forEach(function (p) { if (p.loc !== loc && p.loc !== 'done') t += (L[p.id] || {}).left || 0; }); Object.keys(C.unc[loc === 'b1' ? 'wh' : 'b1'] || {}).forEach(function (m) { t += C.unc[loc === 'b1' ? 'wh' : 'b1'][m]; }); return t.toLocaleString(); })() + '<small>개</small></div>' +
+    '<div class="d small"><a href="#" data-act="stockView" data-v="' + (loc === 'b1' ? 'wh' : 'b1') + '" style="color:var(--blue)">보러 가기 →</a></div></div></div>';
+  var rk = Object.keys(rows).map(function (k) { return rows[k]; }).sort(function (a, b) { return prodIdx(a.m) - prodIdx(b.m) || String(a.kind).localeCompare(String(b.kind)); });
+  h += '<div class="card" style="margin-top:14px"><div class="hd"><h3>모델 · 용도별</h3><span class="muted small">파렛트 칩 위에 마우스를 올리면 S/N 구간이 보여요</span></div>' +
+    (rk.length ? '<div class="tw"><table class="t"><thead><tr><th>모델</th><th>용도</th><th>수량</th><th>파렛트</th></tr></thead><tbody>' + rk.map(function (x) {
+      return '<tr><td>' + mtag(x.m) + '</td><td>' + PL_KIND[x.kind] + '</td><td><b>' + (x.q + (x.unc || 0)).toLocaleString() + '</b>개</td><td><div style="display:flex;flex-wrap:wrap;gap:4px">' +
+        x.list.map(function (p) { var l = (L[p.id] || {}).left || 0; return '<span class="pill p-gray" title="' + esc(plSn(p, p.fromNo) + ' ~ ' + plSn(p, p.toNo)) + '">' + esc(plName(p)) + ' <b>' + l.toLocaleString() + '</b>' + (l < +p.qty ? '<span class="muted">/' + (+p.qty).toLocaleString() + '</span>' : '') + '</span>'; }).join('') +
+        (x.unc ? '<span class="pill" style="background:var(--amberSoft,#fff4e0);color:var(--amber,#c26a00)" title="재고 구간은 등록돼 있지만 파렛트에 안 넣은 수량 — 위치는 수입검사·3PL 입고 상태로 추정">파렛트 미등록 <b>' + x.unc.toLocaleString() + '</b></span>' : '') + '</div></td></tr>';
+    }).join('') + '</tbody></table></div>' : '<div class="empty">' + o.t + '에 있는 재고가 없어요.</div>') + '</div>';
+  var nSel = ps.filter(function (p) { return P.sel[p.id]; }).length, doneN = all.filter(function (p) { return p.loc === 'done'; }).length, other = loc === 'b1' ? 'wh' : 'b1';
+  h += '<div class="card" style="margin-top:14px"><div class="hd"><h3>파렛트 ' + here.length + '개</h3><span class="muted small">파렛트마다 S/N 구간을 넣어 두면 출고된 S/N만큼 남은 수량이 자동으로 줄어요</span><span style="flex:1"></span>' +
+    '<button class="btn sm' + (P.form === loc ? '' : ' pri') + '" data-act="plForm" data-v="' + loc + '">' + (P.form === loc ? '닫기' : '＋ 파렛트 등록') + '</button></div><div class="bd">' + (P.form === loc ? plRegForm_(loc) : '');
+  if (!ps.length) return h + '<div class="empty">등록된 파렛트가 없어요. [＋ 파렛트 등록]으로 파렛트별 S/N 구간을 넣어 주세요.</div>' + (doneN ? '<label class="small" style="display:flex;gap:4px;margin-top:8px"><input type="checkbox" data-plshowdone="1"> 출고 완료 ' + doneN + '파렛트도 보기</label>' : '') + '</div></div>';
+  h += '<div class="row" style="align-items:center;gap:6px"><span class="small"><b>' + nSel + '</b>개 선택 →</span>' +
+    '<button class="btn sm" data-act="plMove" data-v="' + other + '"' + (nSel ? '' : ' disabled') + '>' + PL_LOC[other].i + ' ' + PL_LOC[other].t + '로 옮김</button>' +
+    (P.showDone ? '<button class="btn sm" data-act="plMove" data-v="' + loc + '"' + (nSel ? '' : ' disabled') + '>' + o.i + ' ' + o.s + '로 되돌림</button>' : '') +
+    '<button class="btn sm" data-act="plMove" data-v="done"' + (nSel ? '' : ' disabled') + '>✓ 출고 완료 (소진·고객사 납품)</button>' +
     '<input class="inp" id="plMoveAt" type="date" value="' + esc(today()) + '" style="width:150px" title="옮긴 날짜"><span style="flex:1"></span>' +
-    (done ? '<label class="small nowrap" style="display:flex;align-items:center;gap:4px"><input type="checkbox" data-plshowdone="1"' + (P.showDone ? ' checked' : '') + '> 출고 완료 ' + done + '파렛트도 보기</label>' : '') + '</div>';
-  var rows = ps.filter(function (p) { return P.showDone || p.loc !== 'done'; });
-  h += '<div class="tw" style="margin-top:8px;max-height:520px"><table class="t"><thead><tr><th><input type="checkbox" data-plall="' + kind + '"' + (rows.length && rows.every(function (p) { return P.sel[p.id]; }) ? ' checked' : '') + '></th><th>파렛트</th><th>모델</th><th>S/N 구간</th><th>남음 / 수량</th><th>위치</th><th>옮긴 날</th><th>메모</th><th></th></tr></thead><tbody>' +
-    rows.map(function (p) {
-      var x = L[p.id] || {}, l = x.left || 0;
-      var tr = '<tr><td><input type="checkbox" data-plsel="' + esc(p.id) + '"' + (P.sel[p.id] ? ' checked' : '') + '></td><td class="nowrap"><b>' + esc(plName(p)) + '</b></td><td>' + mtag(p.model) + '</td>' +
-        '<td class="mono small">' + esc(plSn(p, p.fromNo)) + '<br>~ ' + esc(plSn(p, p.toNo)) + '</td>' +
-        '<td class="nowrap"><b>' + l.toLocaleString() + '</b> / ' + (+p.qty).toLocaleString() + (x.used ? '<div class="small muted">출고 ' + x.used.toLocaleString() + '</div>' : '') + (x.rej ? '<div class="small" style="color:var(--red)">불합격 ' + x.rej + '</div>' : '') + '</td>' +
-        '<td class="nowrap"><b style="color:' + PL_LOC[p.loc].c + '">' + PL_LOC[p.loc].i + ' ' + PL_LOC[p.loc].t + '</b></td><td class="nowrap">' + esc(ymd(p.movedAt)) + '</td><td class="small">' + esc(p.note || '') + '</td>' +
-        '<td class="nowrap"><button class="btn sm" data-act="plEdit" data-id="' + esc(p.id) + '">수정</button> <button class="btn sm" data-act="plLog" data-id="' + esc(p.id) + '">이력</button> <button class="btn sm" data-act="plDel" data-id="' + esc(p.id) + '">삭제</button></td></tr>';
-      if (P.edit === p.id) tr += '<tr><td colspan="9" style="background:var(--line2)"><div class="row"><label class="small nowrap">파렛트 번호 <input class="inp" id="pleNo" value="' + esc(p.no) + '" style="width:70px"></label>' +
+    '<label class="small nowrap" style="display:flex;align-items:center;gap:4px"><input type="checkbox" data-plall="' + loc + '"' + (ps.length && ps.every(function (p) { return P.sel[p.id]; }) ? ' checked' : '') + '> 전체 선택</label>' +
+    (doneN ? '<label class="small nowrap" style="display:flex;align-items:center;gap:4px"><input type="checkbox" data-plshowdone="1"' + (P.showDone ? ' checked' : '') + '> 출고 완료 ' + doneN + '파렛트도 보기</label>' : '') + '</div>';
+  h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;margin-top:12px">' +
+    ps.map(function (p) {
+      var x = L[p.id] || {}, l = x.left || 0, q = +p.qty || 0, pct = q ? Math.round(l / q * 100) : 0, sel = !!P.sel[p.id];
+      var l1 = lotOf(plSn(p, p.fromNo)), l2 = lotOf(plSn(p, p.toNo)), lots = [];
+      [l1, l2].forEach(function (z) { if (z && lots.indexOf(z.name) < 0) lots.push(z.name); });
+      if (!lots.length && p.lot) lots.push(p.lot);
+      var bar = pct > 50 ? 'var(--green)' : pct > 20 ? 'var(--amber,#e69500)' : 'var(--red)';
+      var card = '<div style="position:relative;border:2px solid ' + (sel ? 'var(--blue)' : 'var(--line)') + ';border-radius:16px;padding:14px 14px 12px;background:var(--card,#fff);' + (p.loc === 'done' ? 'opacity:.55;' : '') + '">' +
+        '<label style="position:absolute;top:12px;right:12px;cursor:pointer"><input type="checkbox" data-plsel="' + esc(p.id) + '"' + (sel ? ' checked' : '') + ' style="width:18px;height:18px"></label>' +
+        '<div style="display:flex;align-items:baseline;gap:6px"><span style="font-size:26px;font-weight:800;line-height:1">' + esc(p.no) + '번</span><span class="small muted">파렛트</span></div>' +
+        '<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:4px;align-items:center">' + mtag(p.model) + (lots.length ? lots.map(function (n) { return '<span class="lotTag" style="margin:0">' + esc(n) + '</span>'; }).join('') : '<span class="small muted">차수 미등록</span>') +
+        '<span class="pill p-gray" style="font-size:11px">' + PL_KIND[p.kind] + '</span></div>' +
+        '<div class="mono small" style="margin-top:10px;padding:8px 10px;border-radius:10px;background:var(--line2);line-height:1.5">' + esc(plSn(p, p.fromNo)) + '<br>~ ' + esc(plSn(p, p.toNo)) + '</div>' +
+        '<div style="margin-top:10px;height:10px;border-radius:6px;background:var(--line2);overflow:hidden"><div style="height:100%;width:' + pct + '%;background:' + bar + '"></div></div>' +
+        '<div style="margin-top:6px;display:flex;justify-content:space-between;align-items:baseline"><span><b style="font-size:18px">' + l.toLocaleString() + '</b><span class="small muted"> / ' + q.toLocaleString() + '개</span></span>' +
+        '<span class="small muted">' + (x.used ? '출고 ' + x.used.toLocaleString() : '') + (x.rej ? (x.used ? ' · ' : '') + '<span style="color:var(--red)">불합격 ' + x.rej + '</span>' : '') + '</span></div>' +
+        '<div class="small" style="margin-top:8px;color:' + PL_LOC[p.loc].c + ';font-weight:600">' + PL_LOC[p.loc].i + ' ' + PL_LOC[p.loc].t + ' <span class="muted" style="font-weight:400">· ' + esc(ymd(p.movedAt)) + '</span></div>' +
+        (p.note ? '<div class="small muted" style="margin-top:4px">' + esc(p.note) + '</div>' : '') +
+        '<div class="row" style="margin-top:10px;gap:4px"><button class="btn sm" data-act="plEdit" data-id="' + esc(p.id) + '">수정</button><button class="btn sm" data-act="plLog" data-id="' + esc(p.id) + '">이력</button><button class="btn sm" data-act="plDel" data-id="' + esc(p.id) + '">삭제</button></div></div>';
+      if (P.edit === p.id) card += '<div style="grid-column:1/-1;padding:12px;border-radius:12px;background:var(--line2)"><div class="small" style="margin-bottom:6px"><b>' + esc(p.no) + '번 파렛트 수정</b></div><div class="row"><label class="small nowrap">파렛트 번호 <input class="inp" id="pleNo" value="' + esc(p.no) + '" style="width:70px"></label>' +
         '<input class="inp mono" id="pleFrom" value="' + esc(plSn(p, p.fromNo)) + '" style="width:190px"><span>~</span><input class="inp mono" id="pleTo" value="' + esc(plSn(p, p.toNo)) + '" style="width:190px">' +
-        '<input class="inp" id="pleNote" value="' + esc(p.note || '') + '" placeholder="메모" style="flex:1;min-width:120px"><button class="btn pri" data-act="plEditSave" data-id="' + esc(p.id) + '">저장</button><button class="btn" data-act="plEdit" data-id="">닫기</button></div></td></tr>';
+        '<input class="inp" id="pleNote" value="' + esc(p.note || '') + '" placeholder="메모" style="flex:1;min-width:120px"><button class="btn pri" data-act="plEditSave" data-id="' + esc(p.id) + '">저장</button><button class="btn" data-act="plEdit" data-id="">닫기</button></div></div>';
       if (P.log === p.id) { var LG = []; try { LG = JSON.parse(p.log || '[]'); } catch (e) { }
-        tr += '<tr><td colspan="9" class="small" style="background:var(--line2)">' + (LG.length ? LG.slice().reverse().map(function (e) { return '<div><span class="mono">' + esc(ymd(e.at)) + '</span> · <b>' + esc(e.w) + '</b>' + (e.n ? ' · ' + esc(e.n) : '') + ' <span class="muted">(' + esc(e.by || '-') + ')</span></div>'; }).join('') : '<span class="muted">이력이 없어요.</span>') + '</td></tr>'; }
-      return tr;
-    }).join('') + '</tbody></table></div></div></div>';
+        card += '<div class="small" style="grid-column:1/-1;padding:12px;border-radius:12px;background:var(--line2)"><b>' + esc(p.no) + '번 파렛트 이력</b>' + (LG.length ? LG.slice().reverse().map(function (e) { return '<div><span class="mono">' + esc(ymd(e.at)) + '</span> · <b>' + esc(String(e.w).replace(/외주창고/g, '3PL 창고')) + '</b>' + (e.n ? ' · ' + esc(e.n) : '') + ' <span class="muted">(' + esc(e.by || '-') + ')</span></div>'; }).join('') : '<div class="muted">이력이 없어요.</div>') + '</div>'; }
+      return card;
+    }).join('') + '</div></div></div>';
   return h;
 }
 function vStock() {
-  var sv = S.stockView === 'deliv' ? 'deliv' : 'rep';
-  var h = '<div class="tabs" style="margin:0 0 14px">' + [['rep', '교체 재고'], ['deliv', '납품 재고']].map(function (t) { return '<button class="' + (sv === t[0] ? 'on' : '') + '" data-act="stockView" data-v="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div>';
-  return h + palletCard_(sv) + (sv === 'deliv' ? vDeliv() : vStockRep());
+  var sv = ['b1', 'wh', 'rec'].indexOf(S.stockView) >= 0 ? S.stockView : 'b1';
+  var h = '<div class="tabs" style="margin:0 0 14px">' + [['b1', '🏢 폼즈 지하1층 창고'], ['wh', '🏭 3PL 창고'], ['rec', '입고·출고 기록 · 양산 차수']].map(function (t) { return '<button class="' + (sv === t[0] ? 'on' : '') + '" data-act="stockView" data-v="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div>';
+  if (sv !== 'rec') return h + vStockLoc(sv);
+  var rv = S.stockRec === 'deliv' ? 'deliv' : 'rep';
+  h += '<div class="row" style="gap:6px;margin-bottom:14px">' + [['rep', '교체 재고 S/N 구간 · 수입검사 · 별도 출고'], ['deliv', '납품 수량 · 양산 차수']].map(function (t) { return '<button class="btn sm' + (rv === t[0] ? ' pri' : '') + '" data-act="stockRec" data-v="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div>';
+  return h + (rv === 'deliv' ? vDeliv() : vStockRep());
 }
 function vDeliv() {
   var ST = S.data.meta.shipTotals || {}, lots = S.data.lots || [];
@@ -3097,13 +3146,15 @@ var ACT = {
   },
   stockM: function (d) { S.stockM = d.v; render(); },
   demoLogin: function () { GATED = false; gate(); },
-  stockView: function (d) { S.stockView = d.v; render(); },
+  stockView: function (d) { S.stockView = d.v; render(); window.scrollTo(0, 0); },
+  stockRec: function (d) { S.stockRec = d.v; render(); },
   plForm: function (d) { S.pl = S.pl || { sel: {} }; S.pl.form = S.pl.form === d.v ? null : d.v; render(); },
   plAdd: function (d, b) {
-    run('palletSave', { kind: d.v, model: $('#plModel').value, from: $('#plFrom').value, to: $('#plTo').value, per: $('#plPer').value, startNo: $('#plStart').value, loc: $('#plLoc').value, at: $('#plAt').value, note: $('#plNote').value },
+    run('palletSave', { kind: $('#plKind').value, model: $('#plModel').value, from: $('#plFrom').value, to: $('#plTo').value, per: $('#plPer').value, startNo: $('#plStart').value, loc: $('#plLoc').value, at: $('#plAt').value, note: $('#plNote').value },
       function (r) { return (r && r.pallets ? r.pallets.length : 0) + '파렛트를 등록했어요.'; }, b).then(function () { S.pl.form = null; render(); }).catch(function () { });
   },
   plMove: function (d, b) {
+    if (d.v === 'done' && !b.dataset.sure) { b.dataset.sure = '1'; b.textContent = '한 번 더 누르면 출고 완료'; b.classList.add('red'); return; }
     var ids = Object.keys(S.pl.sel || {}).filter(function (k) { return S.pl.sel[k]; });
     if (!ids.length) return toast('옮길 파렛트를 먼저 골라 주세요.', true);
     run('palletMove', { ids: ids, loc: d.v, at: $('#plMoveAt') ? $('#plMoveAt').value : '' }, ids.length + '파렛트 → ' + PL_LOC[d.v].t, b).then(function () { S.pl.sel = {}; render(); }).catch(function () { });
@@ -3115,7 +3166,7 @@ var ACT = {
     if (!b.dataset.sure) { b.dataset.sure = '1'; b.textContent = '한 번 더 누르면 삭제'; b.classList.add('red'); return; }
     run('palletSave', { id: d.id, del: 1 }, '파렛트를 삭제했어요.', b);
   },
-  goDeliv: function () { S.stockView = 'deliv'; S.view = 'stock'; render(); window.scrollTo(0, 0); },
+  goDeliv: function () { S.stockView = 'rec'; S.stockRec = 'deliv'; S.view = 'stock'; render(); window.scrollTo(0, 0); },
   lotEdit: function (d) { S.lotEdit = d.id || null; render(); },
   lotSave: function (d, b) {
     var m = $('#lotModel').value, a = snSplit($('#lotFrom').value, m), z = snSplit($('#lotTo').value || $('#lotFrom').value, m);
@@ -3602,7 +3653,7 @@ document.addEventListener('change', function (e) {
   if (e.target.id === 'anFrom' || e.target.id === 'anTo') { S.an[e.target.id === 'anFrom' ? 'from' : 'to'] = e.target.value; render(); }
   if (e.target.id === 'resP') { S.resP = e.target.value; render(); }
   if (e.target.getAttribute && e.target.getAttribute('data-plsel')) { S.pl.sel[e.target.getAttribute('data-plsel')] = e.target.checked; render(); }
-  if (e.target.getAttribute && e.target.getAttribute('data-plall')) { var pk = e.target.getAttribute('data-plall'), ck = e.target.checked; (S.data.pallets || []).forEach(function (p) { if (p.kind === pk && (S.pl.showDone || p.loc !== 'done')) S.pl.sel[p.id] = ck; }); render(); }
+  if (e.target.getAttribute && e.target.getAttribute('data-plall')) { var pk = e.target.getAttribute('data-plall'), ck = e.target.checked; (S.data.pallets || []).forEach(function (p) { if (p.loc === pk || (S.pl.showDone && p.loc === 'done')) S.pl.sel[p.id] = ck; }); render(); }
   if (e.target.getAttribute && e.target.getAttribute('data-plshowdone')) { S.pl.showDone = e.target.checked; render(); }
   if (e.target.getAttribute && e.target.getAttribute('data-shipdisp')) run('shipRejEdit', { id: e.target.getAttribute('data-shipdisp'), disp: e.target.value }, '처리 → ' + e.target.value);
   if (e.target.getAttribute && e.target.getAttribute('data-rejdisp')) { var rp = e.target.getAttribute('data-rejdisp').split('|'); run('stockRej', { id: rp[0], sn: rp[1], disp: e.target.value }, rp[1] + ' 처리 → ' + e.target.value); }
