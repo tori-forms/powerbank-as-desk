@@ -1835,10 +1835,11 @@ function earlyCalc_() {
   (d.inbox || []).forEach(function (i) { if (!(d.intakes || []).some(function (x) { return x.id === i.id; })) addI(i); });
   var outBy = {}; d.units.forEach(function (u) { var c = IDX.caseById[u.caseId]; if (u.outSn && c && c.outDate) (outBy[u.outSn] = outBy[u.outSn] || []).push(d10(c.outDate)); });
   var rows = [], seen = {};
+  var isRep = function (sn) { var sp = snSplit(sn); return !!sp && (d.stock || []).some(function (r) { return r.prefix === sp.prefix && +r.digits === sp.digits && sp.num >= +r.fromNo && sp.num <= +r.toNo; }); };
   d.units.forEach(function (u) {
     var c = IDX.caseById[u.caseId]; if (!c) return;
     var sn = u.origSn || u.recvSn; if (!sn || seen[u.id]) return; seen[u.id] = 1;
-    var r = { sn: sn, store: c.store, caseId: c.id, verdict: u.verdict || '', lot: lotOf(sn), model: modelOfSn(sn) || String(c.model || '').split('/')[0] };
+    var r = { sn: sn, store: c.store, caseId: c.id, verdict: u.verdict || '', lot: lotOf(sn), model: modelOfSn(sn) || String(c.model || '').split('/')[0], rep: isRep(sn) };
     if (c.source === 'qc') { r.fail = d10(c.createdAt); r.start = r.fail; r.kind = '고객사 IQC'; r.el = 0; rows.push(r); return; }
     var ref = d10(c.outDate || c.createdAt), cand = (recs[sn] || []).filter(function (x) { return !ref || x.at <= earlyAdd_(ref, 3); }).sort(function (a, b) { return b.at.localeCompare(a.at); });
     var it = cand[0]; if (!it) { r.kind = '접수일 미상'; rows.push(r); return; }
@@ -1857,7 +1858,7 @@ function earlyCard_() {
     .sort(function (a, b) { return String(a.model).localeCompare(String(b.model)) || String(a.prefix).localeCompare(String(b.prefix)) || (+a.fromNo - +b.fromNo); });
   var early = rows.filter(function (r) { return r.el !== undefined && r.el >= 0 && r.el <= EARLY_DAYS; });
   var known = rows.filter(function (r) { return r.el !== undefined && r.el >= 0; }), unk = rows.length - known.length;
-  var by = {}; early.forEach(function (r) { var k = r.lot ? r.lot.id : '-'; (by[k] = by[k] || []).push(r); });
+  var by = {}, repN = 0; early.forEach(function (r) { if (r.rep) { repN++; return; } var k = r.lot ? r.lot.id : '-'; (by[k] = by[k] || []).push(r); });
   var totQ = 0, totE = 0;
   var trs = lots.map(function (l) {
     var q = +(l.orderQty || l.qty) || 0, e = (by[l.id] || []).length; totQ += q; totE += e;
@@ -1874,8 +1875,9 @@ function earlyCard_() {
     (trs ? '<div class="tw"><table class="t"><thead><tr><th>발주 차수</th><th>모델</th><th>발주 수량</th><th>초도 불량</th><th>초도 불량률</th><th>회수 검사 결과</th></tr></thead><tbody>' + trs +
       '<tr style="font-weight:700"><td colspan="2">합계</td><td>' + totQ.toLocaleString() + '</td><td>' + totE + '</td><td>' + (totQ ? (totE / totQ * 100).toFixed(3) + '%' : '-') + '</td><td></td></tr></tbody></table></div>' : '<div class="empty">발주 차수가 등록돼 있지 않아요.</div>') +
     (noLot ? '<div class="small muted" style="margin-top:6px">차수 구간에 없는 S/N의 초도 불량 ' + noLot + '개는 합계에서 빠졌어요.</div>' : '') +
+    (repN ? '<div class="small muted" style="margin-top:6px">우리 교환 재고 S/N(교환품으로 나간 제품)의 초도 불량 ' + repN + '개는 고객사 발주 수량에 들어가지 않아 차수 표에서 뺐어요. (상세 보기에는 표시)</div>' : '') +
     (det.length ? '<details style="margin-top:10px"><summary class="small" style="cursor:pointer;font-weight:600">초도 불량 ' + det.length + '개 상세 보기</summary><div class="tw" style="margin-top:6px;max-height:420px"><table class="t"><thead><tr><th>접수일</th><th>매장</th><th>S/N</th><th>차수</th><th>사용 시작일</th><th>경과</th><th>검사 판정</th></tr></thead><tbody>' +
-      det.map(function (r) { return '<tr><td class="nowrap">' + esc(ymd(r.fail)) + '</td><td>' + esc(r.store || '') + '</td><td class="mono small">' + esc(r.sn) + '</td><td>' + (r.lot ? esc(r.lot.name) : '-') + '</td><td class="small nowrap">' + esc(ymd(r.start)) + ' <span class="muted">' + esc(r.kind) + '</span></td><td><b>' + r.el + '일</b></td><td>' + (r.verdict ? '<span style="color:' + (r.verdict === '불량' ? 'var(--red)' : 'var(--green)') + '">' + esc(r.verdict) + '</span>' : '<span class="muted">검사 전</span>') + '</td></tr>'; }).join('') +
+      det.map(function (r) { return '<tr><td class="nowrap">' + esc(ymd(r.fail)) + '</td><td>' + esc(r.store || '') + '</td><td class="mono small">' + esc(r.sn) + '</td><td>' + (r.lot ? esc(r.lot.name) : '-') + '</td><td class="small nowrap">' + esc(ymd(r.start)) + ' <span class="muted">' + esc(r.kind) + (r.rep ? ' · 교환 재고(표 제외)' : '') + '</span></td><td><b>' + r.el + '일</b></td><td>' + (r.verdict ? '<span style="color:' + (r.verdict === '불량' ? 'var(--red)' : 'var(--green)') + '">' + esc(r.verdict) + '</span>' : '<span class="muted">검사 전</span>') + '</td></tr>'; }).join('') +
       '</tbody></table></div></details>' : '') + '</div></div>';
 }
 function earlyDistCard_() {
@@ -4462,11 +4464,18 @@ function ltPerCard() {
     '<span style="flex:1"></span><button class="btn sm"' + (rows.length ? '' : ' disabled') + ' data-act="ltPerXlsx">엑셀 (이 기간)</button><button class="btn sm pri"' + (rows.length ? '' : ' disabled') + ' data-act="ltPerRep">📄 성적서 (이 기간)</button></div>';
   if (Object.keys(days).length > 1) h += '<div class="small muted" style="margin-top:6px">날짜별 ' + Object.keys(days).sort().map(function (d) { return md(d) + ' ' + days[d] + '건'; }).join(' · ') + '</div>';
   h += rows.length ? '<div style="margin-top:10px;max-height:520px;overflow:auto">' + ltTable(rows, true) + '</div>' : '<div class="empty" style="margin-top:10px">이 기간에 저장된 시험이 없어요.</div>';
+  var prac = (LT.perAll || []).filter(function (t) { return !ltRealSn(t.sn); });
+  if (prac.length) h += '<div class="row small muted" style="gap:8px;margin-top:10px;align-items:center">연습 기록 ' + prac.length + '건 (' + prac.map(function (t) { return esc(t.sn || '빈 칸'); }).join(', ') + ') — 목록·엑셀에는 안 나와요.<button class="btn sm" data-act="ltPracDel">서버에서 지우기</button></div>';
   return h + '</div></div>';
 }
 function ltRefreshPerCard() { var box = $('#ltPerCard'); if (box) box.innerHTML = ltPerCard(); }
 ACT.ltPerK = function (d) { var P = ltPer_(); P.k = d.v; if (d.v === 'custom' && !P.from) { P.from = P.to = today(); } ltRefreshPerCard(); };
 ACT.ltPerReload = function () { ltPerLoad_(true); toast('기록을 새로 불러와요.'); };
+ACT.ltPracDel = function (d, b) {
+  if (!b.dataset.sure) { b.dataset.sure = '1'; b.textContent = '한 번 더 누르면 영구 삭제'; b.classList.add('red'); return; }
+  var ids = (LT.perAll || []).filter(function (t) { return !ltRealSn(t.sn); }).map(function (t) { return t.id; });
+  run('ltDelPractice', { ids: ids }, '연습 기록을 지웠어요.', b).then(function () { ltPerLoad_(true); }).catch(function () { });
+};
 ACT.ltPerXlsx = function () {
   var P = ltPer_(), rows = ltPerRows_();
   if (!rows.length) return toast('이 기간에 시험이 없어요.', true);
