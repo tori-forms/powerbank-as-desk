@@ -935,7 +935,7 @@ function counts() {
 
 
 var VIEWS = [
-  ['home', '▦', '대시보드'], ['inbox', '✉', '인입함'], ['ship', '⇢', '출고'], ['ret', '⇠', '회수'], ['inspect', '⚗', '회수분 검사'], ['results', '✔', 'AS 회수분 검사 결과'], ['shipqc', '✓', '검사 불량'], ['shipdoc', '📄', '출하 성적서'], ['loadtest', '⚡', '용량 테스트'],
+  ['home', '▦', '대시보드'], ['inbox', '✉', '인입함'], ['ship', '⇢', '출고'], ['ret', '⇠', '회수'], ['inspect', '⚗', '회수분 검사'], ['results', '✔', '불량 검사 결과'], ['shipqc', '✓', '검사 불량'], ['shipdoc', '📄', '출하 성적서'], ['loadtest', '⚡', '용량 테스트'],
   ['stock', '▣', '재고'], ['analysis', '▤', '불량 분석'], ['guide', 'ⓘ', '제품 안내'], ['settings', '⚙', '설정·동기화']
 ];
 var CS_HIDE = { inbox: 1, inspect: 1, stock: 1, settings: 1, guide: 1, loadtest: 1, shipqc: 1, shipdoc: 1 };
@@ -972,7 +972,7 @@ function render() {
   var t = VIEWS.filter(function (v) { return v[0] === S.view; })[0];
   document.body.classList.toggle('cs', CS());
   $('#title').textContent = t[2];
-  var sub = { home: '', inbox: 'Slack #ext-볼타레스-티오더 접수 양식 자동 수집', cases: '교환 출고 → 반품 신청 → 회수 입고', inspect: '바코드 스캔으로 회수 매칭 → 판정 · 원인 · 처분', results: 'AS로 회수한 제품의 검사 결과 — 판정별로 전산 처리할 때 보세요', shipqc: '교체 재고 수입검사 · 납품 출하검사 불량을 한 곳에서 — 사내 전용', shipdoc: '파렛트별 출하 성적서 (샘플 = 파렛트 안에서 용량 테스트한 S/N) — 사내 전용', guide: '제품 구성 · 사양 · 사용 방법 · 매뉴얼', analysis: '모델별 불량 데이터', stock: '폼즈 지하1층 창고 · 3PL 창고에 있는 재고를 파렛트 단위로 — 입고·출고 기록과 양산 차수는 오른쪽 탭', settings: '연동 상태와 티오더 시트 동기화' }[S.view] || '';
+  var sub = { home: '', inbox: 'Slack #ext-볼타레스-티오더 접수 양식 자동 수집', cases: '교환 출고 → 반품 신청 → 회수 입고', inspect: '바코드 스캔으로 회수 매칭 → 판정 · 원인 · 처분', results: 'AS 회수품 · 수입검사 · 고객사 HQC에서 확인된 불량의 검사 결과 — 판정별로 전산 처리할 때 보세요', shipqc: '교체 재고 수입검사 · 납품 출하검사 불량을 한 곳에서 — 사내 전용', shipdoc: '파렛트별 출하 성적서 (샘플 = 파렛트 안에서 용량 테스트한 S/N) — 사내 전용', guide: '제품 구성 · 사양 · 사용 방법 · 매뉴얼', analysis: '모델별 불량 데이터', stock: '폼즈 지하1층 창고 · 3PL 창고에 있는 재고를 파렛트 단위로 — 입고·출고 기록과 양산 차수는 오른쪽 탭', settings: '연동 상태와 티오더 시트 동기화' }[S.view] || '';
   $('#subtitle').textContent = sub; $('#subtitle').style.display = sub ? '' : 'none';
   var fn = { home: vHome, inbox: vInbox, ship: vShip, ret: vReturn, inspect: vInspect, results: vResults, shipqc: vShipQc, shipdoc: vShipDoc, guide: vGuide, stock: vStock, analysis: vAnalysis, settings: vSettings, loadtest: vLoadtest }[S.view];
   if (S.view === 'loadtest') ltBeforeRender();
@@ -2029,7 +2029,13 @@ function vAnalysis() {
     var tu = S.data.units.filter(function (u) { return u.verdict && modelOf(u) === m; });
     var bd = tu.filter(function (u) { return u.verdict === '불량'; }).length;
     var tp = tested.filter(function (u) { return modelOf(u) === m; }), bp = tp.filter(function (u) { return u.verdict === '불량'; }).length;
-    return { m: m, ship: +ST[m] || 0, ex: ex, tested: tu.length, bad: bd, tp: tp.length, bp: bp };
+
+    var isQc = function (u) { return (IDX.caseById[u.caseId] || {}).source === 'qc'; };
+    var asB = tu.filter(function (u) { return u.verdict === '불량' && !isQc(u); }).length;
+    var qcB = S.data.units.filter(function (u) { return isQc(u) && modelOf(u) === m && u.verdict !== '정상' && u.verdict !== '외력/사용자 과실'; }).length;
+    var inB = (S.data.stock || []).filter(function (st) { return st.model === m; }).reduce(function (s2, st) { return s2 + qcRejOf(st).length; }, 0);
+    var outB = (S.data.shiprej || []).filter(function (r) { return modelOfSn(r.sn) === m; }).length;
+    return { m: m, ship: +ST[m] || 0, ex: ex, tested: tu.length, bad: bd, tp: tp.length, bp: bp, asB: asB, qcB: qcB, inB: inB, outB: outB, all: asB + qcB + inB + outB };
   };
   var QM = (A.model === 'all' ? anModels() : [A.model]).map(qStat);
   var fmt = function (n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','); };
@@ -2043,14 +2049,15 @@ function vAnalysis() {
     var head = QM.length > 1 ? '<div class="small" style="font-weight:700;opacity:.8">' + MN[q.m] + '</div>' : '';
     if (kind === 'ship') return '<div>' + head + '<div class="v">' + (q.ship ? fmt(q.ship) : '-') + '<small>EA</small></div>' +
       '<div class="d">' + (q.ship ? 'AS 교환 ' + fmt(q.ex) + 'EA (납품 대비 ' + pct2(q.ex, q.ship) + '%)' : setLink) + '</div></div>';
-    var est = q.ship && q.tested && q.ex > q.tested ? '<br>미검사 교환분 포함 추정 약 <b>' + pct2(q.ex * q.bad / q.tested, q.ship) + '%</b>' : '';
-    return '<div>' + head + '<div class="v">' + (q.ship ? pct2(q.bad, q.ship) : '-') + '<small>%</small></div>' +
-      '<div class="d">확정 불량 ' + fmt(q.bad) + 'EA / 납품 ' + (q.ship ? fmt(q.ship) : '-') + 'EA' + est + '</div></div>';
+    var ln = function (l, n) { return '<div style="display:flex;justify-content:space-between;gap:8px"><span>' + l + '</span><b>' + fmt(n) + 'EA' + (q.ship ? ' <span style="font-weight:500;opacity:.8">(' + pct2(n, q.ship) + '%)</span>' : '') + '</b></div>'; };
+    return '<div>' + head + '<div class="v">' + (q.ship ? pct2(q.all, q.ship) : '-') + '<small>%</small></div>' +
+      '<div class="d">' + ln('AS 교환 회수 검사 불량', q.asB) + ln('고객사 QC팀 확인 불량', q.qcB) + ln('수입검사 불량 (교체 재고)', q.inB) + ln('출하검사 불량 (납품용)', q.outB) +
+      '<div style="border-top:1px solid currentColor;opacity:.9;margin-top:3px;padding-top:3px;display:flex;justify-content:space-between"><span>합계 / 납품 ' + (q.ship ? fmt(q.ship) : '-') + 'EA</span><b>' + fmt(q.all) + 'EA</b></div></div></div>';
   };
   var split = function (kind) { return '<div style="display:grid;grid-template-columns:repeat(' + QM.length + ',minmax(0,1fr));gap:16px">' + QM.map(function (q) { return cell(q, kind); }).join('') + '</div>'; };
   h += '<div class="qkpis">' +
     '<div class="qkpi"><div class="l">전체 납품 수량 <span class="muted small" style="font-weight:500">누적 · 모델별</span></div>' + split('ship') + '</div>' +
-    '<div class="qkpi hot"><div class="l">실제 불량률 <span class="small" style="font-weight:500;opacity:.8">검사 확정 불량 ÷ 납품 · 누적 · 모델별</span></div>' + split('rate') + '</div></div>';
+    '<div class="qkpi hot"><div class="l">실제 불량률 <span class="small" style="font-weight:500;opacity:.8">확인된 불량 합계 ÷ 납품 · 누적 · 모델별</span></div>' + split('rate') + '</div></div>';
   var exSub = QM.length > 1
     ? QM.map(function (q) { return q.m + ' 실제 불량 <b style="color:var(--red)">' + pct(q.bp, q.tp) + '%</b>'; }).join(' · ')
     : qty + 'EA · 그중 실제 불량 <b style="color:var(--red)">' + pct(bad.length, tested.length) + '%</b>';
@@ -2168,8 +2175,11 @@ function resList_() {
   }).sort(function (a, b) { return resDate_(b).localeCompare(resDate_(a)) || String(b.caseId).localeCompare(String(a.caseId)); });
 }
 function resAgeF_(us) { return S.resAge ? us.filter(function (u) { return ageOf_(u).label === S.resAge; }) : us; }
+
+function resIsQc_(u) { return (IDX.caseById[u.caseId] || {}).source === 'qc'; }
+function resTabList_() { var qc = S.resTab === 'qc'; return resList_().filter(function (u) { return resIsQc_(u) === qc; }); }
 function vResults() {
-  var base = resList_(), all = resAgeF_(base), f = S.resF || 'all';
+  var qcT = S.resTab === 'qc', base = resTabList_(), all = resAgeF_(base), f = S.resF || 'all';
   var grp = function (arr) { var o = {}, ord = []; arr.forEach(function (u) { var k = u.caseId || u.id; if (!o[k]) { o[k] = []; ord.push(k); } o[k].push(u); }); return ord.map(function (k) { return o[k]; }); };
   var cnt = function (v) { return grp(all.filter(function (u) { return u.verdict === v; })).length; };
   var list = f === 'all' ? all : all.filter(function (u) { return u.verdict === f; });
@@ -2208,19 +2218,22 @@ function vResults() {
     return h;
   }).join('');
   var vsum = tally(list, function (u) { return u.verdict; });
-  return '<div class="tabs">' + tabs + '</div>' +
+  var rl = resList_(), nQc = grp(rl.filter(resIsQc_)).length, nAs = grp(rl.filter(function (u) { return !resIsQc_(u); })).length;
+  var top = '<div class="tabs" style="margin-bottom:8px"><button class="' + (qcT ? '' : 'on') + '" data-act="resTab" data-v="as">AS 회수 불량 검사 결과<span class="n">' + nAs + '</span></button>' +
+    '<button class="' + (qcT ? 'on' : '') + '" data-act="resTab" data-v="qc">수입검사 / HQC 불량<span class="n">' + nQc + '</span></button></div>';
+  return top + '<div class="tabs">' + tabs + '</div>' +
     '<div class="tool"><select class="inp" id="resP">' + per.map(function (x) { return '<option value="' + x[0] + '"' + ((S.resP || '30') === x[0] ? ' selected' : '') + '>' + x[1] + '</option>'; }).join('') + '</select>' +
     '<select class="inp" id="modelF"><option value="all">전체 모델</option>' + prodOpts(S.model) + '</select>' +
     '<input class="inp" id="q" placeholder="매장·S/N·문의번호 검색" value="' + esc(S.q) + '" style="width:220px">' + ageSel_('resAge', S.resAge || '', base) + '<span class="sp"></span>' +
     '<span class="small muted">' + groups.length + '건 · ' + list.length + 'EA' + (vsum.length ? ' (' + vsum.map(function (x) { return x[0] + ' ' + x[1]; }).join(' · ') + ')' : '') + '</span>' +
     '<button class="btn" data-act="resCsv">엑셀 받기</button></div>' +
     '<div class="card"><div class="tw"><table class="t"><thead><tr><th>검사일</th><th>매장</th><th>모델</th><th>수량</th><th>판정</th><th>증상</th><th>원인</th><th>처분</th><th>검사 의견</th></tr></thead><tbody>' +
-    (rows || '<tr><td colspan="9"><div class="empty">해당 기간에 검사 끝난 회수품이 없습니다.</div></td></tr>') + '</tbody></table></div></div>' +
+    (rows || '<tr><td colspan="9"><div class="empty">해당 기간에 검사 끝난 ' + (qcT ? '고객사 HQC 불량품' : '회수품') + '이 없습니다.</div></td></tr>') + '</tbody></table></div></div>' +
     '<div class="note" style="margin-top:10px">AS 건(인입) 단위로 묶어서 보여줘요. 줄을 누르면 S/N별 결과가 펼쳐져요.' + (groups.length > 300 ? ' 최근 300건만 보여요. 전체는 엑셀로 받아 주세요.' : '') + '</div>' +
-    (CS() ? '' : '<div id="ltPerCard">' + ltPerCard('회수분 검사') + '</div>');
+    (CS() ? '' : qcT ? qcRejCard_((S.data.stock || []).map(function (r) { return { r: r }; }), function (r) { return r.model; }) : '<div id="ltPerCard">' + ltPerCard('회수분 검사') + '</div>');
 }
 function resCsv_() {
-  var f = S.resF || 'all', list = resAgeF_(resList_()).filter(function (u) { return f === 'all' || u.verdict === f; });
+  var f = S.resF || 'all', list = resAgeF_(resTabList_()).filter(function (u) { return f === 'all' || u.verdict === f; });
   var rows = [['검사일', '매장', '문의번호', '출고일', '접수 S/N', '회수 S/N', '모델', '판정', '증상', '원인', '용량(%)', '처분', '검사 의견', '사용 시작일', '시작일 기준', '사용 기간(일)', '사용 기간']].concat(list.map(function (u) {
     var c = IDX.caseById[u.caseId] || {};
     return [resDate_(u), c.store || u.store, c.inquiryNo ? inqNo(c.inquiryNo) : '', c.outDate, u.origSn, u.recvSn, String(u.model || caseModel(c)).split('/')[0], u.verdict, u.testSymptom, cz(u.cause), u.capPct, u.disposition, u.opinion].concat((function (a) { return [a.start, a.kind, a.days, a.label]; })(ageOf_(u)));
@@ -3591,6 +3604,7 @@ var ACT = {
   toggleOld: function () { S.showOld = !S.showOld; render(); },
   allCases: function () { S.allCases = !S.allCases; render(); },
   resF: function (d) { S.resF = d.v; render(); },
+  resTab: function (d) { S.resTab = d.v; S.resF = 'all'; render(); },
   resCsv: function () { resCsv_(); },
   guideP: function (d) { S.guideM = d.v; S.guideEdit = ''; render(); },
   guideEdit: function (d) { S.guideEdit = d.v; render(); },
