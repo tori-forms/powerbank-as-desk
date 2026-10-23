@@ -1665,7 +1665,15 @@ function scanPanel_(rw) {
   return scanBar + '<div class="split" style="grid-template-columns:minmax(0,1fr) 380px"><div>' + expect + '</div><div>' + shortHint + left + '</div></div>' +
     '<div class="note" style="margin-top:12px">반품이 도착하면 <b>회수 예정</b>에 기종·S/N별로 올라옵니다. 실물을 확인하고 <b>회수 처리</b>를 누르면 <b>② 검사중</b>으로 넘어가요. 예정보다 적게 들어왔거나 접수 S/N과 다르면 오른쪽 <b>확인 필요</b>로 바로 넘어갑니다.</div>';
 }
+function inspList_() {
+  return inspectQueue().filter(function (u) { return !S.inspAge || ageOf_(u).label === S.inspAge; }).sort(function (a, b) {
+    var ca = IDX.caseById[a.caseId] || {}, cb = IDX.caseById[b.caseId] || {};
+    return String(ca.store || '').localeCompare(String(cb.store || '')) || String(a.caseId).localeCompare(String(b.caseId)) || String(a.recvSn).localeCompare(String(b.recvSn));
+  });
+}
 function judgePanel_(q) {
+  var qAll = q;
+  if (S.inspAge) q = q.filter(function (u) { return ageOf_(u).label === S.inspAge; });
   var by = {}, order = [];
   q.forEach(function (u) { if (!by[u.caseId]) { by[u.caseId] = []; order.push(u.caseId); } by[u.caseId].push(u); });
   var oldest = function (id) { return by[id].map(function (u) { return recvTs_(u) || Infinity; }).reduce(function (a, b) { return Math.min(a, b); }, Infinity); };
@@ -1685,7 +1693,9 @@ function judgePanel_(q) {
       (mi ? '<span class="pill p-red">미회수 ' + mi + '개 · 확인 필요</span>' : '') + '</div></div>';
   }).join('');
   return '<div class="tool"><input class="inp" id="inspQ" placeholder="매장명 · S/N 검색 (S/N 찍고 Enter)" value="' + esc(S.inspQ || '') + '" style="width:300px">' +
-    '<span class="muted small">검사중 ' + order.length + '개 매장 · ' + q.length + '개 · 오늘 판정 ' + recent.length + '개</span></div>' +
+    ageSel_('inspAge', S.inspAge || '', qAll) +
+    '<span class="muted small">검사중 ' + order.length + '개 매장 · ' + q.length + '개 · 오늘 판정 ' + recent.length + '개</span><span class="sp"></span>' +
+    (q.length ? '<button class="btn sm" data-act="inspSnAll">S/N 한번에 보기</button><button class="btn sm" data-act="inspXlsx">엑셀 받기</button>' : '') + '</div>' +
     '<div class="split" style="grid-template-columns:340px minmax(0,1fr)"><div class="card list">' +
     (list || '<div class="empty">' + (q.length ? '검색 결과가 없습니다.' : '검사중인 제품이 없습니다. ① 회수 예정에서 회수 처리하면 여기에 올라와요.') + '</div>') +
     '</div><div>' + (S.inspStore ? storeInspect_(S.inspStore, by[S.inspStore] || []) : '<div class="card"><div class="empty">왼쪽에서 매장을 선택해 주세요.</div></div>') + '</div></div>';
@@ -1839,7 +1849,7 @@ function earlyCalc_() {
   d.units.forEach(function (u) {
     var c = IDX.caseById[u.caseId]; if (!c) return;
     var sn = u.origSn || u.recvSn; if (!sn || seen[u.id]) return; seen[u.id] = 1;
-    var r = { sn: sn, store: c.store, caseId: c.id, verdict: u.verdict || '', lot: lotOf(sn), model: modelOfSn(sn) || String(c.model || '').split('/')[0], rep: isRep(sn) };
+    var r = { uid: u.id, sn: sn, store: c.store, caseId: c.id, verdict: u.verdict || '', lot: lotOf(sn), model: modelOfSn(sn) || String(c.model || '').split('/')[0], rep: isRep(sn) };
     if (c.source === 'qc') { r.fail = d10(c.createdAt); r.start = r.fail; r.kind = '고객사 IQC'; r.el = 0; rows.push(r); return; }
     var ref = d10(c.outDate || c.createdAt), cand = (recs[sn] || []).filter(function (x) { return !ref || x.at <= earlyAdd_(ref, 3); }).sort(function (a, b) { return b.at.localeCompare(a.at); });
     var it = cand[0]; if (!it) { r.kind = '접수일 미상'; rows.push(r); return; }
@@ -1852,6 +1862,19 @@ function earlyCalc_() {
   });
   return rows;
 }
+var AGE_B = [[0, 90, '3개월 이내'], [91, 180, '3~6개월'], [181, 270, '6~9개월'], [271, 365, '9~12개월'], [366, 1e9, '12개월 넘음']];
+var AGE_CACHE = { d: null, m: null };
+function ageOf_(u) {
+  if (AGE_CACHE.d !== S.data) { var m = {}; earlyCalc_().forEach(function (r) { m[r.uid] = r; }); AGE_CACHE = { d: S.data, m: m }; }
+  var r = AGE_CACHE.m[u.id] || {}, b = r.el >= 0 ? AGE_B.filter(function (x) { return r.el >= x[0] && r.el <= x[1]; })[0] : null;
+  return { start: r.start || '', kind: r.kind || '', days: b ? r.el : '', label: b ? b[2] : '설치일 미상' };
+}
+function ageSel_(id, cur, us) {
+  var n = {}; us.forEach(function (u) { var l = ageOf_(u).label; n[l] = (n[l] || 0) + 1; });
+  return '<select class="inp" id="' + id + '" title="설치일(교환품은 교환품 출고일)부터 AS 접수까지 기간"><option value="">사용 기간 전체</option>' +
+    AGE_B.map(function (x) { return x[2]; }).concat(['설치일 미상']).map(function (l) { return '<option value="' + esc(l) + '"' + (cur === l ? ' selected' : '') + '>' + esc(l) + ' (' + (n[l] || 0) + ')</option>'; }).join('') + '</select>';
+}
+function ageTxt_(a) { return a.days === '' ? '<span class="muted">설치일 미상</span>' : esc(a.label) + ' <span class="muted">(' + a.days + '일)</span>'; }
 function earlyCard_() {
   var A = S.an || {}, rows = earlyCalc_().filter(function (r) { return A.model === 'all' || !A.model || r.model === A.model; });
   var lots = (S.data.lots || []).filter(function (l) { return (A.model === 'all' || !A.model || l.model === A.model) && l.shipStatus !== 'pending'; })
@@ -2048,8 +2071,9 @@ function resList_() {
     return true;
   }).sort(function (a, b) { return resDate_(b).localeCompare(resDate_(a)) || String(b.caseId).localeCompare(String(a.caseId)); });
 }
+function resAgeF_(us) { return S.resAge ? us.filter(function (u) { return ageOf_(u).label === S.resAge; }) : us; }
 function vResults() {
-  var all = resList_(), f = S.resF || 'all';
+  var base = resList_(), all = resAgeF_(base), f = S.resF || 'all';
   var grp = function (arr) { var o = {}, ord = []; arr.forEach(function (u) { var k = u.caseId || u.id; if (!o[k]) { o[k] = []; ord.push(k); } o[k].push(u); }); return ord.map(function (k) { return o[k]; }); };
   var cnt = function (v) { return grp(all.filter(function (u) { return u.verdict === v; })).length; };
   var list = f === 'all' ? all : all.filter(function (u) { return u.verdict === f; });
@@ -2078,9 +2102,9 @@ function vResults() {
     if (open) {
       h += '<tr><td colspan="9" style="background:var(--bg2,#f7f8fa);padding:8px 14px">' +
         (c.id ? '<div class="row" style="margin-bottom:6px"><span class="small muted">출고 ' + md(c.outDate) + ' · 회수 ' + md(c.recvDate) + '</span><span class="sp"></span><button class="btn sm" data-act="case" data-id="' + esc(c.id) + '">AS 건 열기</button></div>' : '') +
-        '<table class="t"><thead><tr><th>회수 S/N</th><th>판정</th><th>증상</th><th>원인</th><th>용량</th><th>처분</th><th>검사 의견</th></tr></thead><tbody>' +
+        '<table class="t"><thead><tr><th>회수 S/N</th><th>사용 기간</th><th>판정</th><th>증상</th><th>원인</th><th>용량</th><th>처분</th><th>검사 의견</th></tr></thead><tbody>' +
         us.map(function (u) {
-          return '<tr><td class="mono small">' + esc(u.recvSn || u.origSn || '-') + (u.origSn && u.recvSn && u.origSn !== u.recvSn ? '<div class="muted">접수 ' + esc(u.origSn) + '</div>' : '') + '</td><td>' + vp(u.verdict) + '</td>' +
+          return '<tr><td class="mono small">' + esc(u.recvSn || u.origSn || '-') + (u.origSn && u.recvSn && u.origSn !== u.recvSn ? '<div class="muted">접수 ' + esc(u.origSn) + '</div>' : '') + '</td><td class="small nowrap">' + ageTxt_(ageOf_(u)) + '</td><td>' + vp(u.verdict) + '</td>' +
             '<td class="small">' + esc(u.testSymptom || '-') + '</td><td class="small">' + esc(cz(u.cause) || '-') + '</td><td class="nowrap">' + (u.capPct ? esc(u.capPct) + '%' : '-') + '</td>' +
             '<td class="small">' + esc(u.disposition || '-') + '</td><td class="small" style="white-space:pre-wrap">' + esc(String(u.opinion || '').slice(0, 200)) + '</td></tr>';
         }).join('') + '</tbody></table></td></tr>';
@@ -2091,7 +2115,7 @@ function vResults() {
   return '<div class="tabs">' + tabs + '</div>' +
     '<div class="tool"><select class="inp" id="resP">' + per.map(function (x) { return '<option value="' + x[0] + '"' + ((S.resP || '30') === x[0] ? ' selected' : '') + '>' + x[1] + '</option>'; }).join('') + '</select>' +
     '<select class="inp" id="modelF"><option value="all">전체 모델</option>' + prodOpts(S.model) + '</select>' +
-    '<input class="inp" id="q" placeholder="매장·S/N·문의번호 검색" value="' + esc(S.q) + '" style="width:220px"><span class="sp"></span>' +
+    '<input class="inp" id="q" placeholder="매장·S/N·문의번호 검색" value="' + esc(S.q) + '" style="width:220px">' + ageSel_('resAge', S.resAge || '', base) + '<span class="sp"></span>' +
     '<span class="small muted">' + groups.length + '건 · ' + list.length + 'EA' + (vsum.length ? ' (' + vsum.map(function (x) { return x[0] + ' ' + x[1]; }).join(' · ') + ')' : '') + '</span>' +
     '<button class="btn" data-act="resCsv">엑셀 받기</button></div>' +
     '<div class="card"><div class="tw"><table class="t"><thead><tr><th>검사일</th><th>매장</th><th>모델</th><th>수량</th><th>판정</th><th>증상</th><th>원인</th><th>처분</th><th>검사 의견</th></tr></thead><tbody>' +
@@ -2100,12 +2124,12 @@ function vResults() {
     (CS() ? '' : '<div id="ltPerCard">' + ltPerCard('회수분 검사') + '</div>');
 }
 function resCsv_() {
-  var f = S.resF || 'all', list = resList_().filter(function (u) { return f === 'all' || u.verdict === f; });
-  var rows = [['검사일', '매장', '문의번호', '출고일', '접수 S/N', '회수 S/N', '모델', '판정', '증상', '원인', '용량(%)', '처분', '검사 의견']].concat(list.map(function (u) {
+  var f = S.resF || 'all', list = resAgeF_(resList_()).filter(function (u) { return f === 'all' || u.verdict === f; });
+  var rows = [['검사일', '매장', '문의번호', '출고일', '접수 S/N', '회수 S/N', '모델', '판정', '증상', '원인', '용량(%)', '처분', '검사 의견', '사용 시작일', '시작일 기준', '사용 기간(일)', '사용 기간']].concat(list.map(function (u) {
     var c = IDX.caseById[u.caseId] || {};
-    return [resDate_(u), c.store || u.store, c.inquiryNo ? inqNo(c.inquiryNo) : '', c.outDate, u.origSn, u.recvSn, String(u.model || caseModel(c)).split('/')[0], u.verdict, u.testSymptom, cz(u.cause), u.capPct, u.disposition, u.opinion];
+    return [resDate_(u), c.store || u.store, c.inquiryNo ? inqNo(c.inquiryNo) : '', c.outDate, u.origSn, u.recvSn, String(u.model || caseModel(c)).split('/')[0], u.verdict, u.testSymptom, cz(u.cause), u.capPct, u.disposition, u.opinion].concat((function (a) { return [a.start, a.kind, a.days, a.label]; })(ageOf_(u)));
   }));
-  var blob = xlsxBlob_(rows, '검사결과', [11, 24, 11, 11, 20, 20, 12, 10, 12, 18, 8, 12, 50]);
+  var blob = xlsxBlob_(rows, '검사결과', [11, 24, 11, 11, 20, 20, 12, 10, 12, 18, 8, 12, 50, 11, 13, 10, 12]);
   saveBlob_(blob, 'AS_inspection_' + today().replace(/-/g, '') + '.xlsx');
   toast(list.length + '개를 엑셀로 내려받았습니다.');
 }
@@ -3309,6 +3333,27 @@ var ACT = {
     });
   },
   inspTab: function (d) { S.insp = d.v; render(); },
+  inspSnAll: function () {
+    var us = inspList_(), sns = us.map(function (u) { return u.recvSn; });
+    modal('검사중 S/N ' + sns.length + '개' + (S.inspAge ? ' · ' + S.inspAge : ''),
+      '<div class="small muted" style="margin-bottom:6px">매장 순서대로 한 줄에 하나씩이에요. [복사]를 누르거나 전체 선택해서 복사하세요.</div>' +
+      '<textarea class="inp mono" id="inspSnTxt" rows="16" style="width:100%" readonly>' + esc(sns.join('\n')) + '</textarea>',
+      '<button class="btn" data-act="closeModal">닫기</button><button class="btn pri" data-act="inspSnCopy">복사</button>');
+  },
+  inspSnCopy: function () {
+    var t = $('#inspSnTxt'); if (!t) return; t.select();
+    var ok = function () { toast('S/N을 복사했어요.'); };
+    if (navigator.clipboard) navigator.clipboard.writeText(t.value).then(ok, function () { document.execCommand('copy'); ok(); }); else { document.execCommand('copy'); ok(); }
+  },
+  inspXlsx: function () {
+    var us = inspList_();
+    var rows = [['매장', '문의번호', '입고일', '접수 S/N', '회수 S/N', '모델', '양산 차수', '불량 인입 사유', '사용 시작일', '시작일 기준', '사용 기간(일)', '사용 기간']].concat(us.map(function (u) {
+      var c = IDX.caseById[u.caseId] || {}, a = ageOf_(u), l = lotOf(u.recvSn || u.origSn);
+      return [c.store, c.inquiryNo ? inqNo(c.inquiryNo) : '', d10(c.recvDate), u.origSn, u.recvSn, String(u.model || caseModel(c)).split('/')[0], l ? l.name : '', c.reasonCode, a.start, a.kind, a.days, a.label];
+    }));
+    saveBlob_(xlsxBlob_(rows, '검사중', [24, 11, 11, 20, 20, 12, 9, 14, 11, 13, 10, 12]), 'AS_inspecting_' + today().replace(/-/g, '') + '.xlsx');
+    toast(us.length + '개를 엑셀로 내려받았습니다.');
+  },
   clearPhantom: function (d, b) {
     var c = IDX.caseById[d.id]; if (!c) return;
     var ph = unitsOf(c).filter(function (u) { return u._ph; });
@@ -3640,6 +3685,7 @@ document.addEventListener('change', function (e) {
   if (e.target.id === 'anMonths') { S.an.months = +e.target.value; render(); }
   if (e.target.id === 'anFrom' || e.target.id === 'anTo') { S.an[e.target.id === 'anFrom' ? 'from' : 'to'] = e.target.value; render(); }
   if (e.target.id === 'resP') { S.resP = e.target.value; render(); }
+  if (e.target.id === 'inspAge' || e.target.id === 'resAge') { S[e.target.id] = e.target.value; render(); }
   if (e.target.id === 'ltPF' || e.target.id === 'ltPT') { var lp = ltPer_(); lp[e.target.id === 'ltPF' ? 'from' : 'to'] = e.target.value; ltRefreshPerCard(); }
   if (e.target.id === 'ltPP') { ltPer_().pur = e.target.value; ltRefreshPerCard(); }
   if (e.target.id === 'ltPJ') { ltPer_().judge = e.target.value; ltRefreshPerCard(); }
