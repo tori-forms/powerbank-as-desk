@@ -2051,7 +2051,7 @@ function vAnalysis() {
       '<div class="d">' + (q.ship ? 'AS 교환 ' + fmt(q.ex) + 'EA (납품 대비 ' + pct2(q.ex, q.ship) + '%)' : setLink) + '</div></div>';
     var ln = function (l, n) { return '<div style="display:flex;justify-content:space-between;gap:8px"><span>' + l + '</span><b>' + fmt(n) + 'EA' + (q.ship ? ' <span style="font-weight:500;opacity:.8">(' + pct2(n, q.ship) + '%)</span>' : '') + '</b></div>'; };
     return '<div>' + head + '<div class="v">' + (q.ship ? pct2(q.all, q.ship) : '-') + '<small>%</small></div>' +
-      '<div class="d">' + ln('AS 교환 회수 검사 불량', q.asB) + ln('고객사 QC팀 확인 불량', q.qcB) + ln('수입검사 불량 (교체 재고)', q.inB) + ln('출하검사 불량 (납품용)', q.outB) +
+      '<div class="d">' + ln('AS 교환 회수 검사 불량', q.asB) + ln('고객사 QC팀 확인 불량', q.qcB) + ln('수입검사 불량 — 교체 재고', q.inB) + ln('수입검사 불량 — 납품 재고', q.outB) +
       '<div style="border-top:1px solid currentColor;opacity:.9;margin-top:3px;padding-top:3px;display:flex;justify-content:space-between"><span>합계 / 납품 ' + (q.ship ? fmt(q.ship) : '-') + 'EA</span><b>' + fmt(q.all) + 'EA</b></div></div></div>';
   };
   var split = function (kind) { return '<div style="display:grid;grid-template-columns:repeat(' + QM.length + ',minmax(0,1fr));gap:16px">' + QM.map(function (q) { return cell(q, kind); }).join('') + '</div>'; };
@@ -2230,7 +2230,7 @@ function vResults() {
     '<div class="card"><div class="tw"><table class="t"><thead><tr><th>검사일</th><th>매장</th><th>모델</th><th>수량</th><th>판정</th><th>증상</th><th>원인</th><th>처분</th><th>검사 의견</th></tr></thead><tbody>' +
     (rows || '<tr><td colspan="9"><div class="empty">해당 기간에 검사 끝난 ' + (qcT ? '고객사 HQC 불량품' : '회수품') + '이 없습니다.</div></td></tr>') + '</tbody></table></div></div>' +
     '<div class="note" style="margin-top:10px">AS 건(인입) 단위로 묶어서 보여줘요. 줄을 누르면 S/N별 결과가 펼쳐져요.' + (groups.length > 300 ? ' 최근 300건만 보여요. 전체는 엑셀로 받아 주세요.' : '') + '</div>' +
-    (CS() ? '' : qcT ? qcRejCard_((S.data.stock || []).map(function (r) { return { r: r }; }), function (r) { return r.model; }) : '<div id="ltPerCard">' + ltPerCard('회수분 검사') + '</div>');
+    (CS() ? '' : qcT ? qdCard_(1) : '<div id="ltPerCard">' + ltPerCard('회수분 검사') + '</div>');
 }
 function resCsv_() {
   var f = S.resF || 'all', list = resAgeF_(resTabList_()).filter(function (u) { return f === 'all' || u.verdict === f; });
@@ -2482,7 +2482,7 @@ function qdKind_(sn) {
   return { k: '', sn: sp.sn, txt: '교체 재고 구간에도, 양산 차수에도 없는 S/N이에요. 재고 › 입고·출고 기록에서 구간을 먼저 등록해 주세요.' };
 }
 
-function qdCard_() {
+function qdCard_(listOnly) {
   var dl = '<datalist id="stWhyList">' + QC_REJ_WHY.map(function (x) { return '<option value="' + esc(x) + '">'; }).join('') + '</datalist>';
   var rows = [];
   (S.data.shiprej || []).forEach(function (r) { rows.push({ k: 'out', at: r.at, sn: r.sn, where: r.lot ? '<span class="lotTag" style="margin:0">' + esc(r.lot) + '</span>' : '', why: r.why, disp: r.disp, note: r.note, repSn: r.repSn, mah: r.mah, id: r.id }); });
@@ -2497,7 +2497,8 @@ function qdCard_() {
     '<div class="row" style="margin-top:8px"><input class="inp mono" id="qdRep" placeholder="채워 넣은 교체 재고 S/N (납품 불량일 때만)" style="flex:1;min-width:240px"><span id="qdHint" class="small muted" style="flex:2">S/N을 넣으면 어느 쪽인지 여기 떠요.</span><button class="btn pri" data-act="qdAdd">등록</button></div></div>';
   if (cands && cands.length) h += '<div class="bd" style="border-top:1px solid var(--line)"><div class="small" style="padding:8px 10px;border-radius:10px;background:var(--amberSoft)"><b style="color:var(--amber)">용량 시험 2회 연속 미달인데 아직 안 올린 납품용 S/N ' + cands.length + '개</b> — ' +
     cands.map(function (x) { return '<span class="mono">' + esc(x.t.sn) + '</span> ' + Math.round(+x.t.mah).toLocaleString() + 'mAh <button class="btn sm" data-act="shipRejLt" data-sn="' + esc(x.t.sn) + '" data-mah="' + Math.round(+x.t.mah) + '" data-why="' + esc(x.j.why) + '">올리기</button>'; }).join(' · ') + '</div></div>';
-  h += '</div><div class="card" style="margin-top:14px"><div class="hd"><h3>검사 불량 목록</h3><span style="flex:1"></span>' + chip('all', '전체', rows.length) + ' ' + chip('in', '교체 재고 수입검사', rows.filter(function (r) { return r.k === 'in'; }).length) + ' ' + chip('out', '납품 출하검사', rows.filter(function (r) { return r.k === 'out'; }).length) +
+  if (listOnly) h = '<div>';
+  h += '</div><div class="card" style="margin-top:14px"><div class="hd"><h3>' + (listOnly ? '수입검사 불량 (교체 재고 · 납품 재고)' : '검사 불량 목록') + '</h3><span style="flex:1"></span>' + chip('all', '전체', rows.length) + ' ' + chip('in', '교체 재고 수입검사', rows.filter(function (r) { return r.k === 'in'; }).length) + ' ' + chip('out', '납품 출하검사', rows.filter(function (r) { return r.k === 'out'; }).length) +
     ((S.data.shiprej || []).length ? ' <button class="btn sm" data-act="shipRejXlsx">출하 불합격 엑셀</button>' : '') + '</div>';
   if (!shown.length) return h + '<div class="empty">아직 검사 불량이 없어요.</div></div>';
   return h + '<div class="tw" style="max-height:560px"><table class="t"><thead><tr><th>검사일</th><th>구분</th><th>S/N</th><th>차수·입고분</th><th>불량 사유</th><th>채워 넣은 교체 재고</th><th>처리</th><th>메모</th><th></th></tr></thead><tbody>' + shown.slice(0, 400).map(function (r) {
