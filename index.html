@@ -4339,7 +4339,7 @@ function vLoadtest() {
     : remoteOnly ? '' : '<div class="ltbox warn" style="margin-bottom:10px"><b>브라우저 기록 모드</b> — PC 기록 프로그램이 꺼져 있어서 이 화면이 직접 기록해요. <b>이 탭을 닫거나 새로고침하면 그동안 기록이 끊겨요.</b> 시험 PC에서는 기록 프로그램을 켜 두세요.</div>';
   var f = function (l, h) { return '<label class="fld"><span>' + l + '</span>' + h + '</label>'; };
   return '<div class="card"><div class="hd"><h3>폼즈 보조배터리 로드테스트</h3><span class="muted small">ATORCH DL24 · ' + (remoteOnly ? '서버 PC ' + LTR.live.devices.length : 'USB 연결 ' + LT.devs.length) + '대' + (LT.agent && +LT.agent.hidCount > LT.devs.length ? ' · <b style="color:var(--amber)">PC 인식 ' + LT.agent.hidCount + '대 — 응답 없는 장비 ' + (LT.agent.hidCount - LT.devs.length) + '대</b>' : '') + '</span><span style="flex:1"></span>' +
-    '<button class="btn sm pri" data-act="ltRep">📄 성적서 (원하는 S/N만)</button><button class="btn sm" data-act="ltXlsx">엑셀 다운로드 (S/N별 전체 기록)</button></div><div class="bd">' +
+    '<button class="btn sm pri" data-act="ltRep">📄 성적서 (원하는 S/N만)</button><button class="btn sm" data-act="ltXlsx">엑셀 다운로드 (S/N별 마지막 시험)</button></div><div class="bd">' +
     mode + (hid || remoteOnly ? '' : '<div class="ltbox bad" style="margin-bottom:10px">이 브라우저는 USB 장비 연결을 지원하지 않아요. PC 크롬(또는 엣지)에서 열어 주세요. 기록 조회·엑셀은 그대로 쓸 수 있어요.</div>') +
     (remoteOnly ? '<div class="small muted">시험 조작은 서버 PC(기록 프로그램이 켜진 PC)에서 해요. 이 PC에서는 아래에서 진행 상황을 실시간으로 볼 수 있어요.</div><details style="margin-top:10px"><summary class="small" style="cursor:pointer">이 PC에 장비를 직접 연결해서 시험하기</summary>' : '') +
     '<div class="row" style="align-items:flex-end;gap:10px;flex-wrap:wrap;margin-top:' + (remoteOnly ? '10px' : '0') + '">' +
@@ -4450,28 +4450,64 @@ function ltXlsx() {
     ltXlsxBuild_(t, 'Forms_LoadTest_' + today().replace(/-/g, '') + '.xlsx', '');
   }).catch(function (e) { toast(e.message, true); });
 }
-function ltXlsxBuild_(t, fname, label, extra) {
-  t = t.slice().sort(function (a, b) { return a.sn.localeCompare(b.sn) || String(a.startAt).localeCompare(String(b.startAt)); });
-    var N = function (v, d) { v = parseFloat(v); return isFinite(v) ? Math.round(v * Math.pow(10, d)) / Math.pow(10, d) : ''; };
-    var dt = function (s) { return String(s || '').replace('T', ' ').slice(0, 16); };
-    var by = {}; t.forEach(function (x) { (by[x.sn] = by[x.sn] || []).push(x); });
-    var sum = [['S/N', '모델', '시험 횟수', '최초 시험일', '최초 구분', '최초 조건', '최초 Wh', '최초 mAh', '직전 시험일', '직전 구분', '직전 조건', '직전 Wh', '직전 mAh', '최초 대비(%)', '최고 온도(℃)']];
-    Object.keys(by).sort().forEach(function (sn) {
-      var l = by[sn], f = l[0], z = l[l.length - 1], same = +f.cur === +z.cur && l.length > 1 && +f.wh > 0;
-      sum.push([sn, prodLabel(f.model), l.length, dt(f.startAt), f.purpose, f.cur + 'A / ' + f.cut + 'V', N(f.wh, 2), N(f.mah, 0),
-        l.length > 1 ? dt(z.startAt) : '', l.length > 1 ? z.purpose : '', l.length > 1 ? z.cur + 'A / ' + z.cut + 'V' : '', l.length > 1 ? N(z.wh, 2) : '', l.length > 1 ? N(z.mah, 0) : '',
-        same ? N(+z.wh / +f.wh * 100, 1) : '', N(Math.max.apply(null, l.map(function (x) { return +x.maxT || 0; })), 1)]);
-    });
-    var rec = [['S/N', '모델', '시험 구분', '시작 일시', '종료 일시', '방전 전류(A)', '차단 전압(V)', '케이블', '케이블 점검(1A 기준 V)', '점검 결과', '용량(Wh)', '용량(mAh)', '3.7V 환산 용량(mAh, ×5÷3.7)', '표기 대비(%)', '판정', '판정 근거', '시험 시간', '시작 전압(V)', '평균 전압(V)', '중간 최저 전압(V)', '최고 온도(℃)', '종료 사유', '장비 칸', '담당', '메모']];
-    t.forEach(function (x) {
-      rec.push([x.sn, prodLabel(x.model), LT_PUR_LABEL[x.purpose] || x.purpose, dt(x.startAt), dt(x.endAt), N(x.cur, 2), N(x.cut, 2), x.cable, N(x.cableV1, 2), x.checkOk === 'Y' ? '통과' : x.checkOk === 'skip' ? '무시하고 시험' : '',
-        N(x.wh, 2), N(x.mah, 0), N(ltConv(x.mah), 0), N(ltConv(x.mah) / LT_RATED_MAH * 100, 1), (ltJudge(x) || {}).txt || '', (ltJudge(x) || {}).why || '', ltHms(+x.sec), N(x.vStart, 2), N(x.avgV, 2), N(x.vMinMid, 2), N(x.maxT, 1), x.why, x.ch, x.actor, x.note]);
-    });
-    saveBlob_(xlsxBook_([
-      { name: 'S-N별 요약', rows: sum, widths: [22, 16, 9, 16, 11, 12, 10, 10, 16, 11, 12, 10, 10, 12, 12] },
-      { name: '시험 기록', rows: rec, widths: [22, 16, 11, 16, 16, 11, 11, 18, 18, 12, 10, 10, 22, 12, 12, 34, 10, 11, 11, 14, 11, 26, 8, 10, 30] }
-    ]), fname);
-    toast((label ? label + ' · ' : '') + 'S/N ' + (sum.length - 1) + '개 · 시험 ' + t.length + '건을 엑셀로 내려받았어요.' + (extra || ''));
+var LT_MAKER = { P20BOTA25: 'FXN' };
+function ltHmsKo_(s) { s = Math.max(0, Math.round(+s || 0)); var h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), c = s % 60; return [h ? h + '시간' : '', m ? m + '분' : '', c ? c + '초' : ''].filter(String).join(' ') || '0초'; }
+function ltXlsxBuild_(t, fname, label, extra, title) {
+  var last = {};
+  t.forEach(function (x) { var a = last[x.sn]; if (!a || String(x.startAt || x.createdAt) > String(a.startAt || a.createdAt)) last[x.sn] = x; });
+  var day = function (x) { return d10(x.startAt || x.createdAt); }, mdl = function (x) { return modelOfSn(x.sn) || x.model || ''; };
+  t = Object.keys(last).map(function (k) { return last[k]; }).sort(function (a, b) { return day(a).localeCompare(day(b)) || a.sn.localeCompare(b.sn); });
+  title = title || '보조배터리 시험 Data' + (label ? ' (' + label + ')' : '');
+  var R = function (v) { return Math.round(+v || 0); };
+  var bds = ['<border><left/><right/><top/><bottom/><diagonal/></border>'], bdi = {}, xfs = ['<xf/>'], xfi = {};
+  var bd = function (l, r, tp, b) {
+    var k = [l, r, tp, b].join('|'); if (bdi[k] != null) return bdi[k];
+    var e = function (n, v) { return v ? '<' + n + ' style="' + v + '"><color auto="1"/></' + n + '>' : '<' + n + '/>'; };
+    bds.push('<border>' + e('left', l) + e('right', r) + e('top', tp) + e('bottom', b) + '<diagonal/></border>'); return (bdi[k] = bds.length - 1);
+  };
+  var st = function (font, fill, num, b) {
+    var k = [font, fill, num, b].join('|'); if (xfi[k] != null) return xfi[k];
+    xfs.push('<xf numFmtId="' + num + '" fontId="' + font + '" fillId="' + fill + '" borderId="' + b + '" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>'); return (xfi[k] = xfs.length - 1);
+  };
+  var NC = 11, edge = function (ci) { return [ci === 0 ? 'medium' : '', ci === NC - 1 ? 'medium' : '']; };
+  var col = function (i) { return String.fromCharCode(65 + i); };
+  var X = function (v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
+  var cell = function (ref, v, s) { return typeof v === 'number' ? '<c r="' + ref + '" s="' + s + '"><v>' + v + '</v></c>' : '<c r="' + ref + '" t="inlineStr" s="' + s + '"><is><t xml:space="preserve">' + X(v) + '</t></is></c>'; };
+  var rows = [], merges = ['A1:K1'];
+  var row = function (vals, sf, ht) { var r = rows.length + 1; rows.push('<row r="' + r + '"' + (ht ? ' ht="' + ht + '" customHeight="1"' : '') + '>' + vals.map(function (v, ci) { return cell(col(ci) + r, v, sf(ci)); }).join('') + '</row>'); };
+  row([title, '', '', '', '', '', '', '', '', '', ''], function (ci) { var e = edge(ci); return st(1, 2, 0, bd(e[0], e[1], 'medium', 'thin')); }, 30);
+  row(['시험일자', '업체명', 'Model', 'S/N', '표기 용량 (mAh)', '시험 방법', '셋팅 값', 'Cut-off Voltage 셋팅 값', '소요 시간', '결과 용량 (mAh)', '변환 용량 (mAh)'],
+    function (ci) { var e = edge(ci); return st(0, 3, 0, bd(e[0] || 'thin', e[1] || 'thin', 'thin', 'thin')); });
+  var sumM = 0, sumC = 0;
+  t.forEach(function (x, i) {
+    var k = day(x) + '|' + mdl(x), top = !i || k !== day(t[i - 1]) + '|' + mdl(t[i - 1]), r = rows.length + 1;
+    if (top) { var n = 1; while (i + n < t.length && day(t[i + n]) + '|' + mdl(t[i + n]) === k) n++; if (n > 1) [0, 1, 2].forEach(function (ci) { merges.push(col(ci) + r + ':' + col(ci) + (r + n - 1)); }); }
+    sumM += R(x.mah); sumC += R(ltConv(x.mah));
+    row([top ? day(x) : '', top ? LT_MAKER[mdl(x)] || '' : '', top ? mdl(x) : '', x.sn, LT_RATED_MAH, 'CC', String(Math.round((+x.cur || 0) * 100) / 100) + 'A', (+x.cut || 0).toFixed(1) + 'V', ltHmsKo_(x.sec), R(x.mah), R(ltConv(x.mah))],
+      function (ci) { var e = edge(ci); return st(0, 0, ci === 4 || ci >= 9 ? 3 : 0, bd(e[0], e[1], top ? 'thin' : '', '')); });
+  });
+  var ar = rows.length + 1; merges.push('A' + ar + ':H' + ar);
+  row(['', '', '', '', '', '', '', '', '총 평균 용량', t.length ? Math.round(sumM / t.length) : 0, t.length ? Math.round(sumC / t.length) : 0],
+    function (ci) { var e = edge(ci); return st(0, ci >= 8 ? 4 : 0, ci >= 9 ? 3 : 0, bd(e[0], e[1], 'medium', 'medium')); });
+  var widths = [12, 8, 12, 20, 16, 10, 8, 22, 16, 16, 16];
+  var sheet = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>' +
+    '<sheetViews><sheetView workbookViewId="0"><pane ySplit="2" topLeftCell="A3" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>' +
+    '<cols>' + widths.map(function (w, i) { return '<col min="' + (i + 1) + '" max="' + (i + 1) + '" width="' + w + '" customWidth="1"/>'; }).join('') + '</cols>' +
+    '<sheetData>' + rows.join('') + '</sheetData>' +
+    '<mergeCells count="' + merges.length + '">' + merges.map(function (m) { return '<mergeCell ref="' + m + '"/>'; }).join('') + '</mergeCells>' +
+    '<pageMargins left="0.4" right="0.4" top="0.5" bottom="0.5" header="0.3" footer="0.3"/><pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0"/></worksheet>';
+  var fills = ['<fill><patternFill patternType="none"/></fill>', '<fill><patternFill patternType="gray125"/></fill>'].concat(['FFD0D0D0', 'FF5B9BD5', 'FF92D050'].map(function (c) { return '<fill><patternFill patternType="solid"><fgColor rgb="' + c + '"/></patternFill></fill>'; }));
+  var styles = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="10"/><name val="맑은 고딕"/></font><font><b/><sz val="16"/><name val="맑은 고딕"/></font></fonts>' +
+    '<fills count="' + fills.length + '">' + fills.join('') + '</fills><borders count="' + bds.length + '">' + bds.join('') + '</borders><cellStyleXfs count="1"><xf/></cellStyleXfs><cellXfs count="' + xfs.length + '">' + xfs.join('') + '</cellXfs></styleSheet>';
+  saveBlob_(new Blob([zipStore_([
+    ['[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>'],
+    ['_rels/.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'],
+    ['xl/workbook.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="시험 Data" sheetId="1" r:id="rId1"/></sheets></workbook>'],
+    ['xl/_rels/workbook.xml.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>'],
+    ['xl/styles.xml', styles],
+    ['xl/worksheets/sheet1.xml', sheet]
+  ])], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), fname);
+  toast((label ? label + ' · ' : '') + 'S/N ' + t.length + '개 (S/N별 마지막 시험)를 엑셀로 내려받았어요.' + (extra || ''));
 }
 function ltPerRange_(k) {
   var t = today(), d = new Date(t + 'T00:00:00'), f = function (x) { return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
@@ -4550,7 +4586,7 @@ ACT.plXlsx = function (d) {
   var p = plById_(d.id); if (!p) return;
   var rows = plSamples_(p).map(function (sn) { return ltLastOf_(sn, '입고 QC'); }).filter(Boolean);
   if (!rows.length) return toast('이 파렛트는 아직 용량 시험한 샘플이 없어요.', true);
-  ltXlsxBuild_(rows, 'Forms_ShipQC_' + plName_(p).replace(/\s+/g, '') + '_' + today().replace(/-/g, '') + '.xlsx', plName_(p));
+  ltXlsxBuild_(rows, 'Forms_ShipQC_' + plName_(p).replace(/\s+/g, '') + '_' + today().replace(/-/g, '') + '.xlsx', plName_(p), '', p.no + '번 Pallet 보조배터리 시험 Data');
 };
 ACT.ltPerK = function (d) { var P = ltPer_(); P.k = d.v; if (d.v === 'custom' && !P.from) { P.from = P.to = today(); } ltRefreshPerCard(); };
 ACT.ltPerReload = function () { ltPerLoad_(true); toast('기록을 새로 불러와요.'); };
