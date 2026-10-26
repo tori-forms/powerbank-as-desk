@@ -2087,22 +2087,18 @@ function yangOf_(u) {
   var g = LT_REG[sn + '|회수분 검사'], last = null;
   if (g) Object.keys(g).forEach(function (id) { var t = g[id]; if (!last || String(t.startAt || t.createdAt) > String(last.startAt || last.createdAt)) last = t; });
   var j = last && ltJudge(last);
-  if (j && j.cls === 'ok') return ['ok', '용량 시험 ' + (+last.mah).toLocaleString() + 'mAh · ' + j.why];
-  if (j && j.cls === 'bad') return ['no', '용량 시험 ' + (+last.mah).toLocaleString() + 'mAh · ' + j.why];
-  if (j) return ['chk', j.txt + ' · ' + j.why];
-  if (u.verdict === '불량') return ['no', '성능 저하 (용량 값 없음)'];
-  return ['chk', '용량 값 없음 — 검사 결과에 용량 % 입력 또는 용량 시험'];
+  return ['chk', '검사 결과에 용량 % 없음' + (j ? ' · 참고: 용량 시험 ' + (+last.mah).toLocaleString() + 'mAh ' + j.txt : '')];
 }
 function vYang() {
   if (!LT.perAll) ltPerLoad_();
   var us = S.data.units.filter(function (u) { return u.verdict && !resIsQc_(u); }).map(function (u) { return { u: u, y: yangOf_(u) }; });
   var n = { ok: 0, no: 0, chk: 0 }; us.forEach(function (x) { n[x.y[0]]++; });
   var f = S.yangF || 'ok', list = us.filter(function (x) { return f === 'all' || x.y[0] === f; }).sort(function (a, b) { return resDate_(b.u).localeCompare(resDate_(a.u)); });
-  var L3 = { ok: ['양품화 대상', 'var(--green)'], no: ['양품화 불가', 'var(--red)'], chk: ['확인 필요', 'var(--amber)'] };
+  var L3 = { ok: ['양품화 대상', 'var(--green)'], no: ['양품화 불가', 'var(--red)'], chk: ['보류', 'var(--amber)'] };
   var kp = function (k, v, d) { return '<div class="kpi" style="cursor:default"><div class="l">' + k + '</div><div class="v">' + v + '<small>개</small></div><div class="d">' + d + '</div></div>'; };
-  var h = '<div class="kpis">' + kp('양품화 대상', n.ok, '용량 80% 이상') + kp('양품화 불가', n.no, '80% 미만 · 용량 외 불량 · 외력') + kp('확인 필요', n.chk, '용량 값 없음 · 재시험 · 판정 보류') + kp('AS 회수분 검사 합계', us.length, '고객사 QC 직교환 제외 · 전체 기간') + '</div>' +
+  var h = '<div class="kpis">' + kp('양품화 대상', n.ok, '용량 80% 이상') + kp('양품화 불가', n.no, '80% 미만 · 용량 외 불량 · 외력') + kp('보류', n.chk, '검사 결과에 용량 % 없음 — 입력하면 대상·불가로 나뉨') + kp('AS 회수분 검사 합계', us.length, '고객사 QC 직교환 제외 · 전체 기간') + '</div>' +
     (LT.perAll ? '' : '<div class="note" style="margin-top:10px">용량 시험 기록을 불러오는 중… 끝나면 다시 계산돼요.</div>') +
-    '<div class="card" style="margin-top:14px"><div class="hd"><div class="tabs" style="margin:0">' + [['ok', '양품화 대상', n.ok], ['no', '양품화 불가', n.no], ['chk', '확인 필요', n.chk], ['all', '전체', us.length]].map(function (x) { return '<button class="' + (f === x[0] ? 'on' : '') + '" data-act="yangF" data-v="' + x[0] + '">' + x[1] + '<span class="n">' + x[2] + '</span></button>'; }).join('') + '</div></div>' +
+    '<div class="card" style="margin-top:14px"><div class="hd"><div class="tabs" style="margin:0">' + [['ok', '양품화 대상', n.ok], ['no', '양품화 불가', n.no], ['chk', '보류', n.chk], ['all', '전체', us.length]].map(function (x) { return '<button class="' + (f === x[0] ? 'on' : '') + '" data-act="yangF" data-v="' + x[0] + '">' + x[1] + '<span class="n">' + x[2] + '</span></button>'; }).join('') + '</div></div>' +
     '<div class="bd">' + (list.length ? '<div class="tw"><table class="t"><thead><tr><th>검사일</th><th>매장</th><th>S/N</th><th>모델 · 차수</th><th>판정</th><th>양품화</th><th>근거</th><th>처분</th></tr></thead><tbody>' +
     list.slice(0, 500).map(function (x) {
       var u = x.u, c = IDX.caseById[u.caseId] || {}, sn = u.recvSn || u.origSn || '';
