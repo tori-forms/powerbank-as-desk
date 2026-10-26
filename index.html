@@ -25,7 +25,7 @@ a{color:var(--blue);text-decoration:none} a:hover{text-decoration:underline}
 .brand .logo{width:34px;height:34px;border-radius:9px;background:#2f6b5a;display:grid;place-items:center;font-weight:800;color:#fff;font-size:13px}
 .brand b{display:block;font-size:14px;letter-spacing:.3px;color:#fff} .brand small{color:#9fb8ad;font-size:11px}
 .nav{padding:6px 8px;display:flex;flex-direction:column;gap:2px}
-.nav button{all:unset;cursor:pointer;display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;color:#cfdcd5;font-size:13.5px}
+.nav button{all:unset;cursor:pointer;display:flex;align-items:center;gap:10px;padding:9px 10px;white-space:nowrap;border-radius:8px;color:#cfdcd5;font-size:13.5px}
 .nav button:hover{background:rgba(255,255,255,.06)}
 .nav button.on{background:#2a5145;color:#fff;font-weight:600}
 .nav .ic{width:18px;text-align:center;opacity:.9}
@@ -204,7 +204,7 @@ textarea.inp{width:100%;resize:vertical}
 }
 html,body{font:15px/1.55 "Pretendard Variable",Pretendard,-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;letter-spacing:-.2px;-webkit-font-smoothing:antialiased}
 a{color:var(--brand)}
-.side{width:232px;background:#fff;color:var(--ink);border-right:1px solid var(--line)}
+.side{width:256px;background:#fff;color:var(--ink);border-right:1px solid var(--line)}
 .brand{padding:22px 20px 18px}
 .brand .logo{width:36px;height:36px;border-radius:12px;background:var(--brand);font-size:13px;box-shadow:0 4px 12px rgba(49,130,246,.3)}
 .brand b{color:var(--ink);font-size:15px;letter-spacing:-.2px} .brand small{color:var(--ink3);font-size:12px}
@@ -884,7 +884,7 @@ function counts() {
 }
 
 var VIEWS = [
-  ['home', '▦', '대시보드'], ['inbox', '✉', '인입함'], ['ship', '⇢', '출고'], ['ret', '⇠', 'AS 회수분 입고 처리'], ['inspect', '⚗', 'AS 회수분 검사/판정 대기'], ['results', '✔', 'AS 회수분 검사 결과'], ['yang', '♻', '양품화'], ['shipqc', '✓', '수입검사/HQC 불량 등록'], ['shipdoc', '📄', '출하 성적서'], ['loadtest', '⚡', '용량 테스트'],
+  ['home', '▦', '대시보드'], ['inbox', '✉', '인입함'], ['ship', '⇢', '출고 현황'], ['ret', '⇠', '회수 현황'], ['inspect', '⚗', 'AS 회수분 검사판정'], ['results', '✔', 'AS 회수분 검사 결과'], ['yang', '♻', '양품화'], ['shipqc', '✓', '수입검사/HQC 불량 등록'], ['shipdoc', '📄', '출하 성적서'], ['loadtest', '⚡', '용량 테스트'],
   ['stock', '▣', '재고'], ['analysis', '▤', '불량 분석'], ['guide', 'ⓘ', '제품 안내'], ['settings', '⚙', '설정·동기화']
 ];
 var CS_HIDE = { yang: 1, inbox: 1, inspect: 1, stock: 1, settings: 1, guide: 1, loadtest: 1, shipqc: 1, shipdoc: 1 };
