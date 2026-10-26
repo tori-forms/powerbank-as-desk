@@ -4576,7 +4576,7 @@ function ltHistCard() {
         '<div class="small muted" style="margin-bottom:10px">' + h.map(function (t, i) { return '<span style="color:' + LT_COLORS[i % LT_COLORS.length] + ';font-weight:700">━</span> ' + ymd(t.startAt) + ' ' + esc(t.purpose); }).join(' &nbsp; ') + ' (방전 곡선 · 전압)</div>' +
         ltTable(h.slice().reverse(), false);
     }
-  } else body = '<div class="empty">S/N을 입력(스캔)하고 Enter를 누르면 그 제품의 용량 테스트 이력만 보여드려요.' + (LT.recent !== null ? '<br><span class="small">저장된 시험 ' + LT.total + '건 · 전체 기록은 위의 엑셀 다운로드로 받을 수 있어요</span>' : '') + '</div>';
+  } else body = '<div class="empty">S/N을 입력(스캔)하고 Enter를 누르면 그 제품의 용량 테스트 이력만 보여드려요.' + (LT.recent !== null ? '<br><span class="small">저장된 시험 ' + LT.total + '건 · 재시험까지 모든 기록은 \'용량 시험 기록\' 목록(기간별)에서 볼 수 있어요 · 엑셀·성적서는 S/N별 마지막 시험만</span>' : '') + '</div>';
   return '<div class="card" style="margin-top:14px"><div class="hd"><h3>S/N 용량 테스트 이력 조회</h3><span style="flex:1"></span>' +
     (q && LT.histFull && LT.histFull.sn === q && LT.histFull.tests.length ? '<button class="btn sm pri" data-act="ltRep" data-sn="' + esc(q) + '" data-all="1">📄 이 S/N 성적서</button> ' : '') +
     (q ? '<button class="btn sm" data-act="ltPick" data-sn="">지우기</button>' : '') +
