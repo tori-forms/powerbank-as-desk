@@ -2033,7 +2033,8 @@ function vAnalysis() {
     var isQc = function (u) { return (IDX.caseById[u.caseId] || {}).source === 'qc'; };
     var asB = tu.filter(function (u) { return u.verdict === '불량' && !isQc(u); }).length;
     var qcB = S.data.units.filter(function (u) { return isQc(u) && modelOf(u) === m && u.verdict !== '정상' && u.verdict !== '외력/사용자 과실'; }).length;
-    var inB = (S.data.stock || []).filter(function (st) { return st.model === m; }).reduce(function (s2, st) { return s2 + qcRejOf(st).length; }, 0);
+
+    var inB = CS() ? 0 : (S.data.stock || []).filter(function (st) { return st.model === m; }).reduce(function (s2, st) { return s2 + qcRejOf(st).length; }, 0);
     var outB = (S.data.shiprej || []).filter(function (r) { return modelOfSn(r.sn) === m; }).length;
     return { m: m, ship: +ST[m] || 0, ex: ex, tested: tu.length, bad: bd, tp: tp.length, bp: bp, asB: asB, qcB: qcB, inB: inB, outB: outB, all: asB + qcB + inB + outB };
   };
@@ -2051,7 +2052,7 @@ function vAnalysis() {
       '<div class="d">' + (q.ship ? 'AS 교환 ' + fmt(q.ex) + 'EA (납품 대비 ' + pct2(q.ex, q.ship) + '%)' : setLink) + '</div></div>';
     var ln = function (l, n) { return '<div style="display:flex;justify-content:space-between;gap:8px"><span>' + l + '</span><b>' + fmt(n) + 'EA' + (q.ship ? ' <span style="font-weight:500;opacity:.8">(' + pct2(n, q.ship) + '%)</span>' : '') + '</b></div>'; };
     return '<div>' + head + '<div class="v">' + (q.ship ? pct2(q.all, q.ship) : '-') + '<small>%</small></div>' +
-      '<div class="d">' + ln('AS 교환 회수 검사 불량', q.asB) + ln('고객사 QC팀 확인 불량', q.qcB) + ln('수입검사 불량 — 교체 재고', q.inB) + ln('수입검사 불량 — 납품 재고', q.outB) +
+      '<div class="d">' + ln('AS 교환 회수 검사 불량', q.asB) + ln('HQC팀 확인 불량', q.qcB) + (CS() ? '' : ln('수입검사 불량 — 교체 재고', q.inB)) +ln('수입검사 불량 — 납품 재고', q.outB) +
       '<div style="border-top:1px solid currentColor;opacity:.9;margin-top:3px;padding-top:3px;display:flex;justify-content:space-between"><span>합계 / 납품 ' + (q.ship ? fmt(q.ship) : '-') + 'EA</span><b>' + fmt(q.all) + 'EA</b></div></div></div>';
   };
   var split = function (kind) { return '<div style="display:grid;grid-template-columns:repeat(' + QM.length + ',minmax(0,1fr));gap:16px">' + QM.map(function (q) { return cell(q, kind); }).join('') + '</div>'; };
