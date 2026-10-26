@@ -2082,6 +2082,7 @@ function resTabList_() { var qc = S.resTab === 'qc'; return resList_().filter(fu
 function yangOf_(u) {
   var cap = String(u.capPct || '').trim(), sn = u.recvSn || u.origSn;
   if (u.verdict === '외력/사용자 과실') return ['no', '외력/사용자 과실'];
+  if (u.cause === '분석 중') return ['chk', '원인 분석 중'];
   if (u.verdict === '불량' && !/용량/.test(u.cause || '') && u.testSymptom !== '성능 저하') return ['no', cz(u.cause) || u.testSymptom || '불량'];
   if (cap !== '') return +cap >= LT_LOT_OK * 100 ? ['ok', '용량 ' + cap + '%'] : ['no', '용량 ' + cap + '% (80% 미만)'];
   var g = LT_REG[sn + '|회수분 검사'], last = null;
