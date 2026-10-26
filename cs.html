@@ -3779,7 +3779,7 @@ function ltLotAvg_(sn) {
     LT_LOT_AUTO = acc;
   }
   var a = LT_LOT_AUTO[k];
-  return a && a.n >= 5 ? { name: l.name, avg: Math.round(a.s / a.n), fixed: false, n: a.n } : null;
+  return { name: l.name, avg: 0, fixed: false, n: a ? a.n : 0, ref: a ? Math.round(a.s / a.n) : 0 };
 }
 function ltIsCust(t) { return Math.abs(+t.cur - LT_CUST.cur) < 0.05 && +t.cut <= 1.0; }
 function ltCondName(cur, cut) { return ltIsCust({ cur: cur, cut: cut }) ? '고객사 기준' : Math.abs(+cur - LT_BASE.cur) < 0.05 && Math.abs(+cut - LT_BASE.cut) < 0.05 ? '품질팀 기준' : '임의 조건(판정 참고용)'; }
@@ -3813,7 +3813,8 @@ function ltJudge1_(t) {
   if (ltIsCust(t)) {
     var m = +t.mah, pct = (m / LT_CUST.min - 1) * 100, sg = (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%', rc;
     var la = t.purpose === '회수분 검사' && ltLotAvg_(sn);
-    if (la) { var lp = m / la.avg * 100, lb = la.name + ' 평균 ' + la.avg.toLocaleString() + 'mAh' + (la.fixed ? '' : '(임시 · ' + la.n + '개)') + '의 ' + Math.floor(lp) + '%';
+    if (la && !la.fixed) return { cls: 'warn', txt: '판정 보류', why: '[고객사 3A] ' + la.name + ' 기준 평균 미정 — 품질팀 확정 후 판정' + (la.n ? ' · 참고: 지금까지 ' + la.name + ' 납품 검사 평균 ' + la.ref.toLocaleString() + 'mAh (' + la.n + '개) · 이 S/N은 그 ' + Math.floor(m / la.ref * 100) + '%' : '') };
+    if (la) { var lp = m / la.avg * 100, lb = la.name + ' 평균 ' + la.avg.toLocaleString() + 'mAh의 ' + Math.floor(lp) + '%';
       rc = lp >= LT_LOT_OK * 100 ? ['ok', '정상', lb + ' · 양품화 가능'] : ['bad', '성능 불량', lb + ' (80% 미만)']; }
     else if (t.purpose === '회수분 검사') rc = m >= LT_CUST.min ? ['ok', '정상', '고객사 최소 12,000mAh 이상 (' + sg + ')'] : m >= LT_CUST.min * 0.8 ? ['warn', '정상 노화', '고객사 최소의 ' + (m / LT_CUST.min * 100).toFixed(0) + '% · 소모품 열화 범위'] : ['bad', '성능 불량', '고객사 최소의 ' + (m / LT_CUST.min * 100).toFixed(0) + '% (80% 미만)'];
     else rc = m >= LT_CUST.min * (1 + LT_CUST_MARGIN) ? ['ok', '합격', '고객사 기준 12,000mAh(환산 16,216) 이상 · 여유 ' + sg] : m >= LT_CUST.min ? ['warn', '합격(여유 적음)', '고객사 기준은 넘지만 여유 ' + sg + ' — 케이블·온도 차이로 고객사 측정에서 미달 가능'] : ['bad', '불합격', '고객사 기준 12,000mAh(환산 16,216) 미만 (' + sg + ')'];
@@ -4380,7 +4381,7 @@ function vLoadtest() {
     (hid ? (LT.agent ? '' : '<button class="btn pri" data-act="ltAdd">＋ 장비 추가 (USB)</button>') + '<button class="btn" data-act="ltAll">▶ 전체 시작</button><button class="btn red" data-act="ltStopAll">■ 전체 정지</button>' + (LT.agent ? '<button class="btn" data-act="ltAssign" title="실물 1번 테스트기부터 차례로 배터리를 꽂으면 그 순서대로 1, 2, 3… 번호가 붙어요">칸 번호 지정</button><button class="btn" data-act="ltRescan" title="응답 없는 장비·시험 중이 아닌 장비만 USB 연결을 새로 해요. 시험 중인 장비는 그대로 이어져요">🔌 장비 다시 찾기</button><button class="btn" data-act="ltRenum" title="연결 끊긴 칸을 지우고 칸 번호를 1부터 다시 매겨요 (시험 중이 아닐 때만)">칸 번호 정리</button>' : '') : '') + '</div>' + (remoteOnly ? '</details>' : '') +
     '<details style="margin-top:12px"><summary class="small" style="cursor:pointer;font-weight:600">사용 방법 · 표준 조건</summary><ol class="small" style="margin:8px 0 0;padding-left:18px;color:var(--ink2);line-height:1.7">' +
     '<li>표준 조건: <b>고객사(티오더) 시험과 같은 CC 3.0A · 차단 0.7V</b> (보호회로가 출력을 끌 때까지) · A 포트 5V 출력 · 시험용 A-to-C 30cm 케이블(3A급 굵은 선, 장비마다 고정) · 100% 완충 · 실온</li>' +
-    '<li>판정(고객사 기준): 기준 용량 19,000mAh · <b>측정 12,000mAh(3.7V 환산 16,216mAh) 이상 합격</b>, 12,000~12,360(여유 3% 미만)은 <b>합격(여유 적음)</b> — 케이블·온도 차이로 고객사 측정에서 미달할 수 있어요. 회수분은 <b>S/N이 속한 양산 차수 평균의 80% 이상 정상(양품화 가능), 미만 성능 불량</b> (1차 13,875 · 2차 13,985 · 3차 13,938 · 4차는 납품 검사 결과로 임시 평균). 차수를 모르면 고객사 최소 12,000 기준.</li>' +
+    '<li>판정(고객사 기준): 기준 용량 19,000mAh · <b>측정 12,000mAh(3.7V 환산 16,216mAh) 이상 합격</b>, 12,000~12,360(여유 3% 미만)은 <b>합격(여유 적음)</b> — 케이블·온도 차이로 고객사 측정에서 미달할 수 있어요. 회수분은 <b>S/N이 속한 양산 차수 평균의 80% 이상 정상(양품화 가능), 미만 성능 불량</b> (1차 13,875 · 2차 13,985 · 3차 13,938 · 4차 등 확정 전 차수는 판정 보류, 지금까지 납품 검사 평균만 참고로 표시). 차수를 모르면 고객사 최소 12,000 기준.</li>' +
     '<li>케이블이 길수록 케이블에서 열로 사라지는 몫이 커져 용량이 낮게 재져요 (120cm 동봉 케이블은 2A에서 최대 4% 정도). 예전 120cm 기록과 30cm 기록은 직접 비교하지 마세요.</li>' +
     '<li><b>반드시 100% 완충한 뒤 시작</b>하세요. 잔량이 남은 상태에서 시작하면 남은 양만 재져요 (잔량 2% → 2~3Wh). 참고로 예전 품질팀 시험(P20BOTA25 · 2A · 4.0V — 지금과 조건이 달라 직접 비교 불가)에서는 결과 약 <b>12,600~14,400mAh · 6시간 20분~7시간 10분</b>, 3.7V 환산 <b>평균 18,577mAh(표기의 92.9%)</b>가 나왔어요 (신품 50개). 판정: <b>17,500 이상 합격 · 17,000~17,500 보류 · 17,000 미만 불합격</b>, 회수분은 신품 평균 대비 <b>80% 이상 정상 · 60~80% 정상 노화 · 60% 미만 성능 불량</b>.</li>' +
     '<li>3A는 케이블 손실이 커서 장비에 찍히는 평균 전압이 4.6V대로 내려가요. 고객사와 같은 케이블인지 확인하세요.</li>' +
