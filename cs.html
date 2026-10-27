@@ -1614,7 +1614,28 @@ function rcPut_(sn) {
   var ex = $('#rcExtra'); if (ex && (ex.value || '').indexOf(sn) < 0) ex.value = (ex.value ? ex.value.replace(/\s*$/, '') + '\n' : '') + sn;
   return 'extra';
 }
+
+function retTailFind_(tail) {
+  return S.data.cases.filter(function (c) {
+    if (c.closed === 'Y') return false;
+    var nos = (String(c.returnTracking || '').match(/\d{6,}/g) || []).concat((IDX.ships[c.id] || []).filter(function (x) { return x.type === 'return'; }).map(function (x) { return x.no; }));
+    return nos.some(function (n) { return String(n).replace(/\D/g, '').slice(-tail.length) === tail; });
+  });
+}
+function rvTail_(tail) {
+  var hit = retTailFind_(tail), rw = byBucket('recv_wait').map(function (c) { return c.id; });
+  if (!hit.length) return toast('반품 송장 끝자리 ' + tail + '인 회수 건을 못 찾았어요. 자리를 더 넣어 보세요.', true);
+  if (hit.length > 1) return toast('끝자리 ' + tail + '인 건이 ' + hit.length + '개예요 (' + hit.map(function (c) { return c.store; }).join(', ') + ') — 자리를 더 넣어 주세요.', true);
+  var c = hit[0];
+  if (rw.indexOf(c.id) < 0) return toast(c.store + ' — 회수 예정(반품 도착) 상태가 아니라서 여기서 못 열어요. AS 건을 열어 확인해 주세요.', true);
+  S.recvOpen = c.id; render();
+  var el = $('#rc_' + c.id); if (el) el.scrollIntoView({ block: 'center' });
+  var n = $('#rcNoSn'); if (n) { n.focus(); n.select(); }
+  toast(c.store + ' 회수 건을 열었어요 — 바코드를 못 읽은 개수를 [S/N 식별 불가]에 넣고 회수 처리를 눌러 주세요.');
+}
 function rvScan_(raw) {
+  var t = String(raw || '').trim();
+  if (/^\d{4,12}$/.test(t)) return rvTail_(t);
   var sns = (String(raw || '').toUpperCase().match(/[A-Z0-9]{6,}/g) || []);
   if (!sns.length) return;
   var rw = byBucket('recv_wait'), rest = [];
@@ -1732,7 +1753,7 @@ function scanPanel_(rw) {
     .sort(function (a, b) { return String(a.recvDate).localeCompare(String(b.recvDate)); });
   var icon = { ok: '✅', dup: '⚠️', unknown: '❌', inbox: '📨' };
   var scanBar = '<div class="card" style="margin-bottom:12px"><div class="bd"><div class="row" style="align-items:center"><b style="font-size:16px">📦 바코드 스캔</b><span class="muted small">박스에서 꺼내며 한 번에 쭉 찍고(50개·100개도 OK) <b>[확인]</b>을 누르면, 회수 예정 건과 맞춰서 보여드려요</span></div>' +
-    '<div class="row" style="margin-top:8px;flex-wrap:nowrap;align-items:stretch"><textarea class="inp mono bigscan" id="rvScan" rows="3" style="flex:1;min-width:0;font-size:16px;padding:12px;resize:vertical" placeholder="여기에 바코드를 찍으세요 (여러 개 계속 찍어도 돼요)" autocomplete="off" autofocus></textarea>' +
+    '<div class="row" style="margin-top:8px;flex-wrap:nowrap;align-items:stretch"><textarea class="inp mono bigscan" id="rvScan" rows="3" style="flex:1;min-width:0;font-size:16px;padding:12px;resize:vertical" placeholder="여기에 바코드를 찍으세요 (여러 개 계속 찍어도 돼요) · 바코드가 훼손됐으면 반품 송장 끝 4자리" autocomplete="off" autofocus></textarea>' +
     '<div style="display:flex;flex-direction:column;gap:6px"><button class="btn pri" data-act="rvGo" style="padding:14px 22px;flex:1">확인</button><button class="btn sm" data-act="rvClear">지우기</button></div></div>' +
     '<div class="small muted" id="rvCnt" style="margin-top:4px"></div><input type="hidden" id="scanIn"></div></div>' + batchCard_();
   var expect = '<div class="card" style="margin-bottom:12px"><div class="hd"><h3>회수 예정</h3><span class="muted small">반품이 도착했고 아직 회수 처리 전 · ' + rw.length + '건</span></div>' +
