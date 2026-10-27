@@ -3993,16 +3993,17 @@ function ltAgentCmd(D, action, extra) {
 }
 function ltAgentStart(st) {
   ltAgentCmd(null, 'config');
-  (st.devices || []).forEach(ltAgentApply);
+  (st.devices || []).forEach(ltAgentApplySafe_);
   if (S.view === 'loadtest') render();
   LT.agentTimer = setInterval(ltAgentPoll, 1000);
 }
+function ltAgentApplySafe_(x) { try { ltAgentApply(x); } catch (e) { console.error('[LT] ' + x.no + '번 칸 그리기 실패', e); } }
 function ltAgentPoll() {
   if (LT.agentBusy) return; LT.agentBusy = true;
   ltAgentFetch('/state').then(function (st) {
     var was = LT.agentDown; LT.agentDown = false; LT.agent = st;
     var before = LT.devs.length;
-    (st.devices || []).forEach(ltAgentApply);
+    (st.devices || []).forEach(ltAgentApplySafe_);
     ltAgentPrune(st.devices || []);
     ltAssignPaint(st.assign);
     if ((was || LT.devs.length !== before) && S.view === 'loadtest') render();
@@ -4011,7 +4012,7 @@ function ltAgentPoll() {
       LT.devs.forEach(function (D) { if (D.state === 'run' || (D.state === 'done' && !D.logDone)) ltAgentFetch('/log?no=' + D.no).then(function (r) { if (r.ok) { D.log = r.rows; if (D.state === 'done') D.logDone = true; ltDraw(D); } }, function () { }); });
     }
   }, function () { if (!LT.agentDown) { LT.agentDown = true; if (S.view === 'loadtest') render(); } })
-    .then(function () { LT.agentBusy = false; });
+    .then(function () { LT.agentBusy = false; }, function (e) { LT.agentBusy = false; console.error('[LT]', e); });
 }
 function ltAssignPaint(a) {
   var box = document.getElementById('ltAssign'); if (!box) return;
@@ -4298,7 +4299,7 @@ function ltDraw(D) {
   if (R) {
     var sn = c.sn || D.sn, vs = sn ? ltVsFirst(sn, R.wh, c.cur, D.cid) : null, short = R.sec < LT_MIN_SEC, low = !short && R.wh < LT_LOW_WH;
     res = '<div class="ltbox ' + (R.sag || short || low ? 'warn' : 'ok') + '"><b>결과</b> ' + R.wh.toFixed(2) + 'Wh · ' + Math.round(R.mah).toLocaleString() + 'mAh · ' + ltHms(R.sec) + '<br>' + ltConvTxt(R.mah) + (ltJudge({ mah: R.mah, wh: R.wh, cur: c.cur, cut: c.cut, purpose: c.purpose, sn: c.sn || D.sn }) ? '<br>' + ltJudgeHtml({ mah: R.mah, wh: R.wh, cur: c.cur, cut: c.cut, purpose: c.purpose, sn: c.sn || D.sn }) : '') +
-      '<br><span class="small">평균 ' + R.avgV.toFixed(2) + 'V · 시작 ' + R.vStart.toFixed(2) + 'V · 중간 최저 ' + R.vMinMid.toFixed(2) + 'V · 최고 ' + R.maxT.toFixed(1) + '℃ · ' + esc(D.why) + '</span>' +
+      (R.avgV != null && R.vStart != null && R.vMinMid != null && R.maxT != null ? '<br><span class="small">평균 ' + R.avgV.toFixed(2) + 'V · 시작 ' + R.vStart.toFixed(2) + 'V · 중간 최저 ' + R.vMinMid.toFixed(2) + 'V · 최고 ' + R.maxT.toFixed(1) + '℃ · ' + esc(D.why) + '</span>' : '') +
       (vs ? '<br><b>최초 시험 대비 ' + vs.pct + '%</b> <span class="small">(최초 ' + ymd(vs.first.startAt) + ' ' + (+vs.first.wh).toFixed(1) + 'Wh)</span>' : '') +
       (R.sag ? '<br><b>⚠ 출력 전압 저하</b> <span class="small">시험 중간에 시작보다 ' + (R.vStart - R.vMinMid).toFixed(2) + 'V 떨어졌어요 (케이블이 아니라 보조배터리 출력 문제일 수 있음)</span>' : '') +
       (low ? '<br>' + ltLowMsg(R.wh) : '') +
