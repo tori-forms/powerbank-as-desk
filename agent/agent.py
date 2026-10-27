@@ -19,7 +19,7 @@ import sys, os, json, time, threading, struct, random, traceback, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-VERSION = '1.3.6'
+VERSION = '1.3.7'
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE_FILE = os.path.join(HERE, 'state.json')
 CONFIG_FILE = os.path.join(HERE, 'config.json')
@@ -318,11 +318,11 @@ def back_online(D):
 
 
 def restore_lost():
-    """프로그램 시작 때 state.json의 시험 중·중간 멈춤·저장 안 된 칸을 '연결 끊김'으로 미리 세움
+    """프로그램 시작 때 state.json의 시험 중·중간 멈춤 칸을 '연결 끊김'으로 미리 세움
     → 화면에서 안 사라지고, 장비가 다른 USB 경로로 잡혀도 rematch로 이어받음"""
     for path, x in STATE['devs'].items():
         st = x.get('state')
-        if not x.get('no') or (st == 'run' and not x.get('base')) or not (st in ('run', 'paused') or (st == 'done' and x.get('result') and not x.get('saved'))):
+        if not x.get('no') or (st == 'run' and not x.get('base')) or st not in ('run', 'paused'):   # 저장 안 된 완료 칸은 안 세움 (며칠 지난 기록이 '연결 끊김' 유령 칸으로 남음)
             continue
         if any(D.no == x['no'] for D in DEVS.values()):
             continue
