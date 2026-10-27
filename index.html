@@ -1320,6 +1320,7 @@ function vShip() {
 function shipWait_(sets, tabs) {
   var list = sets.wait.slice().sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); });
   return '<div class="tabs">' + tabs + '</div>' + toolbar('출고') +
+    '<div class="row" style="margin-bottom:10px"><button class="btn" data-act="ourboxXlsx">아워박스 출고요청서 엑셀</button><span class="small muted">출고 대기 중 교체 S/N이 들어간 건 → 아워박스 주문(발주) 관리에 올리는 양식 (S/N 1개당 1줄)</span></div>' +
     '<div class="note" style="margin-bottom:10px">교환 확정된 건입니다. 출고 송장을 넣으면 <b>배송 중</b>으로 넘어가고, 티오더 시트 <b>출고 송장</b> 칸에도 바로 기록돼요. 여러 개면 쉼표나 띄어쓰기로 구분해 주세요.</div>' +
     '<div class="card"><div class="tw"><table class="t"><thead><tr><th>번호</th><th>매장</th><th>모델</th><th>수량</th><th>확정 사유</th><th>확정일</th><th>경과</th><th>출고 송장 입력</th></tr></thead><tbody>' +
     (list.length ? list.map(function (c) {
@@ -2364,7 +2365,7 @@ function xlsxBlob_(rows, sheetName, widths) {
   var sheet = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
     '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>' +
     (widths ? '<cols>' + widths.map(function (w, i) { return '<col min="' + (i + 1) + '" max="' + (i + 1) + '" width="' + w + '" customWidth="1"/>'; }).join('') + '</cols>' : '') + '<sheetData>' +
-    rows.map(function (r, ri) { return '<row r="' + (ri + 1) + '">' + r.map(function (v, ci) { return '<c r="' + col(ci) + (ri + 1) + '" t="inlineStr"' + (ri === 0 ? ' s="1"' : ' s="2"') + '><is><t xml:space="preserve">' + X(v) + '</t></is></c>'; }).join('') + '</row>'; }).join('') +
+    rows.map(function (r, ri) { return '<row r="' + (ri + 1) + '">' + r.map(function (v, ci) { if (v && typeof v === 'object' && 'n' in v) return '<c r="' + col(ci) + (ri + 1) + '" s="2"><v>' + (+v.n || 0) + '</v></c>'; return '<c r="' + col(ci) + (ri + 1) + '" t="inlineStr"' + (ri === 0 ? ' s="1"' : ' s="2"') + '><is><t xml:space="preserve">' + X(v) + '</t></is></c>'; }).join('') + '</row>'; }).join('') +
     '</sheetData></worksheet>';
   var files = [
     ['[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>'],
@@ -2375,6 +2376,33 @@ function xlsxBlob_(rows, sheetName, widths) {
     ['xl/worksheets/sheet1.xml', sheet]
   ];
   return new Blob([zipStore_(files)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+
+function addrSplit_(a, store) {
+  a = String(a || '').replace(/\s+/g, ' ').trim();
+  var m = a.match(/^(.*?\d+번길\s*\d+(?:-\d+)?)\s*,?\s*(.*)$/) || a.match(/^(.*?(?:로|길)\s*\d+(?:-\d+)?)\s*,?\s*(.*)$/);
+  var base = m ? m[1] : a, rest = m ? m[2] : '';
+  return [base, ((rest ? rest + ' ' : '') + (rest.indexOf(store) >= 0 ? '' : store)).trim()];
+}
+
+function ourboxXlsx_(cases, b) {
+  var rows = [['품목명', '수량', '주문자명', '주문자 전화번호', '주문자 주소', '주문자 상세주소', '비고', '주문번호']], miss = [], noSn = [];
+  var no = +today().slice(5).replace('-', '');
+  var withSn = cases.filter(function (c) { var ok = (IDX.units[c.id] || []).some(function (u) { return u.outSn; }); if (!ok) noSn.push(c.store); return ok; });
+  if (!withSn.length) return toast('교체 S/N이 들어간 출고 대기 건이 없어요. AS 건에 교체 S/N을 먼저 넣어 주세요.', true);
+  var orig = b ? b.innerHTML : ''; if (b) { b.disabled = true; b.innerHTML = '<span class="spin"></span> 주소 불러오는 중'; }
+  Promise.all(withSn.map(function (c) { return c.inboxId ? call('inboxDetail', { id: c.inboxId }).catch(function () { return {}; }) : Promise.resolve({}); })).then(function (ds) {
+    withSn.forEach(function (c, i) {
+      var it = (S.data.inbox || []).filter(function (x) { return x.id === c.inboxId; })[0] || {}, ad = addrSplit_(ds[i].address, c.store);
+      if (!ds[i].address || !it.contact) miss.push(c.store);
+      (IDX.units[c.id] || []).filter(function (u) { return u.outSn; }).forEach(function (u) {
+        rows.push(['AS no' + String(u.outSn).slice(-5), { n: 1 }, c.store, it.contact || '', ad[0], ad[1], '', { n: no }]);
+      });
+    });
+    saveBlob_(xlsxBlob_(rows, 'Sheet1', [14, 6, 26, 15, 40, 36, 10, 9]), 'b2c출고요청서_' + today().replace(/-/g, '') + '.xlsx');
+    toast((rows.length - 1) + '개(' + withSn.length + '건) 출고요청서를 만들었어요' + (miss.length ? ' · ⚠️ 주소/전화 없음: ' + miss.join(', ') : '') + (noSn.length ? ' · 교체 S/N 없어 뺀 건: ' + noSn.join(', ') : ''), !!(miss.length || noSn.length));
+  }).catch(function (e) { toast(e.message || String(e), true); })
+    .then(function () { if (b && document.body.contains(b)) { b.disabled = false; b.innerHTML = orig; } });
 }
 
 function zipStore_(files) {
@@ -3293,6 +3321,7 @@ var ACT = {
   },
   csHoldGo: function (d, b) { run('csHold', { caseId: d.id, days: +$('#chDays').value, note: $('#chNote').value }, function (r) { closeModal(); return 'CS팀 확인중 — ' + md(r.case.csHoldUntil) + '까지 재접수 알림에서 빼 둘게요.'; }, b); },
   csHoldOff: function (d, b) { if (!askGate_('CS팀 확인을 끝낼까요?\n회수가 아직 안 됐으면 다시 회수 실패로 올라와요.', function () { ACT.csHoldOff(d, b); })) return; run('csHold', { caseId: d.id, cancel: true }, 'CS팀 확인중을 해제했어요.', b); },
+  ourboxXlsx: function (d, b) { var all = S.data.cases.filter(function (c) { return modelOk(c) && IDX.st[c.id] && IDX.st[c.id].b === 'ship_wait'; }); ourboxXlsx_(all, b); },
   quickOut: function (d, b) {
     var el = $('#ot_' + d.id); if (!el) return;
     var v = (el.value || '').trim(); if (!v) return toast('출고 송장번호를 입력해 주세요.', true);
