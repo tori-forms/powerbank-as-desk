@@ -19,7 +19,7 @@ import sys, os, json, time, threading, struct, random, traceback, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-VERSION = '1.3.5'
+VERSION = '1.3.6'
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE_FILE = os.path.join(HERE, 'state.json')
 CONFIG_FILE = os.path.join(HERE, 'config.json')
@@ -299,7 +299,7 @@ def adopt(M, D):
     """D로 열린 USB 연결을 원래 칸 M에 넘김"""
     p = D.path
     log('장비 %s 칸의 DL24가 다른 USB 경로로 다시 잡힘 → %s번 칸·시험 이어받음 (누적 %.1fmAh로 확인)' % (D.no or '새', M.no, D.live['mah'] if D.live else 0))
-    del DEVS[M.path]; del DEVS[p]
+    del DEVS[M.path]; del DEVS[p]; STATE['devs'].pop(M.path, None)   # 옛 경로 기록은 지움 (다음 재시작 때 같은 칸이 두 번 생기지 않게)
     M.h = D.h; M.key = D.key; M.lost = False; M.err = ''; M.opened_at = D.opened_at; M.path = p; DEVS[p] = M
     D.h = None
     if D.no:   # 남의 장비를 물고 있던 칸 → 자기 장비가 다시 잡힐 때까지 끊김으로 둠
@@ -315,6 +315,25 @@ def back_online(D):
             D.msg = ['ok', 'USB가 %s 끊겼다가 다시 연결됐어요 — 그동안에도 DL24가 계속 재고 있어서 Wh·mAh는 빠짐없이 이어져요 (그 사이 전압 그래프만 비어요).' % ('%d분' % round(gap / 60000.0) if gap >= 60000 else '%d초' % round(gap / 1000.0))]
         log('장비 %s USB 다시 연결 (%d초 끊김)' % (D.no, round(gap / 1000.0)))
     D.lost_at = 0
+
+
+def restore_lost():
+    """프로그램 시작 때 state.json의 시험 중·중간 멈춤·저장 안 된 칸을 '연결 끊김'으로 미리 세움
+    → 화면에서 안 사라지고, 장비가 다른 USB 경로로 잡혀도 rematch로 이어받음"""
+    for path, x in STATE['devs'].items():
+        st = x.get('state')
+        if not x.get('no') or (st == 'run' and not x.get('base')) or not (st in ('run', 'paused') or (st == 'done' and x.get('result') and not x.get('saved'))):
+            continue
+        if any(D.no == x['no'] for D in DEVS.values()):
+            continue
+        D = Dev(path); D.no = x['no']; D.sn = x.get('sn') or ''; D.state = st; D.cond = x.get('cond'); D.result = x.get('result')
+        D.lost_at = ms(); D.restore = x
+        on = st == 'run'
+        D.live = {'t': x.get('lastAt') or ms(), 'v': 0, 'a': float((x.get('cond') or {}).get('cur') or 0) if on else 0,
+                  'wh': x.get('lastWh') or 0, 'mah': x.get('lastMah') or 0, 'temp': 0, 'on': on}
+        D.err = 'USB 연결 끊김 — 다시 연결되면 이어서 기록해요.'
+        DEVS[path] = D
+        log('장비 %s 연결 끊긴 채로 복구 대기 (%s)' % (D.no, st))
 
 
 def assign_no(D):
@@ -727,8 +746,8 @@ def prune_lost():
     for path, D in list(DEVS.items()):
         if not D.lost or ms() - getattr(D, 'lost_at', 0) < LOST_DROP_MS:
             continue
-        if D.state in ('run', 'arm', 'check') or (D.state == 'done' and D.result and not D.saved):
-            continue   # 시험 중이거나 저장 안 된 결과가 있으면 남겨 둠 (다시 꽂으면 이어서)
+        if D.state in ('run', 'arm', 'check', 'paused') or (D.state == 'done' and D.result and not D.saved) or D.restore is not None:
+            continue   # 시험 중·중간 멈춤·저장 안 된 결과·재시작 뒤 복구 대기면 남겨 둠 (다시 꽂으면 이어서)
         log('장비 %s 칸 정리 (연결 끊긴 대기 칸)' % D.no)
         del DEVS[path]
 
@@ -1092,6 +1111,7 @@ def main():
     CONFIG.update(jload(CONFIG_FILE, {}))
     STATE.update(jload(STATE_FILE, {}))
     STATE.setdefault('chans', {}); STATE.setdefault('devs', {}); STATE.setdefault('pending', [])
+    restore_lost()
     srv = None
     for i in range(20):   # 다시 시작할 때 이전 프로세스가 포트를 놓을 때까지 잠깐 기다림
         try:
