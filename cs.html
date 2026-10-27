@@ -3495,6 +3495,7 @@ var ACT = {
   toggleOld: function () { S.showOld = !S.showOld; render(); },
   allCases: function () { S.allCases = !S.allCases; render(); },
   resF: function (d) { S.resF = d.v; render(); },
+  ltPreset: function (d) { var p = d.c.split('|'); ls('ltCur', p[0]); ls('ltCut', p[1]); render(); toast('시험 조건 CC ' + p[0] + 'A · 차단 ' + p[1] + 'V — 이제 ▶ 시작하는 칸부터 적용'); },
   yangF: function (d) { S.yangF = d.v; render(); },
   resTab: function (d) { S.resTab = d.v; S.resF = 'all'; render(); },
   resCsv: function () { resCsv_(); },
@@ -3811,8 +3812,11 @@ function ltLotAvg_(sn) {
   var a = LT_LOT_AUTO[k];
   return { name: l.name, avg: 0, fixed: false, n: a ? a.n : 0, ref: a ? Math.round(a.s / a.n) : 0 };
 }
+var LT_GUIDE = { cur: 2, cutLo: 3.0, cutHi: 3.5, pass: 55.0, hold: 51.5, ref: 70.3 };
+function ltIsGuide(t) { return Math.abs(+t.cur - LT_GUIDE.cur) < 0.05 && +t.cut >= LT_GUIDE.cutLo - 0.05 && +t.cut <= LT_GUIDE.cutHi + 0.05; }
+function ltCondKey_(t) { return ltIsCust(t) ? 'c' : ltIsGuide(t) ? 'g' : 'o'; }
 function ltIsCust(t) { return Math.abs(+t.cur - LT_CUST.cur) < 0.05 && +t.cut <= 1.0; }
-function ltCondName(cur, cut) { return ltIsCust({ cur: cur, cut: cut }) ? '고객사 기준' : Math.abs(+cur - LT_BASE.cur) < 0.05 && Math.abs(+cut - LT_BASE.cut) < 0.05 ? '품질팀 기준' : '임의 조건(판정 참고용)'; }
+function ltCondName(cur, cut) { return ltIsCust({ cur: cur, cut: cut }) ? '고객사 기준' : ltIsGuide({ cur: cur, cut: cut }) ? '고객사 QC 가이드(2A·Wh 판정)' : Math.abs(+cur - LT_BASE.cur) < 0.05 && Math.abs(+cut - LT_BASE.cut) < 0.05 ? '품질팀 기준' : '임의 조건(판정 참고용)'; }
 var LT_REG = {};
 function ltReg_(r) {
   LT_LOT_AUTO = null;
@@ -3823,14 +3827,14 @@ function ltReg_(r) {
 function ltQ_(p) { return call('ltQuery', p).then(function (r) { ltReg_(r); return r; }); }
 function ltFinal_(rows) {
   var last = {};
-  rows.forEach(function (t) { var k = t.sn + '|' + t.purpose; if (!last[k] || String(t.startAt || t.createdAt) > String(last[k].startAt || last[k].createdAt)) last[k] = t; });
-  return rows.filter(function (t) { return last[t.sn + '|' + t.purpose] === t; });
+  rows.forEach(function (t) { var k = t.sn + '|' + t.purpose + '|' + ltCondKey_(t); if (!last[k] || String(t.startAt || t.createdAt) > String(last[k].startAt || last[k].createdAt)) last[k] = t; });
+  return rows.filter(function (t) { return last[t.sn + '|' + t.purpose + '|' + ltCondKey_(t)] === t; });
 }
 function ltJudge(t) {
   var j = ltJudge1_(t);
   if (!j || j.cls !== 'bad' || !ltRealSn(t.sn)) return j;
   var at = String(t.startAt || t.createdAt), reg = LT_REG[t.sn + '|' + t.purpose] || {};
-  var prev = Object.keys(reg).map(function (k) { return reg[k]; }).filter(function (x) { return x.id !== t.id && String(x.startAt || x.createdAt) < at; })
+  var prev = Object.keys(reg).map(function (k) { return reg[k]; }).filter(function (x) { return x.id !== t.id && String(x.startAt || x.createdAt) < at && ltCondKey_(x) === ltCondKey_(t); })
     .sort(function (a, b) { return String(b.startAt || b.createdAt).localeCompare(String(a.startAt || a.createdAt)); })[0];
   var pj = prev && ltJudge1_(prev);
   if (pj && pj.cls === 'bad') return { cls: 'bad', txt: j.txt + ' (2회 연속)', why: j.why };
@@ -3849,6 +3853,11 @@ function ltJudge1_(t) {
     else if (t.purpose === '회수분 검사') rc = m >= LT_CUST.min ? ['ok', '정상', '고객사 최소 12,000mAh 이상 (' + sg + ')'] : m >= LT_CUST.min * 0.8 ? ['warn', '정상 노화', '고객사 최소의 ' + (m / LT_CUST.min * 100).toFixed(0) + '% · 소모품 열화 범위'] : ['bad', '성능 불량', '고객사 최소의 ' + (m / LT_CUST.min * 100).toFixed(0) + '% (80% 미만)'];
     else rc = m >= LT_CUST.min * (1 + LT_CUST_MARGIN) ? ['ok', '합격', '고객사 기준 12,000mAh(환산 16,216) 이상 · 여유 ' + sg] : m >= LT_CUST.min ? ['warn', '합격(여유 적음)', '고객사 기준은 넘지만 여유 ' + sg + ' — 케이블·온도 차이로 고객사 측정에서 미달 가능'] : ['bad', '불합격', '고객사 기준 12,000mAh(환산 16,216) 미만 (' + sg + ')'];
     return { cls: rc[0], txt: rc[1], why: '[고객사 3A·0.7V] ' + rc[2] };
+  }
+  if (ltIsGuide(t)) {
+    var w = +t.wh, gi = 'Wh ' + w.toFixed(1) + ' · 효율 ' + (w / LT_GUIDE.ref * 100).toFixed(1) + '% · 셀 환산 ' + Math.round(w * 1000 / 3.7).toLocaleString() + 'mAh';
+    var g = w >= LT_GUIDE.pass ? ['ok', '합격', gi + ' (55.0Wh 이상)'] : w >= LT_GUIDE.hold ? ['warn', '재점검', gi + ' (51.5~54.9Wh · 케이블 전압강하 확인)'] : ['bad', '불합격', gi + ' (51.5Wh 미만)'];
+    return { cls: g[0], txt: g[1], why: '[고객사 가이드 2A] ' + g[2] };
   }
   var std = Math.abs(+t.cur - LT_BASE.cur) < 0.05 && Math.abs(+t.cut - LT_BASE.cut) < 0.05;
   var r;
@@ -4408,6 +4417,7 @@ function vLoadtest() {
     '<div class="row" style="align-items:flex-end;gap:10px;flex-wrap:wrap;margin-top:' + (remoteOnly ? '10px' : '0') + '">' +
     f('방전 전류 (A, CC)', '<input class="inp" id="ltCur" type="number" step="0.1" min="0.1" max="5" value="' + esc(ltVal('ltCur', LT_STD.cur)) + '" style="width:90px">') +
     f('차단 전압 (V)', '<input class="inp" id="ltCut" type="number" step="any" min="0.001" max="20" value="' + esc(ltVal('ltCut', LT_STD.cut)) + '" style="width:90px">') +
+    f('조건 빠르게', '<button class="btn sm" data-act="ltPreset" data-c="3.0|0.7">3A · 0.7V</button> <button class="btn sm" data-act="ltPreset" data-c="2.0|3.0">2A · 3.0V (QC 가이드)</button>') +
     f('케이블', '<input class="inp" id="ltCable" value="' + esc(ltVal('ltCable', LT_STD.cable)) + '" style="width:170px">') +
     (hid ? (LT.agent ? '' : '<button class="btn pri" data-act="ltAdd">＋ 장비 추가 (USB)</button>') + '<button class="btn" data-act="ltAll">▶ 전체 시작</button><button class="btn red" data-act="ltStopAll">■ 전체 정지</button>' + (LT.agent ? '<button class="btn" data-act="ltAssign" title="실물 1번 테스트기부터 차례로 배터리를 꽂으면 그 순서대로 1, 2, 3… 번호가 붙어요">칸 번호 지정</button><button class="btn" data-act="ltRescan" title="응답 없는 장비·시험 중이 아닌 장비만 USB 연결을 새로 해요. 시험 중인 장비는 그대로 이어져요">🔌 장비 다시 찾기</button><button class="btn" data-act="ltRenum" title="연결 끊긴 칸을 지우고 칸 번호를 1부터 다시 매겨요 (시험 중이 아닐 때만)">칸 번호 정리</button>' : '') : '') + '</div>' + (remoteOnly ? '</details>' : '') +
     '<details style="margin-top:12px"><summary class="small" style="cursor:pointer;font-weight:600">사용 방법 · 표준 조건</summary><ol class="small" style="margin:8px 0 0;padding-left:18px;color:var(--ink2);line-height:1.7">' +
@@ -4809,6 +4819,7 @@ function ltReportHtml(rows, none, opt) {
     '<div class="box"><b>시험 방법</b> — 100% 완충 후 USB-A 출력 → 시험용 A-to-C 30cm 케이블 → ATORCH DL24 전자부하 정전류(CC) 방전, 차단 전압 도달 시 자동 종료 · 실온 · 조건: ' + E(conds.join(' / ')) + '<br>' +
     '<b>환산</b> — 3.7V 환산 mAh = 측정 mAh(5V 출력) × 5 ÷ 3.7 (기존 품질 성적서와 같은 계산) · 표기 용량 ' + N(LT_RATED_MAH, 0) + 'mAh<br>' +
     (rows.some(ltIsCust) ? '<b>고객사 기준</b> (CC 3.0A · 차단 0.7V, 보호회로 종료까지) — 기준 용량 ' + N(LT_CUST.ref, 0) + 'mAh · 측정 ' + N(LT_CUST.min, 0) + 'mAh(3.7V 환산 ' + N(ltConv(LT_CUST.min), 0) + 'mAh) 이상 합격 · 기준보다 3% 안쪽은 \'합격(여유 적음)\'<br>' : '') +
+    (rows.some(ltIsGuide) ? '<b>고객사 QC 가이드</b> (CC 2A · 차단 3.0~3.5V) — Wh로 판정: ' + LT_GUIDE.pass.toFixed(1) + 'Wh 이상 합격(효율 78.2%↑) · ' + LT_GUIDE.hold.toFixed(1) + '~54.9Wh 재점검(케이블 전압강하 확인) · ' + LT_GUIDE.hold.toFixed(1) + 'Wh 미만 불합격 · 셀 환산 mAh = Wh × 1000 ÷ 3.7 · 기준 ' + LT_GUIDE.ref + 'Wh<br>' : '') +
     '<b>판정 기준</b> (CC 2A · 차단 4.0V) — 납품 검사: ' + N(LT_BASE.pass, 0) + 'mAh 이상 합격 · ' + N(LT_BASE.hold, 0) + '~' + N(LT_BASE.pass, 0) + ' 보류(재충전 후 재시험) · ' + N(LT_BASE.hold, 0) + ' 미만 불합격 / AS 회수분: 신품 평균(' + N(LT_BASE.mean, 0) + 'mAh) 대비 80% 이상 정상 · 60~80% 정상 노화 · 60% 미만 성능 불량. 다른 조건으로 잰 결과는 (참고)로 표시.</div>' +
     '<div class="sum"><div>대상 <b>' + rows.length + '</b>건</div><div>3.7V 환산 평균 <b>' + N(avg, 0) + '</b> mAh</div><div>최저 <b>' + N(Math.min.apply(null, conv), 0) + '</b> · 최고 <b>' + N(Math.max.apply(null, conv), 0) + '</b></div>' +
     Object.keys(cnt).map(function (k) { return '<div>' + E(k) + ' <b>' + cnt[k] + '</b></div>'; }).join('') + '</div>' +
