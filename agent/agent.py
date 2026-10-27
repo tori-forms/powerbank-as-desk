@@ -19,7 +19,7 @@ import sys, os, json, time, threading, struct, random, traceback, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-VERSION = '1.3.4'
+VERSION = '1.3.5'
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE_FILE = os.path.join(HERE, 'state.json')
 CONFIG_FILE = os.path.join(HERE, 'config.json')
@@ -103,7 +103,7 @@ class Dev:
         self.arm = None; self.fire_at = 0; self.voc = 0; self.result = None; self.saved = ''; self.saving = False
         self.save_err = ''; self.cid = ''; self.msg = None; self.away_end = False; self.restore = None; self.pur = ''; self.pur_sn = ''
         self.last_rx = 0; self.end_probe = 0; self.pause_ms = 0; self.paused_at = 0; self.pauses = 0; self.resave = False; self.silent_n = 0
-        self.lost_at = 0; self.gaps = 0; self.gap_ms = 0; self.dead_at = 0
+        self.lost_at = 0; self.gaps = 0; self.gap_ms = 0; self.dead_at = 0; self.fresh = False
 
     def to_json(self, with_log=False):
         L = self.live
@@ -187,6 +187,8 @@ def pump(D):
         if not r:
             return
         on_report(D, list(r))
+        if D.h is None:   # 첫 보고서에서 다른 칸으로 넘어감(rematch) → 나머지는 다음 바퀴에 그 칸이 읽음
+            return
 
 
 def on_report(D, u):
@@ -206,6 +208,12 @@ def on_report(D, u):
     now = ms()
     L = {'t': now, 'v': le(u, 8) / 1000, 'a': le(u, 12) / 1000, 'wh': le(u, 24) / 1000, 'mah': le(u, 28) / 1000,
          'temp': le(u, 40) / 1000, 'on': le(u, 52) == 1}
+    if D.fresh:   # USB를 (다시) 연 뒤 첫 보고서 → 장비 안 누적값으로 원래 칸 확인
+        D.fresh = False
+        M = rematch(D, L)
+        if M is not D:
+            adopt(M, D); D = M
+        back_online(D)
     D.live = L; D.last_rx = now; D.silent_n = 0
     if not D.lost:
         D.err = ''
@@ -265,6 +273,48 @@ def on_report(D, u):
                     finish(D, 'auto')
         else:
             D.end_probe = 0
+
+
+def rematch(D, L):
+    """다시 잡힌 장비가 원래 어느 칸이었는지 DL24 안 누적 mAh로 찾음.
+    허브가 끊겼다 붙으면 USB 경로가 바뀌고(DL24는 USB 시리얼이 없거나 다 같음) 새 칸으로 잡히거나 남의 칸에 붙던 문제.
+    DL24는 누적값을 장비마다 따로 쌓고(시험 시작 때도 안 지움) 끊긴 동안에도 계속 방전하므로
+    '끊기기 전 값 + 끊긴 시간 × 전류' 근처인 칸이 하나뿐이면 그 칸."""
+    now = L['t']; hit = []
+    for X in DEVS.values():
+        P = X.live
+        if not P or not X.no or (X is not D and not X.lost):
+            continue
+        grow = max(P['a'], 0) * max(0, now - P['t']) / 3600.0 if P.get('on') else 0   # A × ms ÷ 3600 = mAh
+        d = L['mah'] - P['mah']
+        if -0.5 <= d <= grow * 1.1 + 20:   # 끊긴 동안 방전이 끝났을 수도 있어 아래쪽은 끊기기 전 값까지 허용
+            hit.append((abs(d - grow), X))
+    hit.sort(key=lambda h: h[0])
+    if len(hit) == 1 or (len(hit) > 1 and hit[1][0] - hit[0][0] > 20):
+        return hit[0][1]
+    return D   # 못 가리면 지금 방식(경로·번호) 그대로
+
+
+def adopt(M, D):
+    """D로 열린 USB 연결을 원래 칸 M에 넘김"""
+    p = D.path
+    log('장비 %s 칸의 DL24가 다른 USB 경로로 다시 잡힘 → %s번 칸·시험 이어받음 (누적 %.1fmAh로 확인)' % (D.no or '새', M.no, D.live['mah'] if D.live else 0))
+    del DEVS[M.path]; del DEVS[p]
+    M.h = D.h; M.key = D.key; M.lost = False; M.err = ''; M.opened_at = D.opened_at; M.path = p; DEVS[p] = M
+    D.h = None
+    if D.no:   # 남의 장비를 물고 있던 칸 → 자기 장비가 다시 잡힐 때까지 끊김으로 둠
+        D.lost = True; D.lost_at = D.lost_at or ms(); D.path = 'lost:%d' % id(D); DEVS[D.path] = D
+    if STATE['chans'].get(M.key) != M.no:
+        STATE['chans'][M.key] = M.no
+
+
+def back_online(D):
+    if D.lost_at and D.state in ('run', 'paused'):
+        gap = ms() - D.lost_at; D.gaps += 1; D.gap_ms += gap
+        if D.state == 'run':
+            D.msg = ['ok', 'USB가 %s 끊겼다가 다시 연결됐어요 — 그동안에도 DL24가 계속 재고 있어서 Wh·mAh는 빠짐없이 이어져요 (그 사이 전압 그래프만 비어요).' % ('%d분' % round(gap / 60000.0) if gap >= 60000 else '%d초' % round(gap / 1000.0))]
+        log('장비 %s USB 다시 연결 (%d초 끊김)' % (D.no, round(gap / 1000.0)))
+    D.lost_at = 0
 
 
 def assign_no(D):
@@ -629,13 +679,7 @@ def enumerate_devices():
         if not D:
             D = Dev(path); DEVS[path] = D
         D.key = key
-        if D.lost_at and D.state in ('run', 'paused'):
-            gap = ms() - D.lost_at; D.gaps += 1; D.gap_ms += gap
-            if D.state == 'run':
-                D.msg = ['ok', 'USB가 %s 끊겼다가 다시 연결됐어요 — 그동안에도 DL24가 계속 재고 있어서 Wh·mAh는 빠짐없이 이어져요 (그 사이 전압 그래프만 비어요).' % ('%d분' % round(gap / 60000.0) if gap >= 60000 else '%d초' % round(gap / 1000.0))]
-            log('장비 %s USB 다시 연결 (%d초 끊김)' % (D.no, round(gap / 1000.0)))
-        D.lost_at = 0
-        D.h = h; D.lost = False; D.err = ''; D.opened_at = ms()
+        D.h = h; D.lost = False; D.err = ''; D.opened_at = ms(); D.fresh = True
         log('장비 연결 %s' % path)
         send(D, 0x03)
     prune_lost()
