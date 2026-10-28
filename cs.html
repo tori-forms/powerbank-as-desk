@@ -4601,14 +4601,14 @@ function vLtRes() {
   return '<div id="ltPerCard">' + ltPerCard() + '</div><div id="ltPracBox">' + ltPracLine_() + '</div>';
 }
 function ltTable(rows, showSn) {
-  return '<div class="tw"><table class="t"><thead><tr><th>시험일시</th>' + (showSn ? '<th>S/N</th>' : '') + '<th>구분</th><th>조건</th><th>케이블 점검</th><th>Wh</th><th>mAh</th><th title="5V 출력 mAh × 5 ÷ 3.7 (품질팀 성적서와 같은 계산)">3.7V 환산 mAh</th><th>판정</th><th>시간</th><th>평균 V</th><th>중간 최저 V</th><th>최고 ℃</th><th>종료</th><th>담당</th></tr></thead><tbody>' +
+  return '<div class="tw"><table class="t"><thead><tr><th>시험일시</th>' + (showSn ? '<th>S/N</th>' : '') + '<th>구분</th><th>조건</th><th>케이블 점검</th><th>Wh</th><th>mAh</th><th title="5V 출력 mAh × 5 ÷ 3.7 (품질팀 성적서와 같은 계산)">3.7V 환산 mAh</th><th>판정</th><th>시간</th><th>평균 V</th><th>중간 최저 V</th><th>최고 ℃</th><th>종료</th></tr></thead><tbody>' +
     rows.map(function (t) {
       return '<tr><td class="nowrap">' + ymd(t.startAt) + ' ' + hm(t.startAt) + '</td>' + (showSn ? '<td><a href="#" class="mono" data-act="ltPick" data-sn="' + esc(t.sn) + '">' + esc(t.sn) + '</a> ' + mtag(t.model) + '</td>' : '') +
         '<td class="nowrap"' + (t.purpose === '회수분 검사' ? ' style="color:#c2410c;font-weight:700"' : '') + '>' + esc(LT_PUR_LABEL[t.purpose] || t.purpose) + '</td><td class="nowrap">' + esc(t.cur) + 'A · ' + esc(t.cut) + 'V</td>' +
         '<td class="nowrap">' + (t.cableV1 ? (t.checkOk === 'Y' ? '✓ ' : '⚠ ') + esc((+t.cableV1).toFixed(2)) + 'V' : '-') + '</td>' +
         '<td class="nowrap"><b>' + (+t.wh).toFixed(2) + '</b>' + (+t.wh < LT_LOW_WH && +t.sec >= LT_MIN_SEC ? ' <span title="완충 안 한 상태로 시작했을 수 있음" style="color:var(--amber)">⚠ 완충?</span>' : '') + '</td><td class="nowrap">' + Math.round(+t.mah).toLocaleString() + '</td><td class="nowrap">' + Math.round(ltConv(t.mah)).toLocaleString() + ' <span class="muted small">' + (ltConv(t.mah) / LT_RATED_MAH * 100).toFixed(1) + '%</span></td><td class="nowrap">' + (function () { var j = ltJudge(t); return j ? '<span style="color:' + (j.cls === 'ok' ? 'var(--green)' : j.cls === 'warn' ? 'var(--amber)' : 'var(--red)') + ';font-weight:700" title="' + esc(j.why) + '">' + esc(j.txt) + '</span>' : '-'; })() + '</td><td class="nowrap">' + ltHms(+t.sec) + '</td>' +
         '<td>' + (t.avgV ? (+t.avgV).toFixed(2) : '-') + '</td><td>' + (t.vMinMid ? (+t.vMinMid).toFixed(2) : '-') + '</td><td>' + (t.maxT ? (+t.maxT).toFixed(1) : '-') + '</td>' +
-        '<td class="small nowrap">' + esc(String(t.why || '').replace('차단 전압 도달(자동 정지)', '자동 정지(예전 기록 · 컷오프/배터리 차단 구분 전)').replace('보조배터리 출력 꺼짐(방전 끝 · 자동 정지)', '배터리 차단(예전 기록)').replace('출력 전압 저하', '⚠ 출력 저하')) + '</td><td class="small nowrap">' + esc(t.actor) + '</td></tr>';
+        '<td class="small nowrap">' + esc(String(t.why || '').replace('차단 전압 도달(자동 정지)', '자동 정지(예전 기록 · 컷오프/배터리 차단 구분 전)').replace('보조배터리 출력 꺼짐(방전 끝 · 자동 정지)', '배터리 차단(예전 기록)').replace('출력 전압 저하', '⚠ 출력 저하')) + '</td></tr>';
     }).join('') + '</tbody></table></div>';
 }
 function ltSnTools_() {
