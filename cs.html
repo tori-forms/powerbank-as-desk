@@ -3980,7 +3980,7 @@ function ltFinal_(rows) {
 }
 function ltJudge(t) {
   var j = ltJudge1_(t);
-  if (!j || j.cls !== 'bad' || !ltRealSn(t.sn)) return j;
+  if (!j || j.cls !== 'bad' || !ltRealSn(t.sn) || t.purpose === '회수분 검사') return j;
   var at = String(t.startAt || t.createdAt), reg = LT_REG[t.sn + '|' + t.purpose] || {};
   var prev = Object.keys(reg).map(function (k) { return reg[k]; }).filter(function (x) { return x.id !== t.id && String(x.startAt || x.createdAt) < at && ltCondKey_(x) === ltCondKey_(t); })
     .sort(function (a, b) { return String(b.startAt || b.createdAt).localeCompare(String(a.startAt || a.createdAt)); })[0];
