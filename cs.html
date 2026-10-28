@@ -3950,15 +3950,15 @@ var LT_LOT_OK = 0.8, LT_LOT_AUTO = null;
 function ltLotAvg_(sn) {
   var l = lotOf(sn); if (!l) return null;
   var k = l.model + '|' + l.name;
-  if (LT_LOT_AVG[k]) return { name: l.name, avg: LT_LOT_AVG[k], fixed: true };
+  if (LT_LOT_AVG[k]) return { model: l.model, name: l.name, avg: LT_LOT_AVG[k], fixed: true };
   if (!LT_LOT_AUTO) {
     var acc = {}, all = [];
-    Object.keys(LT_REG).forEach(function (rk) { var g = LT_REG[rk]; Object.keys(g).forEach(function (id) { var t = g[id]; if (t.purpose === '입고 QC' && ltIsCust(t) && +t.wh >= LT_LOW_WH) all.push(t); }); });
+    Object.keys(LT_REG).forEach(function (rk) { var g = LT_REG[rk]; Object.keys(g).forEach(function (id) { var t = g[id]; if (t.purpose === '입고 QC' && ltIsLotCond_(t) && +t.wh >= LT_LOW_WH) all.push(t); }); });
     ltFinal_(all).forEach(function (t) { var tl = lotOf(t.sn); if (!tl) return; var a = acc[tl.model + '|' + tl.name] = acc[tl.model + '|' + tl.name] || { s: 0, n: 0 }; a.s += +t.mah; a.n++; });
     LT_LOT_AUTO = acc;
   }
   var a = LT_LOT_AUTO[k];
-  return { name: l.name, avg: 0, fixed: false, n: a ? a.n : 0, ref: a ? Math.round(a.s / a.n) : 0 };
+  return { model: l.model, name: l.name, avg: 0, fixed: false, n: a ? a.n : 0, ref: a ? Math.round(a.s / a.n) : 0 };
 }
 var LT_GUIDE = { cur: 2, cutLo: 3.0, cutHi: 3.5, pass: 55.0, hold: 51.5, ref: 70.3 };
 function ltIsGuide(t) { return Math.abs(+t.cur - LT_GUIDE.cur) < 0.05 && +t.cut >= LT_GUIDE.cutLo - 0.05 && +t.cut <= LT_GUIDE.cutHi + 0.05; }
@@ -3992,14 +3992,10 @@ function ltJudge1_(t) {
   var c = ltConv(t.mah), sn = String(t.sn || '');
   if (!(+t.wh >= LT_LOW_WH)) return null;
   if (sn && !/^P20/.test(sn)) return null;
+  if (t.purpose === '회수분 검사') return ltRecallJudge_(t);
   if (ltIsCust(t)) {
-    var m = +t.mah, pct = (m / LT_CUST.min - 1) * 100, sg = (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%', rc;
-    var la = t.purpose === '회수분 검사' && ltLotAvg_(sn);
-    if (la && !la.fixed) return { cls: 'warn', txt: '판정 보류', why: '[고객사 3A] ' + la.name + ' 기준 평균 미정 — 품질팀 확정 후 판정' + (la.n ? ' · 참고: 지금까지 ' + la.name + ' 납품 검사 평균 ' + la.ref.toLocaleString() + 'mAh (' + la.n + '개) · 이 S/N은 그 ' + Math.floor(m / la.ref * 100) + '%' : '') };
-    if (la) { var lp = m / la.avg * 100, lb = la.name + ' 평균 ' + la.avg.toLocaleString() + 'mAh의 ' + Math.floor(lp) + '%';
-      rc = lp >= LT_LOT_OK * 100 ? ['ok', '정상', lb + ' · 양품화 가능'] : ['bad', '성능 불량', lb + ' (80% 미만)']; }
-    else if (t.purpose === '회수분 검사') rc = m >= LT_CUST.min ? ['ok', '정상', '고객사 최소 12,000mAh 이상 (' + sg + ')'] : m >= LT_CUST.min * 0.8 ? ['warn', '정상 노화', '고객사 최소의 ' + (m / LT_CUST.min * 100).toFixed(0) + '% · 소모품 열화 범위'] : ['bad', '성능 불량', '고객사 최소의 ' + (m / LT_CUST.min * 100).toFixed(0) + '% (80% 미만)'];
-    else rc = m >= LT_CUST.min ? ['ok', '합격', '고객사 기준 12,000mAh(환산 16,216) 이상 · 여유 ' + sg] : ['bad', '불합격', '고객사 기준 12,000mAh(환산 16,216) 미만 (' + sg + ')'];
+    var m = +t.mah, pct = (m / LT_CUST.min - 1) * 100, sg = (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%';
+    var rc = m >= LT_CUST.min ? ['ok', '합격', '고객사 기준 12,000mAh(환산 16,216) 이상 · 여유 ' + sg] : ['bad', '불합격', '고객사 기준 12,000mAh(환산 16,216) 미만 (' + sg + ')'];
     return { cls: rc[0], txt: rc[1], why: '[고객사 3A·0.7V] ' + rc[2] };
   }
   if (ltIsGuide(t)) {
@@ -4008,17 +4004,26 @@ function ltJudge1_(t) {
     return { cls: g[0], txt: g[1], why: '[고객사 가이드 2A] ' + g[2] };
   }
   var std = Math.abs(+t.cur - LT_BASE.cur) < 0.05 && Math.abs(+t.cut - LT_BASE.cut) < 0.05;
-  var r;
-  if (t.purpose === '회수분 검사') {
-    var soh = c / LT_BASE.mean * 100;
-    r = soh >= 80 ? ['ok', '정상', '신품 평균의 ' + soh.toFixed(0) + '%'] : soh >= 60 ? ['warn', '정상 노화', '신품 평균의 ' + soh.toFixed(0) + '% · 소모품 열화 범위'] : ['bad', '성능 불량', '신품 평균의 ' + soh.toFixed(0) + '%'];
-  } else {
-    r = c >= LT_BASE.pass ? ['ok', '합격', '기준 17,500mAh 이상'] : c >= LT_BASE.hold ? ['warn', '보류', '17,000~17,500 · 재충전 후 재시험'] : ['bad', '불합격', '기준 17,000mAh 미만'];
-  }
+  var r = c >= LT_BASE.pass ? ['ok', '합격', '기준 17,500mAh 이상'] : c >= LT_BASE.hold ? ['warn', '보류', '17,000~17,500 · 재충전 후 재시험'] : ['bad', '불합격', '기준 17,000mAh 미만'];
   if (!std) r = [r[0], r[1] + '(참고)', r[2] + ' · 표준 조건(2A·4.0V)이 아니라 참고용'];
   return { cls: r[0], txt: r[1], why: r[2] };
 }
-function ltJudgeHtml(t) { var j = ltJudge(t); if (!j) return ''; var col = j.cls === 'ok' ? 'var(--green)' : j.cls === 'warn' || j.cls === 'retest' ? 'var(--amber)' : 'var(--red)'; return '<b style="color:' + col + '">판정: ' + j.txt + '</b> <span class="small">' + j.why + '</span>'; }
+function ltIsLotCond_(t) { return Math.abs(+t.cur - LT_BASE.cur) < 0.05 && Math.abs(+t.cut - LT_BASE.cut) < 0.05; }
+function ltRecallJudge_(t) {
+  var m = +t.mah, mt = '측정 ' + Math.round(m).toLocaleString() + 'mAh';
+  if (!ltIsLotCond_(t)) return { cls: 'ref', txt: '참고', why: '[CC ' + (+t.cur) + 'A · 차단 ' + (+t.cut) + 'V] ' + mt + ' · ' + (+t.wh).toFixed(1) + 'Wh — 양산 차수 평균은 품질팀 시험 조건(CC 2A · 차단 4.0V)으로 잰 값이라, AS 회수분 합불은 2A·4.0V로 시험했을 때만 판정해요' };
+  var la = ltLotAvg_(String(t.sn || '')), tag = '[품질팀 2A·4.0V] ', lot = la ? la.model + ' ' + la.name + ' 양산 제품 · ' : '', rc;
+  if (la && !la.fixed) return { cls: 'warn', txt: '판정 보류', why: tag + lot + la.name + ' 평균 아직 확정 안 됨 → 품질팀 확정 후 판정 · ' + mt + (la.n ? ' · 참고: 지금까지 ' + la.name + ' 납품 검사 평균 ' + la.ref.toLocaleString() + 'mAh (' + la.n + '개) · 이 S/N은 그 ' + Math.floor(m / la.ref * 100) + '%' : '') };
+  if (la) {
+    var lp = m / la.avg * 100, ln = Math.round(la.avg * LT_LOT_OK).toLocaleString(), lb = lot + la.name + ' 평균 ' + la.avg.toLocaleString() + 'mAh · ' + mt + ' = 평균의 ' + Math.floor(lp) + '% → ';
+    rc = lp >= LT_LOT_OK * 100 ? ['ok', '정상', lb + '80%(' + ln + 'mAh) 이상이라 정상 · 양품화 가능'] : ['bad', '성능 불량', lb + '80%(' + ln + 'mAh) 미만이라 성능 불량'];
+  } else {
+    var soh = ltConv(m) / LT_BASE.mean * 100, nl = '양산 차수를 몰라 품질팀 신품 평균 ' + LT_BASE.mean.toLocaleString() + 'mAh(3.7V 환산) 기준 · 측정 환산 ' + Math.round(ltConv(m)).toLocaleString() + 'mAh = 평균의 ' + Math.floor(soh) + '% → ';
+    rc = soh >= 80 ? ['ok', '정상', nl + '80% 이상이라 정상'] : soh >= 60 ? ['warn', '정상 노화', nl + '60~80%라 소모품 열화 범위'] : ['bad', '성능 불량', nl + '60% 미만이라 성능 불량'];
+  }
+  return { cls: rc[0], txt: rc[1], why: tag + rc[2] };
+}
+function ltJudgeHtml(t) { var j = ltJudge(t); if (!j) return ''; var col = j.cls === 'ok' ? 'var(--green)' : j.cls === 'warn' || j.cls === 'retest' ? 'var(--amber)' : j.cls === 'ref' ? 'var(--muted,#8b95a1)' : 'var(--red)'; return '<b style="color:' + col + '">판정: ' + j.txt + '</b> <span class="small">' + j.why + '</span>'; }
 function ltConvTxt(mah) { var c = ltConv(mah); return '3.7V 환산 <b>' + Math.round(c).toLocaleString() + 'mAh</b> (표기 ' + LT_RATED_MAH.toLocaleString() + 'mAh의 ' + (c / LT_RATED_MAH * 100).toFixed(1) + '%)'; }
 var LT_STD = { cur: '3.0', cut: '0.7', cable: 'A-to-C 30cm (시험용)' };
 (function () { if (ls('ltStdCable') !== 'c30') { ls('ltCable', LT_STD.cable); ls('ltStdCable', 'c30'); } })();
@@ -4037,7 +4042,7 @@ function ltWait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 function ltHms(s) { s = Math.max(0, Math.round(s || 0)); return Math.floor(s / 3600) + ':' + ('0' + Math.floor(s % 3600 / 60)).slice(-2) + ':' + ('0' + s % 60).slice(-2); }
 function ltIso(ms) { var d = new Date(ms), p = function (n) { return ('0' + n).slice(-2); }; return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()); }
 function ltVal(id, d) { var el = document.getElementById(id); var v = el ? el.value : ls(id); return v == null || v === '' ? d : v; }
-var LT_SLOT_CONDS = [['3.0|3.0', 'CC 3A · 차단 3.0V'], ['2.0|3.0', 'CC 2A · 차단 3.0V (QC 가이드)'], ['3.0|0.7', 'CC 3A · 차단 0.7V (고객사 표준)'], ['2.0|0.7', 'CC 2A · 차단 0.7V']];
+var LT_SLOT_CONDS = [['3.0|3.0', 'CC 3A · 차단 3.0V'], ['2.0|3.0', 'CC 2A · 차단 3.0V (QC 가이드)'], ['3.0|0.7', 'CC 3A · 차단 0.7V (고객사 표준)'], ['2.0|0.7', 'CC 2A · 차단 0.7V'], ['2.0|4.0', 'CC 2A · 차단 4.0V (품질팀 · AS 회수분 판정)']];
 function ltSlotMap_() { try { return JSON.parse(ls('ltSlotCond') || '{}') || {}; } catch (e) { return {}; } }
 function ltCondOf(D) { var p = String(ltSlotMap_()[D.no] || '').split('|'); return p.length === 2 ? { cur: p[0], cut: p[1] } : null; }
 function ltSend(D, cmd, d4) {
@@ -4580,7 +4585,7 @@ function vLoadtest() {
     (hid ? (LT.agent ? '' : '<button class="btn pri" data-act="ltAdd">＋ 장비 추가 (USB)</button>') + '<button class="btn" data-act="ltAll">▶ 전체 시작</button><button class="btn red" data-act="ltStopAll">■ 전체 정지</button>' + (LT.agent ? '<button class="btn" data-act="ltAssign" title="실물 1번 테스트기부터 차례로 배터리를 꽂으면 그 순서대로 1, 2, 3… 번호가 붙어요">칸 번호 지정</button><button class="btn" data-act="ltRescan" title="응답 없는 장비·시험 중이 아닌 장비만 USB 연결을 새로 해요. 시험 중인 장비는 그대로 이어져요">🔌 장비 다시 찾기</button><button class="btn" data-act="ltRenum" title="연결 끊긴 칸을 지우고 칸 번호를 1부터 다시 매겨요 (시험 중이 아닐 때만)">칸 번호 정리</button>' : '') : '') + '</div>' + (remoteOnly ? '</details>' : '') +
     '<details style="margin-top:12px"><summary class="small" style="cursor:pointer;font-weight:600">사용 방법 · 표준 조건</summary><ol class="small" style="margin:8px 0 0;padding-left:18px;color:var(--ink2);line-height:1.7">' +
     '<li>표준 조건: <b>고객사(티오더) 시험과 같은 CC 3.0A · 차단 0.7V</b> (보호회로가 출력을 끌 때까지) · A 포트 5V 출력 · 시험용 A-to-C 30cm 케이블(3A급 굵은 선, 장비마다 고정) · 100% 완충 · 실온</li>' +
-    '<li>판정(고객사 기준): 기준 용량 19,000mAh · <b>측정 12,000mAh(3.7V 환산 16,216mAh) 이상 합격</b>, 미만 불합격. 회수분은 <b>S/N이 속한 양산 차수 평균의 80% 이상 정상(양품화 가능), 미만 성능 불량</b> (1차 13,875 · 2차 13,985 · 3차 13,938 · 4차 등 확정 전 차수는 판정 보류, 지금까지 납품 검사 평균만 참고로 표시). 차수를 모르면 고객사 최소 12,000 기준.</li>' +
+    '<li>판정(고객사 기준): 기준 용량 19,000mAh · <b>측정 12,000mAh(3.7V 환산 16,216mAh) 이상 합격</b>, 미만 불합격. 회수분은 <b>CC 2A · 차단 4.0V(품질팀 파렛트 시험과 같은 조건)로 시험해서 S/N이 속한 양산 차수 평균의 80% 이상 정상(양품화 가능), 미만 성능 불량</b> — 다른 조건으로 잰 회수분은 참고로만 표시 (1차 13,875 · 2차 13,985 · 3차 13,938 · 4차 등 확정 전 차수는 판정 보류, 지금까지 납품 검사 평균만 참고로 표시). 차수를 모르면 고객사 최소 12,000 기준.</li>' +
     '<li>케이블이 길수록 케이블에서 열로 사라지는 몫이 커져 용량이 낮게 재져요 (120cm 동봉 케이블은 2A에서 최대 4% 정도). 예전 120cm 기록과 30cm 기록은 직접 비교하지 마세요.</li>' +
     '<li><b>반드시 100% 완충한 뒤 시작</b>하세요. 잔량이 남은 상태에서 시작하면 남은 양만 재져요 (잔량 2% → 2~3Wh). 참고로 예전 품질팀 시험(P20BOTA25 · 2A · 4.0V — 지금과 조건이 달라 직접 비교 불가)에서는 결과 약 <b>12,600~14,400mAh · 6시간 20분~7시간 10분</b>, 3.7V 환산 <b>평균 18,577mAh(표기의 92.9%)</b>가 나왔어요 (신품 50개). 판정: <b>17,500 이상 합격 · 17,000~17,500 보류 · 17,000 미만 불합격</b>, 회수분은 신품 평균 대비 <b>80% 이상 정상 · 60~80% 정상 노화 · 60% 미만 성능 불량</b>.</li>' +
     '<li>3A는 케이블 손실이 커서 장비에 찍히는 평균 전압이 4.6V대로 내려가요. 고객사와 같은 케이블인지 확인하세요.</li>' +
@@ -4606,7 +4611,8 @@ function ltTable(rows, showSn) {
       return '<tr><td class="nowrap">' + ymd(t.startAt) + ' ' + hm(t.startAt) + '</td>' + (showSn ? '<td><a href="#" class="mono" data-act="ltPick" data-sn="' + esc(t.sn) + '">' + esc(t.sn) + '</a> ' + mtag(t.model) + '</td>' : '') +
         '<td class="nowrap"' + (t.purpose === '회수분 검사' ? ' style="color:#c2410c;font-weight:700"' : '') + '>' + esc(LT_PUR_LABEL[t.purpose] || t.purpose) + '</td><td class="nowrap">' + esc(t.cur) + 'A · ' + esc(t.cut) + 'V</td>' +
         '<td class="nowrap">' + (t.cableV1 ? (t.checkOk === 'Y' ? '✓ ' : '⚠ ') + esc((+t.cableV1).toFixed(2)) + 'V' : '-') + '</td>' +
-        '<td class="nowrap"><b>' + (+t.wh).toFixed(2) + '</b>' + (+t.wh < LT_LOW_WH && +t.sec >= LT_MIN_SEC ? ' <span title="완충 안 한 상태로 시작했을 수 있음" style="color:var(--amber)">⚠ 완충?</span>' : '') + '</td><td class="nowrap">' + Math.round(+t.mah).toLocaleString() + '</td><td class="nowrap">' + Math.round(ltConv(t.mah)).toLocaleString() + ' <span class="muted small">' + (ltConv(t.mah) / LT_RATED_MAH * 100).toFixed(1) + '%</span></td><td class="nowrap">' + (function () { var j = ltJudge(t); return j ? '<span style="color:' + (j.cls === 'ok' ? 'var(--green)' : j.cls === 'warn' ? 'var(--amber)' : 'var(--red)') + ';font-weight:700" title="' + esc(j.why) + '">' + esc(j.txt) + '</span>' : '-'; })() + '</td><td class="nowrap">' + ltHms(+t.sec) + '</td>' +
+        '<td class="nowrap"><b>' + (+t.wh).toFixed(2) + '</b>' + (+t.wh < LT_LOW_WH && +t.sec >= LT_MIN_SEC ? ' <span title="완충 안 한 상태로 시작했을 수 있음" style="color:var(--amber)">⚠ 완충?</span>' : '') + '</td><td class="nowrap">' + Math.round(+t.mah).toLocaleString() + '</td><td class="nowrap">' + Math.round(ltConv(t.mah)).toLocaleString() + ' <span class="muted small">' + (ltConv(t.mah) / LT_RATED_MAH * 100).toFixed(1) + '%</span></td><td>' + (function () { var j = ltJudge(t); return j ? '<span class="nowrap" style="color:' + (j.cls === 'ok' ? 'var(--green)' : j.cls === 'warn' ? 'var(--amber)' : j.cls === 'ref' ? 'var(--muted,#8b95a1)' : 'var(--red)') + ';font-weight:700" title="' + esc(j.why) + '">' + esc(j.txt) + '</span>' +
+          (t.purpose === '회수분 검사' ? '<div class="small muted" style="min-width:280px;white-space:normal">' + esc(j.why) + '</div>' : '') : '-'; })() + '</td><td class="nowrap">' + ltHms(+t.sec) + '</td>' +
         '<td>' + (t.avgV ? (+t.avgV).toFixed(2) : '-') + '</td><td>' + (t.vMinMid ? (+t.vMinMid).toFixed(2) : '-') + '</td><td>' + (t.maxT ? (+t.maxT).toFixed(1) : '-') + '</td>' +
         '<td class="small nowrap">' + esc(String(t.why || '').replace('차단 전압 도달(자동 정지)', '자동 정지(예전 기록 · 컷오프/배터리 차단 구분 전)').replace('보조배터리 출력 꺼짐(방전 끝 · 자동 정지)', '배터리 차단(예전 기록)').replace('출력 전압 저하', '⚠ 출력 저하')) + '</td></tr>';
     }).join('') + '</tbody></table></div>';
@@ -4797,7 +4803,7 @@ function ltPerCard(pur) {
     '<select class="inp sm" id="ltPJ"><option value="">판정 전체</option><option value="ok"' + (P.judge === 'ok' ? ' selected' : '') + '>합격만</option><option value="bad"' + (P.judge === 'bad' ? ' selected' : '') + '>불합격만</option></select>' + '</div>';
   if (!LT.perAll) return h + '<div class="empty" style="margin-top:10px">불러오는 중…</div></div></div>';
   var rows = ltPerRows_(), sns = {}, ok = 0, bad = 0, warn = 0, sumC = 0;
-  rows.forEach(function (t) { sns[t.sn] = 1; var j = ltJudge(t); if (j) { if (j.cls === 'ok') ok++; else if (j.cls === 'bad') bad++; else warn++; } sumC += ltConv(t.mah); });
+  rows.forEach(function (t) { sns[t.sn] = 1; var j = ltJudge(t); if (j) { if (j.cls === 'ok') ok++; else if (j.cls === 'bad') bad++; else if (j.cls !== 'ref') warn++; } sumC += ltConv(t.mah); });
   var days = {}; rows.forEach(function (t) { var d = String(t.startAt).slice(0, 10); days[d] = (days[d] || 0) + 1; });
   h += '<div class="row" style="gap:16px;margin-top:12px;flex-wrap:wrap;align-items:center"><span><b>' + (P.from || P.to ? esc(ymd(P.from)) + ' ~ ' + esc(ymd(P.to)) : '전체 기간') + '</b></span><span>시험 <b>' + rows.length + '건</b> · S/N ' + Object.keys(sns).length + '개</span>' +
     (rows.length ? '<span>합격 <b style="color:var(--green)">' + ok + '</b>' + (warn ? ' · 주의 <b style="color:var(--amber)">' + warn + '</b>' : '') + ' · 불합격 <b style="color:var(--red)">' + bad + '</b></span><span class="muted small">평균 3.7V 환산 ' + Math.round(sumC / rows.length).toLocaleString() + 'mAh</span>' : '') +
@@ -4960,7 +4966,7 @@ function ltReportHtml(rows, none, opt) {
   var cnt = {}; js.forEach(function (j) { if (j) cnt[j.txt] = (cnt[j.txt] || 0) + 1; });
   var avg = conv.reduce(function (a, b) { return a + b; }, 0) / conv.length;
   var conds = rows.map(function (t) { return (+t.cur).toFixed(1) + 'A · ' + ltVTxt_(t.cut); }).filter(function (x, i, a) { return a.indexOf(x) === i; });
-  var col = function (j) { return !j ? '' : j.cls === 'ok' ? '#1fb86c' : j.cls === 'warn' || j.cls === 'retest' ? '#e08a00' : '#f04452'; };
+  var col = function (j) { return !j ? '' : j.cls === 'ok' ? '#1fb86c' : j.cls === 'warn' || j.cls === 'retest' ? '#e08a00' : j.cls === 'ref' ? '#8b95a1' : '#f04452'; };
   var head = '<tr><th>No</th><th>S/N</th><th>모델</th><th>구분</th><th>시험 일시</th><th>조건</th><th>시험 시간</th><th>Wh</th><th>mAh<br><small>(5V 출력)</small></th><th>3.7V 환산<br>mAh</th><th>표기 대비</th><th>판정</th></tr>';
   var body = rows.map(function (t, i) {
     var j = js[i];
