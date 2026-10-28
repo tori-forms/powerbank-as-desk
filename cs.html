@@ -988,7 +988,9 @@ function render() {
   $('#subtitle').textContent = sub; $('#subtitle').style.display = sub ? '' : 'none';
   var fn = { home: vHome, inbox: vInbox, ship: vShip, ret: vReturn, inspect: vInspect, results: vResults, yang: vYang, loss: vLoss, shipqc: vShipQc, shipdoc: vShipDoc, guide: vGuide, stock: vStock, analysis: vAnalysis, settings: vSettings, loadtest: vLoadtest }[S.view];
   if (S.view === 'loadtest') ltBeforeRender();
+  var rvKeep = $('#rvScan') ? $('#rvScan').value : '';
   $('#view').innerHTML = (DEMO_MODE ? '<div class="flag" style="margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#fff7e6;color:#8a5a00;border:1px solid #ffe2a8"><b>데모 화면</b><span>가상 데이터로 만든 예시예요. 실제 AS 현황이 아닙니다.</span><a href="#" data-act="demoLogin" style="margin-left:auto;color:#8a5a00;text-decoration:underline">관리자 접속</a></div>' : '') + fn();
+  if (rvKeep && $('#rvScan')) { $('#rvScan').value = rvKeep; $('#rvScan').dispatchEvent(new Event('input', { bubbles: true })); }
   if (S.view === 'inbox') { loadInboxDetail(); setTimeout(loadSlackImgs, 30); }
   if (S.view === 'loadtest') ltMount();
   if (isMobile_()) {
@@ -1622,20 +1624,24 @@ function retTailFind_(tail) {
     return nos.some(function (n) { return String(n).replace(/\D/g, '').slice(-tail.length) === tail; });
   });
 }
-function rvTail_(tail) {
-  var hit = retTailFind_(tail), rw = byBucket('recv_wait').map(function (c) { return c.id; });
-  if (!hit.length) return toast('반품 송장 끝자리 ' + tail + '인 회수 건을 못 찾았어요. 자리를 더 넣어 보세요.', true);
-  if (hit.length > 1) return toast('끝자리 ' + tail + '인 건이 ' + hit.length + '개예요 (' + hit.map(function (c) { return c.store; }).join(', ') + ') — 자리를 더 넣어 주세요.', true);
-  var c = hit[0];
-  if (rw.indexOf(c.id) < 0) return toast(c.store + ' — 회수 예정(반품 도착) 상태가 아니라서 여기서 못 열어요. AS 건을 열어 확인해 주세요.', true);
-  S.recvOpen = c.id; render();
-  var el = $('#rc_' + c.id); if (el) el.scrollIntoView({ block: 'center' });
-  var n = $('#rcNoSn'); if (n) { n.focus(); n.select(); }
-  toast(c.store + ' 회수 건을 열었어요 — 바코드를 못 읽은 개수를 [S/N 식별 불가]에 넣고 회수 처리를 눌러 주세요.');
+
+function tailCard_() {
+  var q = S.tailQ || '', hit = q.length >= 4 ? retTailFind_(q) : [], pick = S.tailPick;
+  var body = !q ? '<div class="small muted">반품 송장번호 전체나 끝 4자리를 넣고 [찾기]를 누르세요.</div>'
+    : q.length < 4 ? '<div class="small" style="color:var(--red)">4자리 이상 넣어 주세요.</div>'
+    : !hit.length ? '<div class="small" style="color:var(--red)">' + esc(q) + '로 끝나는 반품 송장이 없어요. 자리를 더 넣거나 번호를 확인해 주세요.</div>'
+    : hit.map(function (c) {
+      var open = IDX.st[c.id].open.length, on = pick === c.id;
+      var head = '<b>' + esc(c.store) + '</b>&nbsp;<span class="muted small">' + esc(cid(c)) + ' · 남은 ' + open + '/' + (+c.qty || 1) + '개</span>';
+      if (!open) return '<div class="btn" style="width:100%;margin-bottom:6px;justify-content:flex-start;opacity:.55;cursor:default">' + head + '&nbsp;<span class="small">· 다 회수됨</span></div>';
+      return '<button class="btn' + (on ? ' pri' : '') + '" style="width:100%;margin-bottom:6px;justify-content:flex-start" data-act="tailPick" data-id="' + esc(c.id) + '">' + head + '</button>' +
+        (on ? '<div class="row" style="margin:0 0 8px;align-items:center"><span class="small">회수 수량</span><input class="inp" type="number" min="1" max="' + open + '" id="tailN" style="width:80px"><button class="btn pri" data-act="tailGo" data-id="' + esc(c.id) + '">S/N 미식별로 회수 처리</button></div>' : '');
+    }).join('');
+  return '<div class="card" style="margin-bottom:12px;flex:1 1 320px;min-width:0"><div class="bd"><div class="row" style="align-items:center"><b style="font-size:16px">🏷️ S/N 미상 회수 등록</b><span class="muted small">바코드가 훼손돼 못 읽을 때</span></div>' +
+    '<div class="row" style="margin-top:8px;flex-wrap:nowrap"><input class="inp mono" id="tailQ" inputmode="numeric" placeholder="반품 송장번호 (전체 또는 끝 4자리)" value="' + esc(q) + '" style="flex:1;min-width:0;font-size:16px"><button class="btn pri" data-act="tailFind">찾기</button></div>' +
+    '<div style="margin-top:8px">' + body + '</div></div></div>';
 }
 function rvScan_(raw) {
-  var t = String(raw || '').trim();
-  if (/^\d{4,12}$/.test(t)) return rvTail_(t);
   var sns = (String(raw || '').toUpperCase().match(/[A-Z0-9]{6,}/g) || []);
   if (!sns.length) return;
   var rw = byBucket('recv_wait'), rest = [];
@@ -1752,10 +1758,10 @@ function scanPanel_(rw) {
   var shortCases = S.data.cases.filter(function (c) { return IDX.st[c.id].b === 'ret_short' && tracked_(c); })
     .sort(function (a, b) { return String(a.recvDate).localeCompare(String(b.recvDate)); });
   var icon = { ok: '✅', dup: '⚠️', unknown: '❌', inbox: '📨' };
-  var scanBar = '<div class="card" style="margin-bottom:12px"><div class="bd"><div class="row" style="align-items:center"><b style="font-size:16px">📦 바코드 스캔</b><span class="muted small">박스에서 꺼내며 한 번에 쭉 찍고(50개·100개도 OK) <b>[확인]</b>을 누르면, 회수 예정 건과 맞춰서 보여드려요</span></div>' +
-    '<div class="row" style="margin-top:8px;flex-wrap:nowrap;align-items:stretch"><textarea class="inp mono bigscan" id="rvScan" rows="3" style="flex:1;min-width:0;font-size:16px;padding:12px;resize:vertical" placeholder="여기에 바코드를 찍으세요 (여러 개 계속 찍어도 돼요) · 바코드가 훼손됐으면 반품 송장 끝 4자리" autocomplete="off" autofocus></textarea>' +
+  var scanBar = '<div class="row" style="align-items:stretch;gap:12px">' + '<div class="card" style="margin-bottom:12px;flex:2 1 480px;min-width:0"><div class="bd"><div class="row" style="align-items:center"><b style="font-size:16px">📦 바코드 스캔</b><span class="muted small">박스에서 꺼내며 한 번에 쭉 찍고(50개·100개도 OK) <b>[확인]</b>을 누르면, 회수 예정 건과 맞춰서 보여드려요</span></div>' +
+    '<div class="row" style="margin-top:8px;flex-wrap:nowrap;align-items:stretch"><textarea class="inp mono bigscan" id="rvScan" rows="3" style="flex:1;min-width:0;font-size:16px;padding:12px;resize:vertical" placeholder="여기에 바코드를 찍으세요 (여러 개 계속 찍어도 돼요)" autocomplete="off" autofocus></textarea>' +
     '<div style="display:flex;flex-direction:column;gap:6px"><button class="btn pri" data-act="rvGo" style="padding:14px 22px;flex:1">확인</button><button class="btn sm" data-act="rvClear">지우기</button></div></div>' +
-    '<div class="small muted" id="rvCnt" style="margin-top:4px"></div><input type="hidden" id="scanIn"></div></div>' + batchCard_();
+    '<div class="small muted" id="rvCnt" style="margin-top:4px"></div><input type="hidden" id="scanIn"></div></div>' + tailCard_() + '</div>' + batchCard_();
   var expect = '<div class="card" style="margin-bottom:12px"><div class="hd"><h3>회수 예정</h3><span class="muted small">반품이 도착했고 아직 회수 처리 전 · ' + rw.length + '건</span></div>' +
     (rw.length ? rw.map(recvCard_).join('') : '<div class="empty">도착한 회수분이 없습니다.' + (moving ? '<br><span class="small">반품 배송 중 ' + moving + '건 — 도착하면 여기에 올라와요.</span>' : '') + '</div>') +
     (rw.length && moving ? '<div class="small muted" style="padding:8px 14px">반품 배송 중 ' + moving + '건은 도착하면 여기에 올라와요.</div>' : '') + '</div>';
@@ -3736,6 +3742,17 @@ var ACT = {
     toast(p.ask.length + '개를 ' + (IDX.caseById[d.id] || {}).store + ' 회수 처리 칸에 넣었어요. 확인 후 [회수 처리 → 검사중]을 눌러 주세요.');
     if (p.other.length) { $('#scanIn').value = p.other.join('\n'); ACT.scanGo({}, null); }
   },
+  tailFind: function () { S.tailQ = String(($('#tailQ') || {}).value || '').replace(/\D/g, ''); var h = S.tailQ.length >= 4 ? retTailFind_(S.tailQ).filter(function (c) { return IDX.st[c.id].open.length; }) : []; S.tailPick = h.length === 1 ? h[0].id : null; render(); var n = $('#tailN'); if (n) n.focus(); },
+  tailPick: function (d) { S.tailPick = d.id; render(); var n = $('#tailN'); if (n) n.focus(); },
+  tailGo: function (d, b) {
+    var c = IDX.caseById[d.id]; if (!c) return;
+    var open = IDX.st[c.id].open.length, n = Math.floor(+$('#tailN').value || 0);
+    if (n < 1) return toast('회수된 수량을 넣어 주세요.', true);
+    if (n > open) return toast('남은 ' + open + '개보다 많아요.', true);
+    run('receive', { caseId: c.id, recvDate: today(), items: [], recvSns: [], noSn: n }, function (r) {
+      return c.store + ' — S/N 미식별 ' + n + '개 검사중으로 넘겼어요' + (n < open ? ' (아직 ' + (open - n) + '개 남음 → 확인 필요)' : '') + sheetMsg_(r);
+    }, b).then(function () { S.tailQ = ''; S.tailPick = null; render(); });
+  },
   recvOpen: function (d) { S.recvOpen = d.id || null; render(); var s = $('#rcScan'); if (s) s.focus(); },
   recvGo: function (d, b) {
     var c = IDX.caseById[d.id]; if (!c) return;
@@ -3969,8 +3986,11 @@ window.addEventListener('unhandledrejection', function (e) { e.preventDefault();
 var qTimer;
 document.addEventListener('input', function (e) {
   if (e.target.id !== 'rvScan') return;
-  var n = (e.target.value.toUpperCase().match(/[A-Z0-9]{8,}/g) || []).filter(function (x, i, a) { return a.indexOf(x) === i; }).length, el = $('#rvCnt');
-  if (el) el.textContent = n ? n + '개 입력됨 — 다 찍었으면 [확인]' : '';
+  var all = e.target.value.toUpperCase().match(/[A-Z0-9]{8,}/g) || [], cnt = {}, el = $('#rvCnt');
+  all.forEach(function (x) { cnt[x] = (cnt[x] || 0) + 1; });
+  var n = Object.keys(cnt).length, dup = Object.keys(cnt).filter(function (x) { return cnt[x] > 1; });
+
+  if (el) el.innerHTML = !n ? '' : '<b>' + n + '개</b> 입력됨' + (dup.length ? ' · <b style="color:var(--red)">⚠️ 중복 ' + dup.length + '개: ' + dup.map(function (x) { return esc(x) + ' ×' + cnt[x]; }).join(', ') + ' — 같은 걸 두 번 찍었어요. 덜 찍힌 제품이 없는지 확인하세요</b>' : ' — 다 찍었으면 [확인]');
 });
 document.addEventListener('input', function (e) {
   if (e.target.id === 'qcRejSns' && S.qcOpen) {
@@ -4022,6 +4042,8 @@ document.addEventListener('keydown', function (e) {
   if (e.key === 'Escape') { if ($('#mbg')) closeModal(); else if (S.caseSel) closeDrawer(); }
   if (e.target.id === 'admKey' && e.key === 'Enter') { e.preventDefault(); ACT.admSave(); return; }
   if (e.target.id === 'scanIn' && e.key === 'Enter') { e.preventDefault(); ACT.scanGo({}, $('[data-act=scanGo]')); return; }
+  if (e.target.id === 'tailQ' && e.key === 'Enter') { e.preventDefault(); ACT.tailFind(); return; }
+  if (e.target.id === 'tailN' && e.key === 'Enter') { e.preventDefault(); var g = $('[data-act=tailGo]'); if (g) g.click(); return; }
   if (e.target.id === 'rvScan' && e.key === 'Tab') { e.preventDefault(); e.target.value += '\n'; return; }
   if (e.target.id === 'rcScan' && e.key === 'Enter') {
     e.preventDefault();
