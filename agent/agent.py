@@ -19,7 +19,7 @@ import sys, os, json, time, threading, struct, random, traceback, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-VERSION = '1.3.7'
+VERSION = '1.3.8'
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE_FILE = os.path.join(HERE, 'state.json')
 CONFIG_FILE = os.path.join(HERE, 'config.json')
@@ -36,6 +36,7 @@ PURPOSES = ['입고 QC', '회수분 검사', '클레임 자료', '기타']
 ARM_MIN_V = 4.6       # 출력 대기: 이 전압(그리고 차단+0.3V) 이상이 2번 연속 보여야 출력 켜짐으로 봄 (대기 중 잔류 전압 오인 방지)
 FIRE_RETRY = 2        # 부하 ON 후 전류가 안 흐르면 자동으로 다시 시도하는 횟수 (장비 알람 해제·보조배터리 깨우기)
 DEAD_MS = 20000   # 장비 부하는 켜져 있는데 보조배터리 출력이 0V 근처(차단 전압 미만)·전류 0으로 이만큼 이어지면 방전 끝으로 봄 (DL24가 차단을 못 하고 계속 도는 경우)
+CUT_BAND = 0.3   # 끝나기 직전(전류가 흐르던 마지막) 전압이 차단 전압 + 이 값 이하면 '컷오프', 그보다 높으면 '배터리 차단'
 END_PROBE_MS = 5000   # 부하가 꺼진 뒤 이만큼 지켜보고: 보조배터리 출력이 살아 있으면(ARM_MIN_V 이상) '중간 멈춤', 꺼졌으면 '방전 끝'
 UPDATE_URL = os.environ.get('LT_UPDATE_URL', 'https://tori-forms.github.io/powerbank-as-desk/agent/agent.py')
 UPDATE_EVERY_MS = 600000   # 새 버전 확인 간격 (10분)
@@ -540,7 +541,14 @@ def resume(D, p):
 def finish(D, kind):
     D.state = 'done'; D.end_at = ms()
     D.dead_at = 0
-    D.why = ('차단 전압 도달(자동 정지)' if kind == 'auto' else '보조배터리 출력 꺼짐(방전 끝 · 자동 정지)' if kind == 'dead' else '중간 멈춤 후 종료' if kind == 'pausedEnd' else '수동 정지') + (' · 기록 프로그램이 꺼진 동안 종료' if D.away_end else '') \
+    if kind in ('auto', 'dead'):
+        # 전류가 흐르던 마지막 전압으로 구분: 차단 전압 근처까지 처졌으면 DL24가 멈춘 '컷오프'(배터리가 남았을 수 있음),
+        # 5V대에서 뚝 끊겼으면 보조배터리 보호회로가 끈 '배터리 차단'
+        lv = (D.last_row or [0, 0])[1]; cut = float((D.cond or {}).get('cut') or 0.7)
+        head = ('컷오프' if lv <= cut + CUT_BAND else '배터리 차단') + ' (마지막 %.2fV)' % lv
+    else:
+        head = '중간 멈춤 후 종료' if kind == 'pausedEnd' else '수동 정지'
+    D.why = head + (' · 기록 프로그램이 꺼진 동안 종료(컷오프/배터리 차단 구분 불확실)' if D.away_end else '') \
         + (' · 중간 멈춤 %d회 이어서 시험' % D.pauses if D.pauses and kind != 'pausedEnd' else '') \
         + (' · USB 끊김 %d회 %d분(측정값은 장비 누적으로 이어짐)' % (D.gaps, round(D.gap_ms / 60000.0)) if D.gaps else '')
     D.away_end = False

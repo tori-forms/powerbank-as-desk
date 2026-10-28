@@ -3945,7 +3945,6 @@ var LT_RATED_MAH = 20000;
 function ltConv(mah) { return (+mah || 0) * 5 / 3.7; }
 var LT_BASE = { mean: 18577, pass: 17500, hold: 17000, cur: 2, cut: 4.0, n: 50 };
 var LT_CUST = { cur: 3, cut: 0.7, min: 12000, ref: 19000 };
-var LT_CUST_MARGIN = 0.03;
 var LT_LOT_AVG = { 'P20BOTA25|1차': 13875, 'P20BOTA25|2차': 13985, 'P20BOTA25|3차': 13938 };
 var LT_LOT_OK = 0.8, LT_LOT_AUTO = null;
 function ltLotAvg_(sn) {
@@ -4000,7 +3999,7 @@ function ltJudge1_(t) {
     if (la) { var lp = m / la.avg * 100, lb = la.name + ' 평균 ' + la.avg.toLocaleString() + 'mAh의 ' + Math.floor(lp) + '%';
       rc = lp >= LT_LOT_OK * 100 ? ['ok', '정상', lb + ' · 양품화 가능'] : ['bad', '성능 불량', lb + ' (80% 미만)']; }
     else if (t.purpose === '회수분 검사') rc = m >= LT_CUST.min ? ['ok', '정상', '고객사 최소 12,000mAh 이상 (' + sg + ')'] : m >= LT_CUST.min * 0.8 ? ['warn', '정상 노화', '고객사 최소의 ' + (m / LT_CUST.min * 100).toFixed(0) + '% · 소모품 열화 범위'] : ['bad', '성능 불량', '고객사 최소의 ' + (m / LT_CUST.min * 100).toFixed(0) + '% (80% 미만)'];
-    else rc = m >= LT_CUST.min * (1 + LT_CUST_MARGIN) ? ['ok', '합격', '고객사 기준 12,000mAh(환산 16,216) 이상 · 여유 ' + sg] : m >= LT_CUST.min ? ['warn', '합격(여유 적음)', '고객사 기준은 넘지만 여유 ' + sg + ' — 케이블·온도 차이로 고객사 측정에서 미달 가능'] : ['bad', '불합격', '고객사 기준 12,000mAh(환산 16,216) 미만 (' + sg + ')'];
+    else rc = m >= LT_CUST.min ? ['ok', '합격', '고객사 기준 12,000mAh(환산 16,216) 이상 · 여유 ' + sg] : ['bad', '불합격', '고객사 기준 12,000mAh(환산 16,216) 미만 (' + sg + ')'];
     return { cls: rc[0], txt: rc[1], why: '[고객사 3A·0.7V] ' + rc[2] };
   }
   if (ltIsGuide(t)) {
@@ -4473,6 +4472,7 @@ function ltDraw(D) {
       (vs ? '<br><b>최초 시험 대비 ' + vs.pct + '%</b> <span class="small">(최초 ' + ymd(vs.first.startAt) + ' ' + (+vs.first.wh).toFixed(1) + 'Wh)</span>' : '') +
       (R.sag ? '<br><b>⚠ 출력 전압 저하</b> <span class="small">시험 중간에 시작보다 ' + (R.vStart - R.vMinMid).toFixed(2) + 'V 떨어졌어요 (케이블이 아니라 보조배터리 출력 문제일 수 있음)</span>' : '') +
       (low ? '<br>' + ltLowMsg(R.wh) : '') +
+      (/^컷오프/.test(D.why || '') ? '<div class="ltbox warn" style="margin:8px 0 0"><b>컷오프로 끝났어요</b> — 출력 전압이 차단 전압(' + esc(c.cut) + 'V)까지 내려가 장비가 멈췄어요. 배터리가 아직 남아 있을 수 있어요.<br><b>보조배터리 잔량이 0%(완전 방전)인지 확인해 주세요.</b> <span class="small">잔량이 남아 있으면 용량이 작은 게 아니라 이 전류에서 출력 전압을 못 버틴 거예요.</span></div>' : '') +
       (LT.agent && D.state === 'done' && L && !L.on && L.v >= LT_ARM_MIN_V && !next && D.cid ? '<div class="ltbox warn" style="margin:8px 0 0">보조배터리 출력이 아직 <b>' + L.v.toFixed(2) + 'V</b>로 살아 있어요 — 다 닳아서 끝난 게 아니라 <b>중간에 끊긴</b> 것일 수 있어요 (보호 동작·케이블 접촉·장비 알람). <button class="btn sm pri" data-lt="resume" style="margin-left:6px">▶ 이어서 시험</button><div class="small" style="margin-top:4px">이어서 재면 지금 결과(' + R.wh.toFixed(2) + 'Wh)에 더해지고, 끝나면 같은 기록이 고쳐 저장돼요.</div></div>' : '') +
       (short ? '<br><b>⚠ 시험이 ' + Math.round(R.sec / 60) + '분 만에 끝났어요</b> <span class="small">연결이 빠졌거나 완충이 안 된 상태일 수 있어 자동 저장하지 않았어요.</span>' : '') +
       '<div style="margin-top:6px">' + (D.saved ? '<span style="color:var(--green);font-weight:700">✓ 저장됨</span> <button class="btn sm" data-act="ltRep" data-sn="' + esc(sn) + '">📄 성적서</button>' + ltShipBtn({ mah: R.mah, wh: R.wh, cur: c.cur, cut: c.cut, purpose: c.purpose, sn: sn }) : D.saving ? '<span class="muted">저장 중…</span>' :
@@ -4580,7 +4580,7 @@ function vLoadtest() {
     (hid ? (LT.agent ? '' : '<button class="btn pri" data-act="ltAdd">＋ 장비 추가 (USB)</button>') + '<button class="btn" data-act="ltAll">▶ 전체 시작</button><button class="btn red" data-act="ltStopAll">■ 전체 정지</button>' + (LT.agent ? '<button class="btn" data-act="ltAssign" title="실물 1번 테스트기부터 차례로 배터리를 꽂으면 그 순서대로 1, 2, 3… 번호가 붙어요">칸 번호 지정</button><button class="btn" data-act="ltRescan" title="응답 없는 장비·시험 중이 아닌 장비만 USB 연결을 새로 해요. 시험 중인 장비는 그대로 이어져요">🔌 장비 다시 찾기</button><button class="btn" data-act="ltRenum" title="연결 끊긴 칸을 지우고 칸 번호를 1부터 다시 매겨요 (시험 중이 아닐 때만)">칸 번호 정리</button>' : '') : '') + '</div>' + (remoteOnly ? '</details>' : '') +
     '<details style="margin-top:12px"><summary class="small" style="cursor:pointer;font-weight:600">사용 방법 · 표준 조건</summary><ol class="small" style="margin:8px 0 0;padding-left:18px;color:var(--ink2);line-height:1.7">' +
     '<li>표준 조건: <b>고객사(티오더) 시험과 같은 CC 3.0A · 차단 0.7V</b> (보호회로가 출력을 끌 때까지) · A 포트 5V 출력 · 시험용 A-to-C 30cm 케이블(3A급 굵은 선, 장비마다 고정) · 100% 완충 · 실온</li>' +
-    '<li>판정(고객사 기준): 기준 용량 19,000mAh · <b>측정 12,000mAh(3.7V 환산 16,216mAh) 이상 합격</b>, 12,000~12,360(여유 3% 미만)은 <b>합격(여유 적음)</b> — 케이블·온도 차이로 고객사 측정에서 미달할 수 있어요. 회수분은 <b>S/N이 속한 양산 차수 평균의 80% 이상 정상(양품화 가능), 미만 성능 불량</b> (1차 13,875 · 2차 13,985 · 3차 13,938 · 4차 등 확정 전 차수는 판정 보류, 지금까지 납품 검사 평균만 참고로 표시). 차수를 모르면 고객사 최소 12,000 기준.</li>' +
+    '<li>판정(고객사 기준): 기준 용량 19,000mAh · <b>측정 12,000mAh(3.7V 환산 16,216mAh) 이상 합격</b>, 미만 불합격. 회수분은 <b>S/N이 속한 양산 차수 평균의 80% 이상 정상(양품화 가능), 미만 성능 불량</b> (1차 13,875 · 2차 13,985 · 3차 13,938 · 4차 등 확정 전 차수는 판정 보류, 지금까지 납품 검사 평균만 참고로 표시). 차수를 모르면 고객사 최소 12,000 기준.</li>' +
     '<li>케이블이 길수록 케이블에서 열로 사라지는 몫이 커져 용량이 낮게 재져요 (120cm 동봉 케이블은 2A에서 최대 4% 정도). 예전 120cm 기록과 30cm 기록은 직접 비교하지 마세요.</li>' +
     '<li><b>반드시 100% 완충한 뒤 시작</b>하세요. 잔량이 남은 상태에서 시작하면 남은 양만 재져요 (잔량 2% → 2~3Wh). 참고로 예전 품질팀 시험(P20BOTA25 · 2A · 4.0V — 지금과 조건이 달라 직접 비교 불가)에서는 결과 약 <b>12,600~14,400mAh · 6시간 20분~7시간 10분</b>, 3.7V 환산 <b>평균 18,577mAh(표기의 92.9%)</b>가 나왔어요 (신품 50개). 판정: <b>17,500 이상 합격 · 17,000~17,500 보류 · 17,000 미만 불합격</b>, 회수분은 신품 평균 대비 <b>80% 이상 정상 · 60~80% 정상 노화 · 60% 미만 성능 불량</b>.</li>' +
     '<li>3A는 케이블 손실이 커서 장비에 찍히는 평균 전압이 4.6V대로 내려가요. 고객사와 같은 케이블인지 확인하세요.</li>' +
@@ -4608,7 +4608,7 @@ function ltTable(rows, showSn) {
         '<td class="nowrap">' + (t.cableV1 ? (t.checkOk === 'Y' ? '✓ ' : '⚠ ') + esc((+t.cableV1).toFixed(2)) + 'V' : '-') + '</td>' +
         '<td class="nowrap"><b>' + (+t.wh).toFixed(2) + '</b>' + (+t.wh < LT_LOW_WH && +t.sec >= LT_MIN_SEC ? ' <span title="완충 안 한 상태로 시작했을 수 있음" style="color:var(--amber)">⚠ 완충?</span>' : '') + '</td><td class="nowrap">' + Math.round(+t.mah).toLocaleString() + '</td><td class="nowrap">' + Math.round(ltConv(t.mah)).toLocaleString() + ' <span class="muted small">' + (ltConv(t.mah) / LT_RATED_MAH * 100).toFixed(1) + '%</span></td><td class="nowrap">' + (function () { var j = ltJudge(t); return j ? '<span style="color:' + (j.cls === 'ok' ? 'var(--green)' : j.cls === 'warn' ? 'var(--amber)' : 'var(--red)') + ';font-weight:700" title="' + esc(j.why) + '">' + esc(j.txt) + '</span>' : '-'; })() + '</td><td class="nowrap">' + ltHms(+t.sec) + '</td>' +
         '<td>' + (t.avgV ? (+t.avgV).toFixed(2) : '-') + '</td><td>' + (t.vMinMid ? (+t.vMinMid).toFixed(2) : '-') + '</td><td>' + (t.maxT ? (+t.maxT).toFixed(1) : '-') + '</td>' +
-        '<td class="small nowrap">' + esc(String(t.why || '').replace('차단 전압 도달(자동 정지)', '자동 정지').replace('출력 전압 저하', '⚠ 출력 저하')) + '</td><td class="small nowrap">' + esc(t.actor) + '</td></tr>';
+        '<td class="small nowrap">' + esc(String(t.why || '').replace('차단 전압 도달(자동 정지)', '자동 정지(예전 기록 · 컷오프/배터리 차단 구분 전)').replace('보조배터리 출력 꺼짐(방전 끝 · 자동 정지)', '배터리 차단(예전 기록)').replace('출력 전압 저하', '⚠ 출력 저하')) + '</td><td class="small nowrap">' + esc(t.actor) + '</td></tr>';
     }).join('') + '</tbody></table></div>';
 }
 function ltSnTools_() {
@@ -4987,7 +4987,7 @@ function ltReportHtml(rows, none, opt) {
     '<h1>' + E(opt.title || '보조배터리 용량 시험 성적서') + '</h1><div class="sub">(주)폼즈 · VOLTALES · 발행일 ' + E(today()) + ' · 대상 ' + rows.length + '건</div>' + (opt.info || '') +
     '<div class="box"><b>시험 방법</b> — 100% 완충 후 USB-A 출력 → 시험용 A-to-C 30cm 케이블 → ATORCH DL24 전자부하 정전류(CC) 방전, 차단 전압 도달 시 자동 종료 · 실온 · 조건: ' + E(conds.join(' / ')) + '<br>' +
     '<b>환산</b> — 3.7V 환산 mAh = 측정 mAh(5V 출력) × 5 ÷ 3.7 (기존 품질 성적서와 같은 계산) · 표기 용량 ' + N(LT_RATED_MAH, 0) + 'mAh<br>' +
-    (rows.some(ltIsCust) ? '<b>고객사 기준</b> (CC 3.0A · 차단 0.7V, 보호회로 종료까지) — 기준 용량 ' + N(LT_CUST.ref, 0) + 'mAh · 측정 ' + N(LT_CUST.min, 0) + 'mAh(3.7V 환산 ' + N(ltConv(LT_CUST.min), 0) + 'mAh) 이상 합격 · 기준보다 3% 안쪽은 \'합격(여유 적음)\'<br>' : '') +
+    (rows.some(ltIsCust) ? '<b>고객사 기준</b> (CC 3.0A · 차단 0.7V, 보호회로 종료까지) — 기준 용량 ' + N(LT_CUST.ref, 0) + 'mAh · 측정 ' + N(LT_CUST.min, 0) + 'mAh(3.7V 환산 ' + N(ltConv(LT_CUST.min), 0) + 'mAh) 이상 합격<br>' : '') +
     (rows.some(ltIsGuide) ? '<b>고객사 QC 가이드</b> (CC 2A · 차단 3.0~3.5V) — Wh로 판정: ' + LT_GUIDE.pass.toFixed(1) + 'Wh 이상 합격(효율 78.2%↑) · ' + LT_GUIDE.hold.toFixed(1) + '~54.9Wh 재점검(케이블 전압강하 확인) · ' + LT_GUIDE.hold.toFixed(1) + 'Wh 미만 불합격 · 셀 환산 mAh = Wh × 1000 ÷ 3.7 · 기준 ' + LT_GUIDE.ref + 'Wh<br>' : '') +
     '<b>판정 기준</b> (CC 2A · 차단 4.0V) — 납품 검사: ' + N(LT_BASE.pass, 0) + 'mAh 이상 합격 · ' + N(LT_BASE.hold, 0) + '~' + N(LT_BASE.pass, 0) + ' 보류(재충전 후 재시험) · ' + N(LT_BASE.hold, 0) + ' 미만 불합격 / AS 회수분: 신품 평균(' + N(LT_BASE.mean, 0) + 'mAh) 대비 80% 이상 정상 · 60~80% 정상 노화 · 60% 미만 성능 불량. 다른 조건으로 잰 결과는 (참고)로 표시.</div>' +
     '<div class="sum"><div>대상 <b>' + rows.length + '</b>건</div><div>3.7V 환산 평균 <b>' + N(avg, 0) + '</b> mAh</div><div>최저 <b>' + N(Math.min.apply(null, conv), 0) + '</b> · 최고 <b>' + N(Math.max.apply(null, conv), 0) + '</b></div>' +
