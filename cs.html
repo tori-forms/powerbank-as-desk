@@ -896,10 +896,10 @@ function counts() {
 }
 
 var VIEWS = [
-  ['home', '▦', '대시보드'], ['inbox', '✉', '인입함'], ['ship', '⇢', '출고 현황'], ['ret', '⇠', '회수 현황'], ['inspect', '⚗', 'AS 회수분 검사판정'], ['results', '✔', 'AS 회수분 검사 결과'], ['yang', '♻', '양품화'], ['shipqc', '✓', '수입검사/HQC 불량 등록'], ['shipdoc', '📄', '출하 성적서'], ['loadtest', '⚡', '용량 테스트'],
+  ['home', '▦', '대시보드'], ['inbox', '✉', '인입함'], ['ship', '⇢', '출고 현황'], ['ret', '⇠', '회수 현황'], ['inspect', '⚗', 'AS 회수분 검사판정'], ['results', '✔', 'AS 회수분 검사 결과'], ['yang', '♻', '양품화'], ['shipqc', '✓', '수입검사/HQC 불량 등록'], ['shipdoc', '📄', '출하 성적서'], ['loadtest', '⚡', '용량 테스트'], ['ltres', '📊', '용량 테스트 결과'],
   ['stock', '▣', '재고'], ['analysis', '▤', '불량 분석'], ['loss', '₩', '손실'], ['settings', '⚙', '설정·동기화']
 ];
-var CS_HIDE = { yang: 1, loss: 1, inbox: 1, inspect: 1, stock: 1, settings: 1, guide: 1, loadtest: 1, shipqc: 1, shipdoc: 1 };
+var CS_HIDE = { yang: 1, loss: 1, inbox: 1, inspect: 1, stock: 1, settings: 1, guide: 1, loadtest: 1, ltres: 1, shipqc: 1, shipdoc: 1 };
 var CS_ACT = { guideP: 1, allCases: 1, resF: 1, resCsv: 1, resOpen: 1, go: 1, 'case': 1, closeDrawer: 1, closeModal: 1, inboxFilter: 1, inboxSel: 1, toggleOld: 1, toTop: 1, slkBig: 1, ship: 1, ret: 1, anModel: 1, searchStore: 1, reload: 1 };
 var CS_IN = { q: 1, modelF: 1, anMonths: 1, anFrom: 1, anTo: 1, resP: 1 };
 function csScrub_() {
@@ -932,15 +932,16 @@ function render() {
   var t = VIEWS.filter(function (v) { return v[0] === S.view; })[0];
   document.body.classList.toggle('cs', CS());
   $('#title').textContent = t[2];
-  var sub = { home: '', inbox: 'Slack #ext-볼타레스-티오더 접수 양식 자동 수집', cases: '교환 출고 → 반품 신청 → 회수 입고', inspect: '바코드 스캔으로 회수 매칭 → 판정 · 원인 · 처분', results: 'AS 회수품 · 수입검사 · 고객사 HQC에서 확인된 불량의 검사 결과 — 판정별로 전산 처리할 때 보세요', loss: '성능저하 · 증상 없음으로 교환해 준 손실 (교체품 · 택배 · 인건비 − 양품화 회수) — 사내 전용', yang: 'AS 회수분 중 용량이 양산 차수 평균 80% 이상이면 양품화 대상 · 미만이거나 다른 불량이면 양품화 불가 — 사내 전용', shipqc: '교체 재고 수입검사 · 납품 출하검사 불량을 한 곳에서 — 사내 전용', shipdoc: '파렛트별 출하 성적서 (샘플 = 파렛트 안에서 용량 테스트한 S/N) — 사내 전용', guide: '제품 구성 · 사양 · 사용 방법 · 매뉴얼', analysis: '모델별 불량 데이터', stock: '폼즈 지하1층 창고 · 3PL 창고에 있는 재고를 파렛트 단위로 — 입고·출고 기록과 양산 차수는 오른쪽 탭', settings: '연동 상태와 티오더 시트 동기화' }[S.view] || '';
+  var sub = { home: '', inbox: 'Slack #ext-볼타레스-티오더 접수 양식 자동 수집', cases: '교환 출고 → 반품 신청 → 회수 입고', inspect: '바코드 스캔으로 회수 매칭 → 판정 · 원인 · 처분', results: 'AS 회수품 · 수입검사 · 고객사 HQC에서 확인된 불량의 검사 결과 — 판정별로 전산 처리할 때 보세요', loss: '성능저하 · 증상 없음으로 교환해 준 손실 (교체품 · 택배 · 인건비 − 양품화 회수) — 사내 전용', yang: 'AS 회수분 중 용량이 양산 차수 평균 80% 이상이면 양품화 대상 · 미만이거나 다른 불량이면 양품화 불가 — 사내 전용', shipqc: '교체 재고 수입검사 · 납품 출하검사 불량을 한 곳에서 — 사내 전용', shipdoc: '파렛트별 출하 성적서 (샘플 = 파렛트 안에서 용량 테스트한 S/N) — 사내 전용', guide: '제품 구성 · 사양 · 사용 방법 · 매뉴얼', analysis: '모델별 불량 데이터', stock: '폼즈 지하1층 창고 · 3PL 창고에 있는 재고를 파렛트 단위로 — 입고·출고 기록과 양산 차수는 오른쪽 탭', settings: '연동 상태와 티오더 시트 동기화', ltres: '저장된 용량 시험 전체 — 기간·구분·조건으로 거르거나 S/N으로 찾아요' }[S.view] || '';
   $('#subtitle').textContent = sub; $('#subtitle').style.display = sub ? '' : 'none';
-  var fn = { home: vHome, inbox: vInbox, ship: vShip, ret: vReturn, inspect: vInspect, results: vResults, yang: vYang, loss: vLoss, shipqc: vShipQc, shipdoc: vShipDoc, guide: vGuide, stock: vStock, analysis: vAnalysis, settings: vSettings, loadtest: vLoadtest }[S.view];
+  var fn = { home: vHome, inbox: vInbox, ship: vShip, ret: vReturn, inspect: vInspect, results: vResults, yang: vYang, loss: vLoss, shipqc: vShipQc, shipdoc: vShipDoc, guide: vGuide, stock: vStock, analysis: vAnalysis, settings: vSettings, loadtest: vLoadtest, ltres: vLtRes }[S.view];
   if (S.view === 'loadtest') ltBeforeRender();
   var rvKeep = $('#rvScan') ? $('#rvScan').value : '';
   $('#view').innerHTML = (DEMO_MODE ? '<div class="flag" style="margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#fff7e6;color:#8a5a00;border:1px solid #ffe2a8"><b>데모 화면</b><span>가상 데이터로 만든 예시예요. 실제 AS 현황이 아닙니다.</span><a href="#" data-act="demoLogin" style="margin-left:auto;color:#8a5a00;text-decoration:underline">관리자 접속</a></div>' : '') + fn();
   if (rvKeep && $('#rvScan')) { $('#rvScan').value = rvKeep; $('#rvScan').readOnly = !!S.rvLock; $('#rvScan').dispatchEvent(new Event('input', { bubbles: true })); }
   if (S.view === 'inbox') { loadInboxDetail(); setTimeout(loadSlackImgs, 30); }
   if (S.view === 'loadtest') ltMount();
+  if (S.view === 'ltres') ltRefreshHistCard();
   if (isMobile_()) {
     var nb = $('#nav button.on'); if (nb && nb.scrollIntoView) nb.scrollIntoView({ block: 'nearest', inline: 'center' });
     if (S.view === 'inbox' && S.inboxTap) { var dt = $('#inboxDetailAnchor'); if (dt) dt.scrollIntoView({ block: 'start', behavior: 'smooth' }); }
@@ -3876,7 +3877,8 @@ document.addEventListener('change', function (e) {
   if (e.target.id === 'resP') { S.resP = e.target.value; render(); }
   if (e.target.id === 'inspAge' || e.target.id === 'resAge') { S[e.target.id] = e.target.value; render(); }
   if (e.target.id === 'ltPF' || e.target.id === 'ltPT') { var lp = ltPer_(); lp[e.target.id === 'ltPF' ? 'from' : 'to'] = e.target.value; ltRefreshPerCard(); }
-  if (e.target.id === 'ltPP') { ltPer_().pur = e.target.value; ltRefreshPerCard(); }
+  if (e.target.id === 'ltPP') { LT.perPur = e.target.value; ltRefreshPerCard(); }
+  if (e.target.id === 'ltPC') { ltPer_().cond = e.target.value; ltRefreshPerCard(); }
   if (e.target.id === 'ltPJ') { ltPer_().judge = e.target.value; ltRefreshPerCard(); }
   if (e.target.getAttribute && e.target.getAttribute('data-plsel')) { S.pl.sel[e.target.getAttribute('data-plsel')] = e.target.checked; render(); }
   if (e.target.getAttribute && e.target.getAttribute('data-plall')) { var ck = e.target.checked; (S.pl.vis || []).forEach(function (id) { S.pl.sel[id] = ck; }); render(); }
@@ -4348,7 +4350,7 @@ function ltLoadHist(sns) {
     function () { sns.forEach(function (s) { delete LT.hist[s]; }); });
 }
 function ltLoadRecent() {
-  return ltQ_({ recent: 1 }).then(function (r) { LT.recent = r.tests || []; LT.total = r.total || 0; if (S.view === 'loadtest' && !LT.q) ltRefreshHistCard(); }, function () { LT.recent = LT.recent || []; });
+  return ltQ_({ recent: 1 }).then(function (r) { LT.recent = r.tests || []; LT.total = r.total || 0; if (S.view === 'ltres' && !LT.q) ltRefreshHistCard(); }, function () { LT.recent = LT.recent || []; });
 }
 function ltOne(t) { return ymd(t.startAt) + ' ' + esc(LT_PUR_LABEL[t.purpose] || t.purpose) + ' <b>' + (+t.wh).toFixed(1) + 'Wh</b> · ' + Math.round(+t.mah).toLocaleString() + 'mAh <span class="muted">(' + (+t.cur) + 'A)</span>'; }
 function ltHistHtml(sn, exceptCid) {
@@ -4494,7 +4496,7 @@ function ltChart(cv, data, colors, multi) {
   g.fillStyle = '#8b95a1'; g.font = '18px sans-serif'; g.fillText(mx.toFixed(2) + 'V', 6, 20); g.fillText(mn.toFixed(2) + 'V', 6, H - 6);
 }
 function ltLowMsg(wh) { return '<b>⚠ 용량이 ' + (+wh).toFixed(1) + 'Wh로 매우 낮아요</b> <span class="small">완충하지 않고 시작했을 가능성이 커요. 100% 완충 후 재시험해 주세요. 완충했는데도 이 값이면 셀 불량이에요.</span>'; }
-function ltRedrawAll() { LT.devs.forEach(ltDraw); if (S.view === 'loadtest') ltRefreshHistCard(); }
+function ltRedrawAll() { LT.devs.forEach(ltDraw); if (S.view === 'ltres') ltRefreshHistCard(); }
 
 var LTR = { live: null, got: 0, timer: null, busy: false };
 function ltRemoteOnly() { return !!(LT.inited && !LT.agent && !LT.devs.length && LTR.live && LTR.live.devices && LTR.live.devices.length); }
@@ -4594,7 +4596,12 @@ function vLoadtest() {
     '<li>차단 전압에 닿아 장비가 멈추면 자동 완료되고 결과가 바로 저장돼요. 시험 중에는 이 창을 닫지 마세요 (다른 탭·최소화는 괜찮아요). PC 절전은 꺼 주세요.</li></ol></details></div></div>' +
     '<div id="ltRemote"></div><div id="ltAssign"></div>' +
     '<div class="ltgrid" id="ltGrid">' + (LT.devs.length || remoteOnly ? '' : '<div class="card"><div class="empty">' + (LT.agent ? 'PC 기록 프로그램에 연결된 DL24가 없어요. 장비 전원과 USB를 꽂아 주세요. (몇 초 안에 자동으로 나타나요)' : '연결된 장비가 없어요. ＋ 장비 추가 (USB)를 눌러 주세요.') + '</div></div>') + '</div>' +
-    '<div id="ltPracBox">' + ltPracLine_() + '</div><div id="ltHistCard">' + ltHistCard() + '</div>';
+    '<div class="note" style="margin-top:14px">지금까지 한 시험 기록·S/N 조회는 <a href="#" data-act="go" data-v="ltres">📊 용량 테스트 결과</a> 탭에서 봐요.</div>';
+}
+function vLtRes() {
+  if (LT.recent === null && !LT.recentLoading) { LT.recentLoading = true; ltLoadRecent(); }
+  if (LT.perFixed) { LT.perPur = ''; LT.perFixed = false; }
+  return '<div id="ltHistCard">' + ltHistCard() + '</div><div id="ltPerCard">' + ltPerCard() + '</div><div id="ltPracBox">' + ltPracLine_() + '</div>';
 }
 function ltTable(rows, showSn) {
   return '<div class="tw"><table class="t"><thead><tr><th>시험일시</th>' + (showSn ? '<th>S/N</th>' : '') + '<th>구분</th><th>조건</th><th>케이블 점검</th><th>Wh</th><th>mAh</th><th title="5V 출력 mAh × 5 ÷ 3.7 (품질팀 성적서와 같은 계산)">3.7V 환산 mAh</th><th>판정</th><th>시간</th><th>평균 V</th><th>중간 최저 V</th><th>최고 ℃</th><th>종료</th><th>담당</th></tr></thead><tbody>' +
@@ -4743,6 +4750,7 @@ function ltXlsxBuild_(t, fname, label, extra, title) {
 }
 function ltPerRange_(k) {
   var t = today(), d = new Date(t + 'T00:00:00'), f = function (x) { return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
+  if (k === 'all') return ['', ''];
   if (k === 'today') return [t, t];
   if (k === 'yday') { var y = new Date(d); y.setDate(y.getDate() - 1); return [f(y), f(y)]; }
   if (k === 'week') { var w = new Date(d); w.setDate(w.getDate() - ((w.getDay() + 6) % 7)); return [f(w), t]; }
@@ -4764,6 +4772,7 @@ function ltPerRows_() {
     if (P.from && d < P.from) return false;
     if (P.to && d > P.to) return false;
     if (P.pur && t.purpose !== P.pur) return false;
+    if (P.cond && ltCondTxt_(t) !== P.cond) return false;
     if (!ltRealSn(t.sn)) return false;
     if (P.judge) { var j = ltJudge(t); if (P.judge === 'bad' ? !(j && j.cls === 'bad') : !(j && j.cls === 'ok')) return false; }
     return true;
@@ -4775,21 +4784,25 @@ function ltPerLoad_(force) {
   ltQ_({ all: 1 }).then(function (r) { LT.perAll = r.tests || []; LT.perLoading = false; ltRefreshPerCard(); if (S.view === 'yang' || S.view === 'loss') render(); },
     function (e) { LT.perLoading = false; LT.perAll = LT.perAll || []; toast(e.message || String(e), true); ltRefreshPerCard(); });
 }
+function ltCondTxt_(t) { return 'CC ' + (+t.cur) + 'A · 차단 ' + (+t.cut) + 'V'; }
 function ltPerCard(pur) {
-  if (pur) LT.perPur = pur;
+  if (pur) { LT.perPur = pur; LT.perFixed = true; }
   var P = ltPer_(); ltPerLoad_();
+  var conds = {}; (LT.perAll || []).forEach(function (t) { if (ltRealSn(t.sn)) conds[ltCondTxt_(t)] = 1; });
   var btn = function (k, l) { return '<button class="btn sm' + (P.k === k ? ' pri' : '') + '" data-act="ltPerK" data-v="' + k + '">' + l + '</button>'; };
   var h = '<div class="card" style="margin-top:14px"><div class="hd"><h3>용량 시험 기록 — ' + esc(LT_PUR_LABEL[P.pur] || '전체') + '</h3><span class="muted small">기간을 골라 목록·엑셀·성적서로 뽑아요 (시험 시작일 기준 · 엑셀·성적서는 S/N별 최종 시험만)</span><span style="flex:1"></span>' +
     '<button class="btn sm" data-act="ltPerReload">↻ 새로 불러오기</button></div><div class="bd">' +
-    '<div class="row" style="gap:6px;flex-wrap:wrap;align-items:center">' + btn('today', '오늘') + btn('yday', '어제') + btn('d7', '최근 7일') + btn('week', '이번 주') + btn('month', '이번 달') + btn('lmonth', '지난달') + btn('custom', '직접 지정') +
+    '<div class="row" style="gap:6px;flex-wrap:wrap;align-items:center">' + btn('all', '전체 기간') + btn('today', '오늘') + btn('yday', '어제') + btn('d7', '최근 7일') + btn('week', '이번 주') + btn('month', '이번 달') + btn('lmonth', '지난달') + btn('custom', '직접 지정') +
     '<input class="inp" type="date" id="ltPF" value="' + esc(P.from) + '" style="width:150px"' + (P.k === 'custom' ? '' : ' disabled') + '><span>~</span><input class="inp" type="date" id="ltPT" value="' + esc(P.to) + '" style="width:150px"' + (P.k === 'custom' ? '' : ' disabled') + '></div>' +
     '<div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center">' +
+    '<select class="inp sm" id="ltPP"><option value="">시험 구분 전체</option>' + LT_PURPOSES.map(function (p) { return '<option value="' + esc(p) + '"' + (P.pur === p ? ' selected' : '') + '>' + esc(LT_PUR_LABEL[p] || p) + '</option>'; }).join('') + '</select>' +
+    '<select class="inp sm" id="ltPC"><option value="">조건 전체</option>' + Object.keys(conds).sort().map(function (c) { return '<option' + (P.cond === c ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('') + '</select>' +
     '<select class="inp sm" id="ltPJ"><option value="">판정 전체</option><option value="ok"' + (P.judge === 'ok' ? ' selected' : '') + '>합격만</option><option value="bad"' + (P.judge === 'bad' ? ' selected' : '') + '>불합격만</option></select>' + '</div>';
   if (!LT.perAll) return h + '<div class="empty" style="margin-top:10px">불러오는 중…</div></div></div>';
   var rows = ltPerRows_(), sns = {}, ok = 0, bad = 0, warn = 0, sumC = 0;
   rows.forEach(function (t) { sns[t.sn] = 1; var j = ltJudge(t); if (j) { if (j.cls === 'ok') ok++; else if (j.cls === 'bad') bad++; else warn++; } sumC += ltConv(t.mah); });
   var days = {}; rows.forEach(function (t) { var d = String(t.startAt).slice(0, 10); days[d] = (days[d] || 0) + 1; });
-  h += '<div class="row" style="gap:16px;margin-top:12px;flex-wrap:wrap;align-items:center"><span><b>' + esc(ymd(P.from)) + ' ~ ' + esc(ymd(P.to)) + '</b></span><span>시험 <b>' + rows.length + '건</b> · S/N ' + Object.keys(sns).length + '개</span>' +
+  h += '<div class="row" style="gap:16px;margin-top:12px;flex-wrap:wrap;align-items:center"><span><b>' + (P.from || P.to ? esc(ymd(P.from)) + ' ~ ' + esc(ymd(P.to)) : '전체 기간') + '</b></span><span>시험 <b>' + rows.length + '건</b> · S/N ' + Object.keys(sns).length + '개</span>' +
     (rows.length ? '<span>합격 <b style="color:var(--green)">' + ok + '</b>' + (warn ? ' · 주의 <b style="color:var(--amber)">' + warn + '</b>' : '') + ' · 불합격 <b style="color:var(--red)">' + bad + '</b></span><span class="muted small">평균 3.7V 환산 ' + Math.round(sumC / rows.length).toLocaleString() + 'mAh</span>' : '') +
     '<span style="flex:1"></span><button class="btn sm"' + (rows.length ? '' : ' disabled') + ' data-act="ltPerXlsx">엑셀 (이 기간)</button><button class="btn sm pri"' + (rows.length ? '' : ' disabled') + ' data-act="ltPerRep">📄 성적서 (이 기간)</button></div>';
   if (Object.keys(days).length > 1) h += '<div class="small muted" style="margin-top:6px">날짜별 ' + Object.keys(days).sort().map(function (d) { return md(d) + ' ' + days[d] + '건'; }).join(' · ') + '</div>';
@@ -5012,7 +5025,7 @@ ACT.ltRenum = function () {
     });
   });
 };
-ACT.ltPick = function (d) { var q = $('#ltQ'); if (q) q.value = d.sn || ''; ltQuery(d.sn || ''); window.scrollTo && $('#ltHistCard') && $('#ltHistCard').scrollIntoView({ block: 'start', behavior: 'smooth' }); };
+ACT.ltPick = function (d) { if (d.sn && S.view !== 'ltres') { S.view = 'ltres'; render(); } var q = $('#ltQ'); if (q) q.value = d.sn || ''; ltQuery(d.sn || ''); window.scrollTo && $('#ltHistCard') && $('#ltHistCard').scrollIntoView({ block: 'start', behavior: 'smooth' }); };
 document.addEventListener('change', function (e) { var id = e.target.id; if (id === 'ltPurpose' || id === 'ltCur' || id === 'ltCut' || id === 'ltCable') ls(id, e.target.value); });
 document.addEventListener('keydown', function (e) { if (e.target.id === 'ltQ' && e.key === 'Enter') { e.preventDefault(); e.target.value = ltNorm(e.target.value); ltQuery(e.target.value); } });
 
