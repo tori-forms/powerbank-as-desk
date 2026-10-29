@@ -19,7 +19,7 @@ import sys, os, json, time, threading, struct, random, traceback, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-VERSION = '1.3.8'
+VERSION = '1.3.9'
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE_FILE = os.path.join(HERE, 'state.json')
 CONFIG_FILE = os.path.join(HERE, 'config.json')
@@ -122,7 +122,7 @@ class Dev:
         return {'no': self.no, 'sn': self.sn, 'state': ('paused' if resuming else 'idle') if self.state in ('arm', 'check') else self.state, 'cid': self.cid, 'cond': self.cond,
                 'check': self.check, 'base': self.base, 'startAt': self.start_at, 'endAt': self.end_at, 'why': self.why, 'result': self.result,
                 'saved': self.saved, 'lastWh': self.live['wh'] if self.live else None, 'lastMah': self.live['mah'] if self.live else None,
-                'lastAt': ms(), 'plog': self.plog[-1500:], 'pur': self.pur, 'purSn': self.pur_sn,
+                'lastAt': (self.live or {}).get('t') or ms(), 'plog': self.plog[-1500:], 'pur': self.pur, 'purSn': self.pur_sn,
                 'pauseMs': self.pause_ms, 'pausedAt': self.paused_at, 'pauses': self.pauses, 'lastRow': self.last_row, 'resave': self.resave, 'gaps': self.gaps, 'gapMs': self.gap_ms}
 
 
@@ -158,7 +158,7 @@ def send(D, cmd, d4=None):
 
 
 def mark_lost(D, e):
-    if not D.lost:
+    if not D.lost_at:   # 응답 없는 채로 다시 열기·닫기를 되풀이해도 처음 끊긴 시각 유지 (끊긴 시간이 마지막 몇 초로만 잡히던 문제)
         log('장비 %s 연결 끊김: %s' % (D.no, e))
         D.lost_at = ms()
     D.lost = True
@@ -242,6 +242,7 @@ def on_report(D, u):
             # 기록을 못 보는 동안(USB 끊김·프로그램 꺼짐) 장비가 계속 방전함 → 장비 누적값으로 마지막 값을 채움 (정전류라 시간 = mAh ÷ 전류)
             cur = (D.cond or {}).get('cur') or 1; dm = (L['mah'] - D.base['mah']) - D.last_row[4]
             D.last_row = [int(D.last_row[0] + dm / (cur * 1000) * 3600000), D.last_row[1], cur, round(L['wh'] - D.base['wh'], 4), round(L['mah'] - D.base['mah'], 2), D.last_row[5]]
+            D.away_end = True   # 끝나는 순간을 못 봤음 → 마지막 전압이 끊기기 전 값이라 컷오프/배터리 차단 구분 불가
             log('장비 %s 끊긴 동안 방전분 반영 → %.2fWh %dmAh' % (D.no, D.last_row[3], D.last_row[4]))
         D.off_cnt = 0 if L['on'] else D.off_cnt + 1
         cut = float((D.cond or {}).get('cut') or 0.7)
@@ -328,7 +329,7 @@ def restore_lost():
         if any(D.no == x['no'] for D in DEVS.values()):
             continue
         D = Dev(path); D.no = x['no']; D.sn = x.get('sn') or ''; D.state = st; D.cond = x.get('cond'); D.result = x.get('result')
-        D.lost_at = ms(); D.restore = x
+        D.restore = x   # lost_at 안 세움: 프로그램 재시작(업데이트)은 USB 끊김으로 안 셈
         on = st == 'run'
         D.live = {'t': x.get('lastAt') or ms(), 'v': 0, 'a': float((x.get('cond') or {}).get('cur') or 0) if on else 0,
                   'wh': x.get('lastWh') or 0, 'mah': x.get('lastMah') or 0, 'temp': 0, 'on': on}
@@ -372,6 +373,7 @@ def apply_restore(D):
         if L['wh'] < (x.get('lastWh') or 0) - 0.002:
             D.msg = ['bad', '장비 누적값이 초기화돼서 진행 중이던 시험을 이어갈 수 없어요. 다시 시작해 주세요.']
             log('장비 %s 복구 실패: 누적값 감소' % D.no)
+            D.state = 'idle'; D.cond = None   # 그대로 두면 바뀐 누적값을 새 시작점으로 잡고 반쪽 결과를 저장함
             return
         D.cid = x.get('cid') or ''; D.cond = x.get('cond'); D.check = x.get('check'); D.base = x['base']; D.start_at = x.get('startAt') or 0
         D.plog = x.get('plog') or []; D.log = list(D.plog); D.off_cnt = 0
@@ -386,7 +388,10 @@ def apply_restore(D):
             mah = L['mah'] - D.base['mah']; cur = (D.cond or {}).get('cur') or 1
             last = D.log[-1] if D.log else [D.start_at, L['v'], 0, 0, 0, L['temp']]
             D.last_row = [int(D.start_at + mah / (cur * 1000) * 3600000), last[1], cur, round(L['wh'] - D.base['wh'], 4), round(mah, 2), last[5]]
-            D.state = 'run'; D.away_end = True
+            D.state = 'run'
+            if L['v'] >= ARM_MIN_V:   # 출력이 살아 있음 = 다 닳은 게 아님(보호 동작·접촉·알람) → 실시간과 같이 '중간 멈춤'
+                pause(D, L['v']); log('장비 %s 꺼진 동안 부하 꺼짐 → 중간 멈춤' % D.no); return
+            D.away_end = True
             finish(D, 'auto')
             D.msg = ['warn', '기록 프로그램이 꺼져 있는 동안 시험이 끝났어요. 장비 누적값으로 결과를 계산했어요.']
             log('장비 %s 꺼진 동안 종료 → 결과 계산' % D.no)
@@ -548,7 +553,7 @@ def finish(D, kind):
         head = ('컷오프' if lv <= cut + CUT_BAND else '배터리 차단') + ' (마지막 %.2fV)' % lv
     else:
         head = '중간 멈춤 후 종료' if kind == 'pausedEnd' else '수동 정지'
-    D.why = head + (' · 기록 프로그램이 꺼진 동안 종료(컷오프/배터리 차단 구분 불확실)' if D.away_end else '') \
+    D.why = head + (' · 기록을 못 보는 동안 종료(USB 끊김·프로그램 꺼짐 — 컷오프/배터리 차단 구분 불확실)' if D.away_end else '') \
         + (' · 중간 멈춤 %d회 이어서 시험' % D.pauses if D.pauses and kind != 'pausedEnd' else '') \
         + (' · USB 끊김 %d회 %d분(측정값은 장비 누적으로 이어짐)' % (D.gaps, round(D.gap_ms / 60000.0)) if D.gaps else '')
     D.away_end = False
