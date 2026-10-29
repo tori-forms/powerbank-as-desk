@@ -557,6 +557,28 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
   } catch (e) { }
 })();
 var DEMO_MODE = false;
+var BUILD_ID = 'd4e99bd7b5c4', NEW_VER = false;
+function verBusy_() {
+  if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
+  return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
+}
+function verReload_() { if (!verBusy_()) location.reload(); }
+function verCheck_() {
+  if (NEW_VER || BUILD_ID.indexOf('__') === 0 || location.protocol === 'file:') return;
+  fetch(location.pathname + '?vc=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.ok ? r.text() : ''; }).then(function (t) {
+    var m = t.match(/var BUILD_ID = '([0-9a-f]{12})'/);
+    if (!m || m[1] === BUILD_ID) return;
+    NEW_VER = true;
+    if (document.hidden) return verReload_();
+    var b = document.createElement('div');
+    b.style.cssText = 'position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:9999;background:#1f6feb;color:#fff;padding:10px 16px;border-radius:10px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25);font-size:14px';
+    b.textContent = '🔄 새 버전이 나왔어요 — 누르면 새로고침 (다른 탭에 갔다 오면 자동)';
+    b.onclick = function () { location.reload(); };
+    document.body.appendChild(b);
+  }).catch(function () { });
+}
+setInterval(verCheck_, 5 * 60000);
+document.addEventListener('visibilitychange', function () { if (NEW_VER && document.hidden) verReload_(); else if (!document.hidden) verCheck_(); });
 var DEMO_DATA = null;
 function demoData_() {
 let rnd=20261001; const R=()=>{rnd=(rnd*1103515245+12345)&0x7fffffff; return rnd/0x7fffffff;}; const pick=a=>a[Math.floor(R()*a.length)];
