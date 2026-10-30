@@ -19,7 +19,7 @@ import sys, os, json, time, threading, struct, random, traceback, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-VERSION = '1.3.11'
+VERSION = '1.3.12'
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE_FILE = os.path.join(HERE, 'state.json')
 CONFIG_FILE = os.path.join(HERE, 'config.json')
@@ -693,7 +693,8 @@ def enumerate_devices():
         log('장비 검색 실패: %s' % e)
         return
     HIDN[0] = len(lst)
-    sers = [str(x.get('serial_number') or '').strip() for x in lst]
+    SEEN_AT.update({(x.get('path').decode('latin1') if isinstance(x.get('path'), (bytes, bytearray)) else str(x.get('path'))): ms() for x in lst})
+    sers =[str(x.get('serial_number') or '').strip() for x in lst]
     for d in lst:
         raw = d.get('path')
         path = raw.decode('latin1') if isinstance(raw, (bytes, bytearray)) else str(raw)
@@ -739,6 +740,101 @@ def watchdog():
                 log('장비 %s 응답 없음 → 다시 연결 (%d회)' % (D.no or '번호 없음', D.silent_n))
             mark_lost(D, '응답 없음')
             D.err = '장비 응답 없음 — 다시 연결하는 중' + (' (시험 기록은 이어져요)' if D.state == 'run' else '')
+
+
+# ------------------------------------------------------------------ USB 자동 복구 (케이블 뺐다 꽂기를 소프트웨어로) — 관리자 권한 필요
+SEEN_AT = {}            # HID 경로 → 윈도우 목록에 마지막으로 보인 시각
+HEAL_SILENT_N = 3       # 다시 열기 3번(약 30초)에도 응답 없으면 그 DL24만 USB 재시작
+HEAL_GAP_MS = 180000    # 같은 장비는 3분에 한 번까지
+SCAN_AFTER_MS = 60000   # 시험 중 장비가 윈도우 목록에서 1분 넘게 사라지면 하드웨어 다시 검색
+HEAL = {'at': {}, 'n': {}, 'scan': 0, 'busy': False, 'warned': False, 't0': ms()}
+SETUP_BAT = os.path.join(HERE, '관리자권한_자동복구_설정.bat')
+
+
+def is_admin():
+    try:
+        import ctypes
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())
+    except Exception:
+        return False
+
+
+def hid_instance(path):
+    """\\\\?\\HID#VID_0483&PID_5750#6&114e3c54&0&0000#{guid} → HID\\VID_0483&PID_5750\\6&114e3c54&0&0000"""
+    p = path[4:] if path.startswith('\\\\?\\') else path
+    parts = p.split('#')
+    return '\\'.join(parts[:3]) if len(parts) >= 3 and parts[0].upper() == 'HID' else ''
+
+
+def ps_run(script, timeout=40):
+    import subprocess
+    r = subprocess.run(['powershell', '-NoProfile', '-NonInteractive', '-Command', script], capture_output=True, text=True,
+                       timeout=timeout, creationflags=0x08000000)   # CREATE_NO_WINDOW
+    return r.returncode, (r.stdout + r.stderr).strip()[-300:]
+
+
+def heal_job(kind, D=None, inst=''):
+    try:
+        if kind == 'reset':
+            # 부모가 DL24 자신(USB\VID_0483&PID_5750…)일 때만 재시작 — 허브나 다른 장치는 절대 건드리지 않음
+            code, out = ps_run("$p=(Get-PnpDeviceProperty -InstanceId '%s' -KeyName DEVPKEY_Device_Parent -ErrorAction Stop).Data; "
+                               "if ($p -notlike 'USB\\VID_0483&PID_5750*') { Write-Output ('SKIP ' + $p); exit 2 }; pnputil /restart-device \"$p\"" % inst.replace("'", ''))
+            log('장비 %s USB 자동 재시작 (%s): %s' % (D.no, '완료' if code == 0 else '실패 %s' % code, out.replace('\r', ' ').replace('\n', ' ')))
+        else:
+            code, out = ps_run('pnputil /scan-devices')
+            log('USB 장치 다시 검색 (%s): %s' % ('완료' if code == 0 else '실패 %s' % code, out.replace('\r', ' ').replace('\n', ' ')[-120:]))
+    except Exception as e:
+        log('USB 자동 복구 오류: %s' % e)
+    finally:
+        HEAL['busy'] = False
+
+
+def usb_heal():
+    """응답 없는 DL24는 그 장비만 USB 재시작, 시험 중 장비가 윈도우에서 사라지면 하드웨어 다시 검색 (한 번에 하나씩)"""
+    if os.name != 'nt' or HEAL['busy']:
+        return
+    now = ms()
+    for D in DEVS.values():
+        if D.silent_n == 0:
+            HEAL['n'].pop(D.path, None)   # 다시 응답함 → 재시작 횟수 초기화
+    # 재시작해도 안 살아나는 장비는 간격을 3·6·12…분(최대 96분)으로 늘림 — 밤새 몇 분마다 재시작하지 않게
+    silent = [D for D in DEVS.values() if D.silent_n >= HEAL_SILENT_N and hid_instance(D.path)
+              and now - HEAL['at'].get(D.path, 0) > HEAL_GAP_MS * 2 ** min(HEAL['n'].get(D.path, 0), 5)]
+    gone = [D for D in DEVS.values() if D.lost and D.state in ('run', 'paused') and now - SEEN_AT.get(D.path, HEAL['t0']) > SCAN_AFTER_MS]
+    if not silent and not (gone and now - HEAL['scan'] > HEAL_GAP_MS):
+        return
+    if not is_admin():
+        if not HEAL['warned']:
+            HEAL['warned'] = True
+            log('USB 자동 복구를 못 함 — 관리자 권한이 아니에요. 서버 PC에서 %s 을(를) 오른쪽 클릭 → 관리자 권한으로 실행 해 주세요' % os.path.basename(SETUP_BAT))
+        return
+    HEAL['busy'] = True
+    if silent:
+        D = silent[0]; HEAL['at'][D.path] = now; HEAL['n'][D.path] = HEAL['n'].get(D.path, 0) + 1
+        threading.Thread(target=heal_job, args=('reset', D, hid_instance(D.path)), daemon=True).start()
+    else:
+        HEAL['scan'] = now
+        threading.Thread(target=heal_job, args=('scan',), daemon=True).start()
+
+
+def write_setup_bat():
+    """관리자 권한 설정 파일: 로그인 때 기록 프로그램을 관리자 권한으로 켜는 작업 스케줄러 등록 (시작프로그램 등록은 지움)"""
+    if os.name != 'nt':
+        return
+    py = sys.executable if sys.executable.lower().endswith('pythonw.exe') else sys.executable.replace('python.exe', 'pythonw.exe')
+    me = os.path.join(HERE, 'agent.py')
+    bat = ('@echo off\r\nchcp 65001 >nul\r\n'
+           'net session >nul 2>nul || (echo 오른쪽 클릭 - [관리자 권한으로 실행]으로 열어 주세요. & pause & exit /b 1)\r\n'
+           'schtasks /create /tn "FormsLoadtestAgent" /tr "\\"%s\\" \\"%s\\"" /sc onlogon /rl highest /f\r\n'
+           'del "%%APPDATA%%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\FormsLoadtestAgent.vbs" >nul 2>nul\r\n'
+           'curl -s -X POST http://127.0.0.1:8765/quit >nul 2>nul\r\ntimeout /t 3 /nobreak >nul\r\n'
+           'schtasks /run /tn "FormsLoadtestAgent"\r\n'
+           'echo.\r\necho 완료! 기록 프로그램이 관리자 권한으로 다시 켜졌어요. 시험 중이던 장비는 이어서 기록돼요.\r\npause\r\n') % (py, me)
+    try:
+        with open(SETUP_BAT, 'w', encoding='utf-8', newline='') as f:
+            f.write(bat)
+    except Exception as e:
+        log('관리자 권한 설정 파일 만들기 실패: %s' % e)
 
 
 def rescan():
@@ -880,6 +976,7 @@ def main_loop():
                 with LOCK:
                     watchdog()
                     enumerate_devices()
+                    usb_heal()
             with LOCK:
                 full = tick % 4 == 0
                 for D in list(DEVS.values()):
@@ -1131,6 +1228,7 @@ def main():
     CONFIG.update(jload(CONFIG_FILE, {}))
     STATE.update(jload(STATE_FILE, {}))
     STATE.setdefault('chans', {}); STATE.setdefault('devs', {}); STATE.setdefault('pending', [])
+    write_setup_bat()
     try:   # 재시작 전 로그도 원격으로 보이게 파일 끝 60줄을 먼저 담음
         with open(LOG_FILE, encoding='utf-8', errors='replace') as f:
             LOG_TAIL.extend(x.rstrip('\n')[:500] for x in f.readlines()[-60:])
