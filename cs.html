@@ -557,7 +557,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
   } catch (e) { }
 })();
 var DEMO_MODE = false;
-var BUILD_ID = '3a13b00bf069', NEW_VER = false;
+var BUILD_ID = 'a93a1e8205ab', NEW_VER = false;
 function verBusy_() {
   if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
   return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
@@ -2170,9 +2170,10 @@ function vYang() {
     }).join('') + '</tbody></table></div>' + (list.length > 500 ? '<div class="muted small" style="margin-top:6px">최근 500개만 보여요</div>' : '') : '<div class="empty">해당하는 회수분이 없어요.</div>') + '</div></div>';
   return h;
 }
-var LOSS_KEYS = [['unit', '교체품 원가', '개당'], ['labor', '검사·처리 인건비', '개당'], ['shipOut', '출고 택배비', '건당'], ['shipRet', '회수 택배비', '건당'], ['resale', '양품화 판매가', '개당']];
-var LOSS_KIND = { lost: '회수 못 함(손망실·분실)', perf: '성능저하(검사 확인)', perfE: '성능저하 추정(미검사 · 빠른 소모 접수)', ntf: '증상 없음(정상 · 재현 안 됨)', hw: '하드웨어 불량(참고)', ext: '외력/사용자 과실(참고)', pend: '미검사(그 밖 사유)' };
-var LOSS_IN = { lost: 1, perf: 1, perfE: 1, ntf: 1 };
+var LOSS_KEYS = [['price', '납품 판매가', '개당'], ['sold', '납품 수량', '누적', '개'], ['unit', '교체품 원가', '개당'], ['labor', '검사·처리 인건비', '개당'], ['shipOut', '출고 택배비', '건당'], ['shipRet', '회수 택배비', '건당'], ['resale', '양품화 판매가', '개당'], ['store', '창고 보관료', '월']];
+var LOSS_KIND = { lost: '손망실(분실·회수불가·고객 폐기)', perf: '성능저하(검사 확인)', perfE: '성능저하 추정(미검사 · 빠른 소모 접수)', ntf: '증상 없음(정상 · 재현 안 됨)', hw: '하드웨어 불량', ext: '외력/사용자 과실', pend: '미검사(그 밖 사유)' };
+var LOSS_ORD = ['lost', 'perf', 'perfE', 'ntf', 'hw', 'ext', 'pend'];
+var LOSS_COL = { lost: '#6e7781', perf: 'var(--red)', perfE: '#f4a3a3', ntf: 'var(--amber)', hw: '#8250df', ext: '#bf8700', pend: '#c9d1d9' };
 function lossCost_() { var o = {}; try { o = JSON.parse(S.data.meta.lossCost || '{}'); } catch (e) { } LOSS_KEYS.forEach(function (k) { o[k[0]] = +o[k[0]] || 0; }); return o; }
 var LOSS_GONE = { '손망실(회수 포기)': 1, '회수불가': 1, '분실': 1, '고객 폐기': 1 };
 function lossKind_(u, c) {
@@ -2189,48 +2190,60 @@ function lossRows_() {
   S.data.units.forEach(function (u) {
     var c = IDX.caseById[u.caseId]; if (!c) return;
     var d = String(c.outDate || c.createdAt || '').slice(0, 10); if (!d) return;
-    var kind = lossKind_(u, c), y = u.verdict ? yangOf_(u)[0] : '', q = Math.max(+c.qty || 0, 1);
-    var cost = k.unit + (kind === 'lost' ? 0 : k.labor) + (k.shipOut + k.shipRet) / q, back = y === 'ok' ? k.resale : 0;
-    out.push({ u: u, c: c, kind: kind, d: d, wk: lossWeek_(d), mo: d.slice(0, 7), loss: LOSS_IN[kind] ? cost - back : 0, missed: kind === 'perf' && y === 'no' ? k.resale : 0 });
+    var kind = lossKind_(u, c), q = Math.max(+c.qty || 0, 1);
+    var cost = k.unit + (kind === 'lost' ? 0 : k.labor) + k.shipOut / q + (u.recvSn ? k.shipRet / q : 0);
+    var back = u.disposition === '양품화/샘플' || (u.verdict && yangOf_(u)[0] === 'ok') ? k.resale : 0;
+    out.push({ u: u, c: c, kind: kind, d: d, wk: lossWeek_(d), mo: d.slice(0, 7), cost: cost, back: back });
   });
   return out;
 }
 function vLoss() {
-  if (!LT.perAll) ltPerLoad_();
-  var k = lossCost_(), rows = lossRows_(), inr = rows.filter(function (r) { return LOSS_IN[r.kind]; }), noCost = !k.unit;
+  var k = lossCost_(), rows = lossRows_(), noCost = !k.unit, today = S.data.meta.today;
   var won = function (v) { return Math.round(v).toLocaleString(); };
+  var man = function (v) { return Math.abs(v) >= 1e8 ? (v / 1e8).toFixed(2) + '억' : Math.round(v / 1e4).toLocaleString() + '만'; };
   var sum = function (a, f) { return a.reduce(function (s, r) { return s + f(r); }, 0); };
-  var wks = []; for (var i = 15; i >= 0; i--) { var t = new Date(S.data.meta.today + 'T00:00:00'); t.setDate(t.getDate() - i * 7); wks.push(lossWeek_(t.getFullYear() + '-' + ('0' + (t.getMonth() + 1)).slice(-2) + '-' + ('0' + t.getDate()).slice(-2))); }
-  var byW = {}; wks.forEach(function (w) { byW[w] = { lost: 0, perf: 0, perfE: 0, ntf: 0, loss: 0 }; });
-  inr.forEach(function (r) { var b = byW[r.wk]; if (b) { b[r.kind]++; b.loss += r.loss; } });
-  var wn = function (w) { var b = byW[w]; return b.lost + b.perf + b.perfE + b.ntf; };
-  var last4 = wks.slice(-5, -1), n4 = sum(last4, wn) / 4, l4 = sum(last4, function (w) { return byW[w].loss; }) / 4;
-  var tot = sum(inr, function (r) { return r.loss; }), missed = sum(rows, function (r) { return r.missed; });
   var kp = function (t, v, unit, d, red) { return '<div class="kpi" style="cursor:default"><div class="l">' + t + '</div><div class="v"' + (red ? ' style="color:var(--red)"' : '') + '>' + v + (v === '-' ? '' : '<small>' + unit + '</small>') + '</div><div class="d">' + d + '</div></div>'; };
+  var cost = sum(rows, function (r) { return r.cost; }), back = sum(rows, function (r) { return r.back; }), nBack = rows.filter(function (r) { return r.back; }).length;
+  var mons = rows.length ? (function () { var a = rows.map(function (r) { return r.mo; }).sort()[0].split('-'), b = today.slice(0, 7).split('-'); return (b[0] - a[0]) * 12 + (b[1] - a[1]) + 1; })() : 0, storeC = k.store * mons;
+  cost += storeC;
+  var rev = k.price * k.sold, profit = (k.price - k.unit) * k.sold, hasSale = rev > 0 && !noCost;
+  var wks = []; for (var i = 15; i >= 0; i--) { var t = new Date(today + 'T00:00:00'); t.setDate(t.getDate() - i * 7); wks.push(lossWeek_(t.getFullYear() + '-' + ('0' + (t.getMonth() + 1)).slice(-2) + '-' + ('0' + t.getDate()).slice(-2))); }
+  var byW = {}; wks.forEach(function (w) { byW[w] = { n: 0, cost: 0 }; });
+  rows.forEach(function (r) { var b = byW[r.wk]; if (b) { b[r.kind] = (b[r.kind] || 0) + 1; b.n++; b.cost += r.cost; } });
+  var last4 = wks.slice(-5, -1), n4 = sum(last4, function (w) { return byW[w].n; }) / 4, l4 = sum(last4, function (w) { return byW[w].cost; }) / 4;
   var h = '<div class="kpis">' +
-    kp('손실 대상 교환', inr.length.toLocaleString(), '개', '회수 못 함 + 성능저하 + 증상 없음 · 전체 기간') +
-    kp('주 평균 (최근 4주)', n4.toFixed(1), '개', '이번 주 제외' + (noCost ? '' : ' · ' + won(l4) + '원/주')) +
-    kp('누적 손실', noCost ? '-' : won(tot), '원', '양품화로 되찾는 금액을 뺀 값', true) +
-    kp('연간 예상 손실', noCost ? '-' : won(l4 * 52), '원', '최근 4주 속도 × 52주', true) +
-    kp('양품화 못 해 날린 금액', noCost ? '-' : won(missed), '원', '검사로 확인된 성능저하 중 80% 미만 × 판매가') + '</div>';
+    kp('납품 매출', hasSale ? man(rev) : '-', '원', hasSale ? won(k.price) + '원 × ' + won(k.sold) + '개' : '맨 아래에 판매가·납품 수량을 넣으면 계산돼요') +
+    kp('납품 이익', hasSale ? man(profit) : '-', '원', hasSale ? '개당 ' + won(k.price - k.unit) + '원 (판매가 − 원가)' : '') +
+    kp('AS 손실 (지금까지)', noCost ? '-' : man(cost), '원', '교환 ' + rows.length.toLocaleString() + '개 + 창고 ' + mons + '개월 · ' + (hasSale ? '이익의 ' + (cost / profit * 100).toFixed(1) + '%' : '전체 기간'), true) +
+    kp('양품화 판매 예정', noCost ? '-' : man(back), '원', nBack + '개 × ' + won(k.resale) + '원 · 팔면 돌아올 돈') +
+    kp('양품화 판매 후 손실', noCost ? '-' : man(cost - back), '원', hasSale ? '이익의 ' + ((cost - back) / profit * 100).toFixed(1) + '%' : '', true) +
+    kp('연간 예상 손실', noCost ? '-' : man(l4 * 52 + k.store * 12), '원', '최근 4주 속도(주 ' + n4.toFixed(1) + '개) × 52주 + 창고 12개월' + (hasSale ? ' · 이익의 ' + ((l4 * 52 + k.store * 12) / profit * 100).toFixed(1) + '%' : ''), true) + '</div>';
   if (noCost) h += '<div class="note" style="margin-top:10px">맨 아래에 단가를 넣으면 금액이 계산돼요. 지금은 개수만 보여요.</div>';
-  if (!LT.perAll) h += '<div class="note" style="margin-top:10px">용량 시험 기록을 불러오는 중… 끝나면 다시 계산돼요.</div>';
-  var mx = Math.max.apply(null, wks.map(wn).concat([1]));
-  var col = { lost: '#6e7781', perf: 'var(--red)', perfE: '#f4a3a3', ntf: 'var(--amber)' };
-  h += '<div class="card" style="margin-top:14px"><div class="hd"><b>주별 손실 대상 교환 (최근 16주 · 출고일 기준)</b><span class="small muted" style="margin-left:6px">' + Object.keys(col).map(function (x) { return '<span style="display:inline-block;width:10px;height:10px;background:' + col[x] + ';margin:0 4px 0 10px"></span>' + LOSS_KIND[x]; }).join('') + '</span></div><div class="bd"><div style="display:flex;align-items:flex-end;gap:6px;height:190px">' +
+  var byK = {}; rows.forEach(function (r) { var o = byK[r.kind] = byK[r.kind] || { n: 0, cs: {}, cost: 0, back: 0 }; o.n++; o.cs[r.c.id] = 1; o.cost += r.cost; o.back += r.back; });
+  h += '<div class="card" style="margin-top:14px"><div class="hd"><b>교환 사유별 손실</b><span class="small muted" style="margin-left:6px">전체 기간 · 부가세 별도</span></div><div class="bd"><div class="tw"><table class="t"><thead><tr><th>분류</th><th>건수</th><th>개수</th><th>손실 금액</th><th>양품화 판매 예정</th></tr></thead><tbody>' +
+    LOSS_ORD.filter(function (x) { return byK[x]; }).map(function (x) { var o = byK[x]; return '<tr><td><span style="display:inline-block;width:10px;height:10px;background:' + LOSS_COL[x] + ';margin-right:6px"></span>' + LOSS_KIND[x] + '</td><td>' + Object.keys(o.cs).length + '</td><td>' + o.n + '</td><td>' + (noCost ? '-' : won(o.cost) + '원') + '</td><td>' + (noCost || !o.back ? '-' : won(o.back) + '원') + '</td></tr>'; }).join('') +
+    (k.store ? '<tr><td>창고 보관료 (월 ' + won(k.store) + '원 × ' + mons + '개월)</td><td>-</td><td>-</td><td>' + won(storeC) + '원</td><td>-</td></tr>' : '') + '<tr><td><b>합계</b></td><td><b>' + Object.keys(rows.reduce(function (s, r) { s[r.c.id] = 1; return s; }, {})).length + '</b></td><td><b>' + rows.length + '</b></td><td><b>' + (noCost ? '-' : won(cost) + '원') + '</b></td><td><b>' + (noCost ? '-' : won(back) + '원') + '</b></td></tr></tbody></table></div>';
+  var gone = rows.filter(function (r) { return !r.u.recvSn && r.kind !== 'lost'; }), g60 = gone.filter(function (r) { return (new Date(today) - new Date(r.d)) / 864e5 > 60; }).length;
+  h += '<div class="muted small" style="margin-top:6px">아직 회수 안 된 것 ' + gone.length + '개 (그중 출고 60일 넘은 것 ' + g60 + '개 → 손망실 후보). 양품화 판매 예정 = 양품화로 정리된 회수품 × 양품화 판매가 (아직 팔지 않은 것 포함).</div></div></div>';
+  var lots = (S.data.lots || []).filter(function (l, i, a) { return a.findIndex(function (m) { return m.prefix === l.prefix && m.fromNo === l.fromNo; }) === i; });
+  var byL = {}; rows.forEach(function (r) { var l = lotOf(r.u.recvSn || r.u.origSn); var key = l ? l.id : '?'; byL[key] = (byL[key] || 0) + 1; });
+  h += '<div class="card" style="margin-top:14px"><div class="hd"><b>차수별 교환 비율</b><span class="small muted" style="margin-left:6px">오래된 차수일수록 늘어나요</span></div><div class="bd"><div class="tw"><table class="t"><thead><tr><th>차수</th><th>생산일</th><th>수량</th><th>교환 개수</th><th>비율</th></tr></thead><tbody>' +
+    lots.slice().sort(function (a, b) { return String(a.madeAt).localeCompare(String(b.madeAt)); }).map(function (l) { var q = +(l.orderQty || l.qty) || 0, n = byL[l.id] || 0; return '<tr><td>' + esc(l.model + ' ' + l.name) + '</td><td>' + esc(l.madeAt || '') + '</td><td>' + q.toLocaleString() + '</td><td>' + n + '</td><td>' + (q ? (n / q * 100).toFixed(2) + '%' : '-') + '</td></tr>'; }).join('') +
+    (byL['?'] ? '<tr><td class="muted">S/N 모름</td><td></td><td></td><td>' + byL['?'] + '</td><td></td></tr>' : '') + '</tbody></table></div></div></div>';
+  var mx = Math.max.apply(null, wks.map(function (w) { return byW[w].n; }).concat([1]));
+  h += '<div class="card" style="margin-top:14px"><div class="hd"><b>주별 교환 (최근 16주 · 출고일 기준)</b></div><div class="bd"><div style="display:flex;align-items:flex-end;gap:6px;height:190px">' +
     wks.map(function (w) {
-      var b = byW[w], n = wn(w);
-      return '<div style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%" title="' + w + ' 주 · ' + n + '개' + (noCost ? '' : ' · ' + won(b.loss) + '원') + '"><div class="small">' + (n || '') + '</div>' +
-        ['ntf', 'perfE', 'perf', 'lost'].map(function (x) { return b[x] ? '<div style="width:100%;height:' + (b[x] / mx * 150).toFixed(1) + 'px;background:' + col[x] + '"></div>' : ''; }).join('') +
+      var b = byW[w];
+      return '<div style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%" title="' + w + ' 주 · ' + b.n + '개' + (noCost ? '' : ' · ' + won(b.cost) + '원') + '"><div class="small">' + (b.n || '') + '</div>' +
+        LOSS_ORD.slice().reverse().map(function (x) { return b[x] ? '<div style="width:100%;height:' + (b[x] / mx * 150).toFixed(1) + 'px;background:' + LOSS_COL[x] + '"></div>' : ''; }).join('') +
         '<div class="small muted" style="margin-top:4px;white-space:nowrap">' + w.slice(5).replace('-', '/') + '</div></div>';
     }).join('') + '</div></div></div>';
-  var mos = {}; rows.forEach(function (r) { var m = mos[r.mo] = mos[r.mo] || { loss: 0 }; m[r.kind] = (m[r.kind] || 0) + 1; m.loss += r.loss; });
-  var ks = ['lost', 'perf', 'perfE', 'ntf', 'hw', 'ext', 'pend'];
-  h += '<div class="card" style="margin-top:14px"><div class="hd"><b>월별 교환 분류</b></div><div class="bd"><div class="tw"><table class="t"><thead><tr><th>월</th>' + ks.map(function (x) { return '<th>' + LOSS_KIND[x] + '</th>'; }).join('') + '<th>손실 대상</th><th>손실 금액</th></tr></thead><tbody>' +
-    Object.keys(mos).sort().reverse().slice(0, 12).map(function (m) { var o = mos[m]; return '<tr><td class="nowrap">' + m + '</td>' + ks.map(function (x) { return '<td' + (LOSS_IN[x] ? '' : ' class="muted"') + '>' + (o[x] || '-') + '</td>'; }).join('') + '<td><b>' + ((o.lost || 0) + (o.perf || 0) + (o.perfE || 0) + (o.ntf || 0)) + '</b></td><td>' + (noCost ? '-' : won(o.loss) + '원') + '</td></tr>'; }).join('') +
-    '</tbody></table></div><div class="muted small" style="margin-top:6px">손실 = 교환 개수 × (교체품 원가 + 인건비) + 택배 왕복 − 양품화 대상(용량 80% 이상)의 판매가. 회수 못 함(손망실 · 회수불가 · 분실 · 고객 폐기)은 검사가 없어 인건비를 빼고 계산해요. 하드웨어 불량 · 외력 · 그 밖 미검사는 참고로만 보여주고 손실에 넣지 않아요.</div></div></div>';
-  h += '<div class="card" style="margin-top:14px"><div class="hd"><b>단가</b></div><div class="bd"><div class="row" style="flex-wrap:wrap;gap:12px;align-items:flex-end">' +
-    LOSS_KEYS.map(function (x) { return '<label class="small">' + x[1] + ' (' + x[2] + ')<br><input class="inp" id="lossIn_' + x[0] + '" inputmode="numeric" style="width:130px" value="' + (k[x[0]] || '') + '"> 원</label>'; }).join('') +
+  var mos = {}; rows.forEach(function (r) { var m = mos[r.mo] = mos[r.mo] || { n: 0, cost: 0 }; m[r.kind] = (m[r.kind] || 0) + 1; m.n++; m.cost += r.cost; });
+  h += '<div class="card" style="margin-top:14px"><div class="hd"><b>월별 교환 분류</b></div><div class="bd"><div class="tw"><table class="t"><thead><tr><th>월</th>' + LOSS_ORD.map(function (x) { return '<th>' + LOSS_KIND[x] + '</th>'; }).join('') + '<th>합계</th><th>손실 금액</th></tr></thead><tbody>' +
+    Object.keys(mos).sort().reverse().slice(0, 12).map(function (m) { var o = mos[m]; return '<tr><td class="nowrap">' + m + '</td>' + LOSS_ORD.map(function (x) { return '<td>' + (o[x] || '-') + '</td>'; }).join('') + '<td><b>' + o.n + '</b></td><td>' + (noCost ? '-' : won(o.cost) + '원') + '</td></tr>'; }).join('') +
+    '</tbody></table></div><div class="muted small" style="margin-top:6px">손실 = 교환 개수 × (교체품 원가 + 인건비) + 출고 택배 + 회수 택배(회수된 것만). 손망실은 검사가 없어 인건비를 빼요. 모든 금액은 부가세 별도.</div></div></div>';
+  h += '<div class="card" style="margin-top:14px"><div class="hd"><b>단가 (부가세 별도)</b></div><div class="bd"><div class="row" style="flex-wrap:wrap;gap:12px;align-items:flex-end">' +
+    LOSS_KEYS.map(function (x) { return '<label class="small">' + x[1] + ' (' + x[2] + ')<br><input class="inp" id="lossIn_' + x[0] + '" inputmode="numeric" style="width:130px" value="' + (k[x[0]] || '') + '"> ' + (x[3] || '원') + '</label>'; }).join('') +
     '<button class="btn pri" data-act="lossSave">저장</button></div></div></div>';
   return h;
 }
