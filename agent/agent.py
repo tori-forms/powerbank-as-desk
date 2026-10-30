@@ -19,7 +19,7 @@ import sys, os, json, time, threading, struct, random, traceback, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-VERSION = '1.3.10'
+VERSION = '1.3.11'
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE_FILE = os.path.join(HERE, 'state.json')
 CONFIG_FILE = os.path.join(HERE, 'config.json')
@@ -58,12 +58,17 @@ def ms():
     return int(time.time() * 1000)
 
 
+LOG_TAIL = []   # 최근 로그 60줄 → 실시간 현황에 같이 올림 (서버 PC에 안 가도 원격으로 진단)
+
+
 def log(msg):
+    line = time.strftime('%Y-%m-%d %H:%M:%S ') + str(msg)
+    LOG_TAIL.append(line[:500]); del LOG_TAIL[:-60]
     try:
         if os.path.exists(LOG_FILE) and os.path.getsize(LOG_FILE) > 1_000_000:
             os.replace(LOG_FILE, LOG_FILE + '.1')
         with open(LOG_FILE, 'a', encoding='utf-8') as f:
-            f.write(time.strftime('%Y-%m-%d %H:%M:%S ') + str(msg) + '\n')
+            f.write(line + '\n')
     except Exception:
         pass
 
@@ -841,7 +846,7 @@ def live_snapshot():
             lg = D.log; k = max(1, -(-len(lg) // 120))
             o['curve'] = [round(r[1], 3) for r in lg[::k]] + ([round(lg[-1][1], 3)] if (len(lg) - 1) % k else [])
         devs.append(o)
-    return {'host': socket.gethostname()[:40], 'version': VERSION, 'at': ms(), 'pending': len(STATE['pending']), 'devices': devs, 'hidCount': HIDN[0]}
+    return {'host': socket.gethostname()[:40], 'version': VERSION, 'at': ms(), 'pending': len(STATE['pending']), 'devices': devs, 'hidCount': HIDN[0], 'log': LOG_TAIL[-60:]}
 
 
 def live_push():
@@ -1126,6 +1131,11 @@ def main():
     CONFIG.update(jload(CONFIG_FILE, {}))
     STATE.update(jload(STATE_FILE, {}))
     STATE.setdefault('chans', {}); STATE.setdefault('devs', {}); STATE.setdefault('pending', [])
+    try:   # 재시작 전 로그도 원격으로 보이게 파일 끝 60줄을 먼저 담음
+        with open(LOG_FILE, encoding='utf-8', errors='replace') as f:
+            LOG_TAIL.extend(x.rstrip('\n')[:500] for x in f.readlines()[-60:])
+    except Exception:
+        pass
     restore_lost()
     srv = None
     for i in range(20):   # 다시 시작할 때 이전 프로세스가 포트를 놓을 때까지 잠깐 기다림
