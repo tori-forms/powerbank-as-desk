@@ -557,7 +557,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
   } catch (e) { }
 })();
 var DEMO_MODE = false;
-var BUILD_ID = '3bc777155dbc', NEW_VER = false;
+var BUILD_ID = 'a54f3c71d0a8', NEW_VER = false;
 function verBusy_() {
   if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
   return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
@@ -4080,10 +4080,10 @@ function ltRecallJudge_(t) {
   if (la && !la.fixed) return { cls: 'warn', txt: '판정 보류', why: tag + lot + la.name + ' 평균 아직 확정 안 됨 → 품질팀 확정 후 판정 · ' + mt + (la.n ? ' · 참고: 지금까지 ' + la.name + ' 납품 검사 평균 ' + la.ref.toLocaleString() + 'mAh (' + la.n + '개) · 이 S/N은 그 ' + Math.floor(m / la.ref * 100) + '%' : '') };
   if (la) {
     var lp = m / la.avg * 100, ln = Math.round(la.avg * LT_LOT_OK).toLocaleString(), lb = lot + la.name + ' 평균 ' + la.avg.toLocaleString() + 'mAh · ' + mt + ' = 평균의 ' + Math.floor(lp) + '% → ';
-    rc = lp >= LT_LOT_OK * 100 ? ['ok', '정상', lb + '80%(' + ln + 'mAh) 이상이라 정상 · 양품화 가능'] : ['bad', '성능 불량', lb + '80%(' + ln + 'mAh) 미만이라 성능 불량'];
+    rc = lp >= LT_LOT_OK * 100 ? ['ok', '정상', lb + '80%(' + ln + 'mAh) 이상이라 정상 · 양품화 가능'] : ['bad', '80% 미만', lb + '80%(' + ln + 'mAh) 미만'];
   } else {
     var soh = ltConv(m) / LT_BASE.mean * 100, nl = '양산 차수를 몰라 품질팀 신품 평균 ' + LT_BASE.mean.toLocaleString() + 'mAh(3.7V 환산) 기준 · 측정 환산 ' + Math.round(ltConv(m)).toLocaleString() + 'mAh = 평균의 ' + Math.floor(soh) + '% → ';
-    rc = soh >= 80 ? ['ok', '정상', nl + '80% 이상이라 정상'] : soh >= 60 ? ['warn', '정상 노화', nl + '60~80%라 소모품 열화 범위'] : ['bad', '성능 불량', nl + '60% 미만이라 성능 불량'];
+    rc = soh >= 80 ? ['ok', '정상', nl + '80% 이상이라 정상'] : soh >= 60 ? ['warn', '정상 노화', nl + '60~80%라 소모품 열화 범위'] : ['bad', '60% 미만', nl + '60% 미만'];
   }
   return { cls: rc[0], txt: rc[1], why: tag + rc[2] };
 }
@@ -4649,9 +4649,9 @@ function vLoadtest() {
     (hid ? (LT.agent ? '' : '<button class="btn pri" data-act="ltAdd">＋ 장비 추가 (USB)</button>') + '<button class="btn" data-act="ltAll">▶ 전체 시작</button><button class="btn red" data-act="ltStopAll">■ 전체 정지</button>' + (LT.agent ? '<button class="btn" data-act="ltAssign" title="실물 1번 테스트기부터 차례로 배터리를 꽂으면 그 순서대로 1, 2, 3… 번호가 붙어요">칸 번호 지정</button><button class="btn" data-act="ltRescan" title="응답 없는 장비·시험 중이 아닌 장비만 USB 연결을 새로 해요. 시험 중인 장비는 그대로 이어져요">🔌 장비 다시 찾기</button><button class="btn" data-act="ltRenum" title="연결 끊긴 칸을 지우고 칸 번호를 1부터 다시 매겨요 (시험 중이 아닐 때만)">칸 번호 정리</button>' : '') : '') + '</div>' + (remoteOnly ? '</details>' : '') +
     '<details style="margin-top:12px"><summary class="small" style="cursor:pointer;font-weight:600">사용 방법 · 표준 조건</summary><ol class="small" style="margin:8px 0 0;padding-left:18px;color:var(--ink2);line-height:1.7">' +
     '<li>표준 조건: <b>고객사(티오더) 시험과 같은 CC 3.0A · 차단 0.7V</b> (보호회로가 출력을 끌 때까지) · A 포트 5V 출력 · 시험용 A-to-C 30cm 케이블(3A급 굵은 선, 장비마다 고정) · 100% 완충 · 실온</li>' +
-    '<li>판정(고객사 기준): 기준 용량 19,000mAh · <b>측정 12,000mAh(3.7V 환산 16,216mAh) 이상 합격</b>, 미만 불합격. 회수분은 <b>CC 2A · 차단 4.0V(품질팀 파렛트 시험과 같은 조건)로 시험해서 S/N이 속한 양산 차수 평균의 80% 이상 정상(양품화 가능), 미만 성능 불량</b> — 다른 조건으로 잰 회수분은 참고로만 표시 (1차 13,875 · 2차 13,985 · 3차 13,938 · 4차 등 확정 전 차수는 판정 보류, 지금까지 납품 검사 평균만 참고로 표시). 차수를 모르면 고객사 최소 12,000 기준.</li>' +
+    '<li>판정(고객사 기준): 기준 용량 19,000mAh · <b>측정 12,000mAh(3.7V 환산 16,216mAh) 이상 합격</b>, 미만 불합격. 회수분은 <b>CC 2A · 차단 4.0V(품질팀 파렛트 시험과 같은 조건)로 시험해서 S/N이 속한 양산 차수 평균의 80% 이상 정상(양품화 가능), 미만은 "80% 미만"으로 표시</b> — 다른 조건으로 잰 회수분은 참고로만 표시 (1차 13,875 · 2차 13,985 · 3차 13,938 · 4차 등 확정 전 차수는 판정 보류, 지금까지 납품 검사 평균만 참고로 표시). 차수를 모르면 고객사 최소 12,000 기준.</li>' +
     '<li>케이블이 길수록 케이블에서 열로 사라지는 몫이 커져 용량이 낮게 재져요 (120cm 동봉 케이블은 2A에서 최대 4% 정도). 예전 120cm 기록과 30cm 기록은 직접 비교하지 마세요.</li>' +
-    '<li><b>반드시 100% 완충한 뒤 시작</b>하세요. 잔량이 남은 상태에서 시작하면 남은 양만 재져요 (잔량 2% → 2~3Wh). 참고로 예전 품질팀 시험(P20BOTA25 · 2A · 4.0V — 지금과 조건이 달라 직접 비교 불가)에서는 결과 약 <b>12,600~14,400mAh · 6시간 20분~7시간 10분</b>, 3.7V 환산 <b>평균 18,577mAh(표기의 92.9%)</b>가 나왔어요 (신품 50개). 판정: <b>17,500 이상 합격 · 17,000~17,500 보류 · 17,000 미만 불합격</b>, 회수분은 신품 평균 대비 <b>80% 이상 정상 · 60~80% 정상 노화 · 60% 미만 성능 불량</b>.</li>' +
+    '<li><b>반드시 100% 완충한 뒤 시작</b>하세요. 잔량이 남은 상태에서 시작하면 남은 양만 재져요 (잔량 2% → 2~3Wh). 참고로 예전 품질팀 시험(P20BOTA25 · 2A · 4.0V — 지금과 조건이 달라 직접 비교 불가)에서는 결과 약 <b>12,600~14,400mAh · 6시간 20분~7시간 10분</b>, 3.7V 환산 <b>평균 18,577mAh(표기의 92.9%)</b>가 나왔어요 (신품 50개). 판정: <b>17,500 이상 합격 · 17,000~17,500 보류 · 17,000 미만 불합격</b>, 회수분은 신품 평균 대비 <b>80% 이상 정상 · 60~80% 정상 노화 · 60% 미만</b>.</li>' +
     '<li>3A는 케이블 손실이 커서 장비에 찍히는 평균 전압이 4.6V대로 내려가요. 고객사와 같은 케이블인지 확인하세요.</li>' +
     '<li>1A로 잰 예전 기록과 2A 기록은 직접 비교하지 마세요 (2A가 2~4% 낮게 나와요). 최초 대비 %는 같은 전류 기록끼리만 비교해요.</li>' +
     '<li>DL24마다 12V 전원을 넣고 PC-USB 포트를 PC(또는 전원 허브)에 연결 → <b>＋ 장비 추가</b>에서 "ATORCH DL24"를 하나씩 선택. 한 번 허용한 장비는 다음부터 자동 연결돼요.</li>' +
@@ -5059,7 +5059,7 @@ function ltReportHtml(rows, none, opt) {
     '<b>환산</b> — 3.7V 환산 mAh = 측정 mAh(5V 출력) × 5 ÷ 3.7 (기존 품질 성적서와 같은 계산) · 표기 용량 ' + N(LT_RATED_MAH, 0) + 'mAh<br>' +
     (rows.some(ltIsCust) ? '<b>고객사 기준</b> (CC 3.0A · 차단 0.7V, 보호회로 종료까지) — 기준 용량 ' + N(LT_CUST.ref, 0) + 'mAh · 측정 ' + N(LT_CUST.min, 0) + 'mAh(3.7V 환산 ' + N(ltConv(LT_CUST.min), 0) + 'mAh) 이상 합격<br>' : '') +
     (rows.some(ltIsGuide) ? '<b>고객사 QC 가이드</b> (CC 2A · 차단 3.0~3.5V) — Wh로 판정: ' + LT_GUIDE.pass.toFixed(1) + 'Wh 이상 합격(효율 78.2%↑) · ' + LT_GUIDE.hold.toFixed(1) + '~54.9Wh 재점검(케이블 전압강하 확인) · ' + LT_GUIDE.hold.toFixed(1) + 'Wh 미만 불합격 · 셀 환산 mAh = Wh × 1000 ÷ 3.7 · 기준 ' + LT_GUIDE.ref + 'Wh<br>' : '') +
-    '<b>판정 기준</b> (CC 2A · 차단 4.0V) — 납품 검사: ' + N(LT_BASE.pass, 0) + 'mAh 이상 합격 · ' + N(LT_BASE.hold, 0) + '~' + N(LT_BASE.pass, 0) + ' 보류(재충전 후 재시험) · ' + N(LT_BASE.hold, 0) + ' 미만 불합격 / AS 회수분: 신품 평균(' + N(LT_BASE.mean, 0) + 'mAh) 대비 80% 이상 정상 · 60~80% 정상 노화 · 60% 미만 성능 불량. 다른 조건으로 잰 결과는 (참고)로 표시.</div>' +
+    '<b>판정 기준</b> (CC 2A · 차단 4.0V) — 납품 검사: ' + N(LT_BASE.pass, 0) + 'mAh 이상 합격 · ' + N(LT_BASE.hold, 0) + '~' + N(LT_BASE.pass, 0) + ' 보류(재충전 후 재시험) · ' + N(LT_BASE.hold, 0) + ' 미만 불합격 / AS 회수분: 신품 평균(' + N(LT_BASE.mean, 0) + 'mAh) 대비 80% 이상 정상 · 60~80% 정상 노화 · 60% 미만. 다른 조건으로 잰 결과는 (참고)로 표시.</div>' +
     '<div class="sum"><div>대상 <b>' + rows.length + '</b>건</div><div>3.7V 환산 평균 <b>' + N(avg, 0) + '</b> mAh</div><div>최저 <b>' + N(Math.min.apply(null, conv), 0) + '</b> · 최고 <b>' + N(Math.max.apply(null, conv), 0) + '</b></div>' +
     Object.keys(cnt).map(function (k) { return '<div>' + E(k) + ' <b>' + cnt[k] + '</b></div>'; }).join('') + '</div>' +
     '<table class="list"><thead>' + head + '</thead><tbody>' + body + '</tbody></table>' +
