@@ -557,7 +557,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
   } catch (e) { }
 })();
 var DEMO_MODE = false;
-var BUILD_ID = '99a23089ed1d', NEW_VER = false;
+var BUILD_ID = '3a13b00bf069', NEW_VER = false;
 function verBusy_() {
   if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
   return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
@@ -4066,7 +4066,7 @@ function ltWait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 function ltHms(s) { s = Math.max(0, Math.round(s || 0)); return Math.floor(s / 3600) + ':' + ('0' + Math.floor(s % 3600 / 60)).slice(-2) + ':' + ('0' + s % 60).slice(-2); }
 function ltIso(ms) { var d = new Date(ms), p = function (n) { return ('0' + n).slice(-2); }; return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()); }
 function ltVal(id, d) { var el = document.getElementById(id); var v = el ? el.value : ls(id); return v == null || v === '' ? d : v; }
-var LT_SLOT_CONDS = [['3.0|3.0', 'CC 3A · 차단 3.0V'], ['2.0|3.0', 'CC 2A · 차단 3.0V (QC 가이드)'], ['3.0|0.7', 'CC 3A · 차단 0.7V (고객사 표준)'], ['2.0|0.7', 'CC 2A · 차단 0.7V'], ['2.0|4.0', 'CC 2A · 차단 4.0V (품질팀 · AS 회수분 판정)']];
+var LT_SLOT_CONDS = [['3.0|3.0', 'CC 3A · 차단 3.0V'], ['2.0|3.0', 'CC 2A · 차단 3.0V'], ['3.0|0.7', 'CC 3A · 차단 0.7V'], ['2.0|0.7', 'CC 2A · 차단 0.7V'], ['2.0|4.0', 'CC 2A · 차단 4.0V']];
 function ltSlotMap_() { try { return JSON.parse(ls('ltSlotCond') || '{}') || {}; } catch (e) { return {}; } }
 function ltCondOf(D) { var p = String(ltSlotMap_()[D.no] || '').split('|'); return p.length === 2 ? { cur: p[0], cut: p[1] } : null; }
 function ltSend(D, cmd, d4) {
