@@ -19,7 +19,7 @@ import sys, os, json, time, threading, struct, random, traceback, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-VERSION = '1.3.9'
+VERSION = '1.3.10'
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE_FILE = os.path.join(HERE, 'state.json')
 CONFIG_FILE = os.path.join(HERE, 'config.json')
@@ -258,6 +258,8 @@ def on_report(D, u):
             D.dead_at = 0
         row = [now, L['v'], L['a'], round(L['wh'] - D.base['wh'], 4), round(L['mah'] - D.base['mah'], 2), L['temp']]
         if L['a'] > 0.05:
+            if L['v'] < 0.1 and D.last_row:   # 꺼지는 순간 '0V인데 전류 흐름' 표본을 보내는 장비가 있음(7번) → 전압만 직전 값 유지, 누적값은 그대로
+                row[1] = D.last_row[1]
             D.last_row = row
         if now - D.log_at >= LOG_EVERY_MS:
             D.log_at = now; D.log.append(row)
