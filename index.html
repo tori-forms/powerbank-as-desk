@@ -557,7 +557,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
   } catch (e) { }
 })();
 var DEMO_MODE = false;
-var BUILD_ID = '560b2d22e44c', NEW_VER = false;
+var BUILD_ID = '99a23089ed1d', NEW_VER = false;
 function verBusy_() {
   if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
   return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
@@ -4481,7 +4481,7 @@ function ltDraw(D) {
   var tEnd = D.state === 'done' ? D.endAt : D.state === 'paused' ? (D.partial ? D.partial.t : D.pausedAt) : Date.now();
   k('tm').textContent = D.startAt && (D.state === 'run' || D.state === 'done' || D.state === 'paused') ? (D.state === 'done' && R ? ltHms(R.sec) : ltHms((tEnd - D.startAt - (D.pauseMs || 0)) / 1000)) : '-';
   k('meta').textContent = (D.state === 'run' || D.state === 'done' || D.state === 'paused' ? '조건 ' + c.cur + 'A · 차단 ' + c.cut + 'V · ' + (LT_PUR_LABEL[c.purpose] || c.purpose || '') + ' · ' : '') +
-    (D.setCur !== undefined ? '장비 설정 ' + (['CC', 'CV', 'CR', 'CP'][D.mode] || '?') + ' ' + D.setCur.toFixed(2) + 'A / 차단 ' + D.setCut.toFixed(2) + 'V' : '') + (L ? ' · MOS ' + L.temp.toFixed(1) + '℃' : '');
+    (D.setCur != null && D.setCut != null ? '장비 설정 ' + (['CC', 'CV', 'CR', 'CP'][D.mode] || '?') + ' ' + D.setCur.toFixed(2) + 'A / 차단 ' + D.setCut.toFixed(2) + 'V' : '') + (L && L.temp != null ? ' · MOS ' + L.temp.toFixed(1) + '℃' : '');
   var msg = '', ck = D.check;
   if (D.err) msg += '<div class="ltbox bad">' + esc(D.err) + '</div>';
   if (D.msg) msg += '<div class="ltbox ' + D.msg[0] + '">' + esc(D.msg[1]) + '</div>';
@@ -4680,7 +4680,7 @@ function ltBeforeRender() {
 }
 function ltMount() {
   var grid = $('#ltGrid');
-  if (grid) LT.devs.forEach(function (D) { grid.appendChild(D.el); ltDraw(D); });
+  if (grid) LT.devs.forEach(function (D) { grid.appendChild(D.el); try { ltDraw(D); } catch (e) { console.error(e); } });
   if (LT.focus && LT.focus.el && document.body.contains(LT.focus.el)) { LT.focus.el.focus(); try { LT.focus.el.setSelectionRange(LT.focus.pos, LT.focus.pos); } catch (e) { } }
   LT.focus = null; LT.moving = false;
   if (grid) { ltRefreshHistCard(); ltRemotePaint(); }
