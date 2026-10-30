@@ -557,7 +557,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
   } catch (e) { }
 })();
 var DEMO_MODE = false;
-var BUILD_ID = 'a93a1e8205ab', NEW_VER = false;
+var BUILD_ID = '4f5022c0a141', NEW_VER = false;
 function verBusy_() {
   if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
   return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
@@ -2225,10 +2225,11 @@ function vLoss() {
     (k.store ? '<tr><td>창고 보관료 (월 ' + won(k.store) + '원 × ' + mons + '개월)</td><td>-</td><td>-</td><td>' + won(storeC) + '원</td><td>-</td></tr>' : '') + '<tr><td><b>합계</b></td><td><b>' + Object.keys(rows.reduce(function (s, r) { s[r.c.id] = 1; return s; }, {})).length + '</b></td><td><b>' + rows.length + '</b></td><td><b>' + (noCost ? '-' : won(cost) + '원') + '</b></td><td><b>' + (noCost ? '-' : won(back) + '원') + '</b></td></tr></tbody></table></div>';
   var gone = rows.filter(function (r) { return !r.u.recvSn && r.kind !== 'lost'; }), g60 = gone.filter(function (r) { return (new Date(today) - new Date(r.d)) / 864e5 > 60; }).length;
   h += '<div class="muted small" style="margin-top:6px">아직 회수 안 된 것 ' + gone.length + '개 (그중 출고 60일 넘은 것 ' + g60 + '개 → 손망실 후보). 양품화 판매 예정 = 양품화로 정리된 회수품 × 양품화 판매가 (아직 팔지 않은 것 포함).</div></div></div>';
-  var lots = (S.data.lots || []).filter(function (l, i, a) { return a.findIndex(function (m) { return m.prefix === l.prefix && m.fromNo === l.fromNo; }) === i; });
-  var byL = {}; rows.forEach(function (r) { var l = lotOf(r.u.recvSn || r.u.origSn); var key = l ? l.id : '?'; byL[key] = (byL[key] || 0) + 1; });
+  var lots = [], gl = {};
+  (S.data.lots || []).forEach(function (l) { var key = l.model + '|' + l.name; if (!gl[key]) lots.push(gl[key] = { key: key, model: l.model, name: l.name, madeAt: l.madeAt, q: 0 }); gl[key].q += +(l.orderQty || l.qty) || 0; });
+  var byL = {}; rows.forEach(function (r) { var l = lotOf(r.u.recvSn || r.u.origSn); var key = l ? l.model + '|' + l.name : '?'; byL[key] = (byL[key] || 0) + 1; });
   h += '<div class="card" style="margin-top:14px"><div class="hd"><b>차수별 교환 비율</b><span class="small muted" style="margin-left:6px">오래된 차수일수록 늘어나요</span></div><div class="bd"><div class="tw"><table class="t"><thead><tr><th>차수</th><th>생산일</th><th>수량</th><th>교환 개수</th><th>비율</th></tr></thead><tbody>' +
-    lots.slice().sort(function (a, b) { return String(a.madeAt).localeCompare(String(b.madeAt)); }).map(function (l) { var q = +(l.orderQty || l.qty) || 0, n = byL[l.id] || 0; return '<tr><td>' + esc(l.model + ' ' + l.name) + '</td><td>' + esc(l.madeAt || '') + '</td><td>' + q.toLocaleString() + '</td><td>' + n + '</td><td>' + (q ? (n / q * 100).toFixed(2) + '%' : '-') + '</td></tr>'; }).join('') +
+    lots.slice().sort(function (a, b) { return String(a.madeAt).localeCompare(String(b.madeAt)); }).map(function (l) { var q = l.q, n = byL[l.key] || 0; return '<tr><td>' + esc(l.model + ' ' + l.name) + '</td><td>' + esc(l.madeAt || '') + '</td><td>' + q.toLocaleString() + '</td><td>' + n + '</td><td>' + (q ? (n / q * 100).toFixed(2) + '%' : '-') + '</td></tr>'; }).join('') +
     (byL['?'] ? '<tr><td class="muted">S/N 모름</td><td></td><td></td><td>' + byL['?'] + '</td><td></td></tr>' : '') + '</tbody></table></div></div></div>';
   var mx = Math.max.apply(null, wks.map(function (w) { return byW[w].n; }).concat([1]));
   h += '<div class="card" style="margin-top:14px"><div class="hd"><b>주별 교환 (최근 16주 · 출고일 기준)</b></div><div class="bd"><div style="display:flex;align-items:flex-end;gap:6px;height:190px">' +
@@ -4048,8 +4049,7 @@ function ltJudge1_(t) {
 function ltIsLotCond_(t) { return Math.abs(+t.cur - LT_BASE.cur) < 0.05 && Math.abs(+t.cut - LT_BASE.cut) < 0.05; }
 function ltRecallJudge_(t) {
   var m = +t.mah, mt = '측정 ' + Math.round(m).toLocaleString() + 'mAh';
-  if (!ltIsLotCond_(t)) return { cls: 'ref', txt: '참고', why: '[CC ' + (+t.cur) + 'A · 차단 ' + (+t.cut) + 'V] ' + mt + ' · ' + (+t.wh).toFixed(1) + 'Wh — 양산 차수 평균은 품질팀 시험 조건(CC 2A · 차단 4.0V)으로 잰 값이라, AS 회수분 합불은 2A·4.0V로 시험했을 때만 판정해요' };
-  var la = ltLotAvg_(String(t.sn || '')), tag = '[품질팀 2A·4.0V] ', lot = la ? la.model + ' ' + la.name + ' 양산 제품 · ' : '', rc;
+  var la = ltLotAvg_(String(t.sn || '')), tag = ltIsLotCond_(t) ? '[품질팀 2A·4.0V] ' : '[CC ' + (+t.cur) + 'A · 차단 ' + (+t.cut) + 'V · 평균은 2A·4.0V로 잰 값이라 약간 낮게 나올 수 있음] ', lot = la ? la.model + ' ' + la.name + ' 양산 제품 · ' : '', rc;
   if (la && !la.fixed) return { cls: 'warn', txt: '판정 보류', why: tag + lot + la.name + ' 평균 아직 확정 안 됨 → 품질팀 확정 후 판정 · ' + mt + (la.n ? ' · 참고: 지금까지 ' + la.name + ' 납품 검사 평균 ' + la.ref.toLocaleString() + 'mAh (' + la.n + '개) · 이 S/N은 그 ' + Math.floor(m / la.ref * 100) + '%' : '') };
   if (la) {
     var lp = m / la.avg * 100, ln = Math.round(la.avg * LT_LOT_OK).toLocaleString(), lb = lot + la.name + ' 평균 ' + la.avg.toLocaleString() + 'mAh · ' + mt + ' = 평균의 ' + Math.floor(lp) + '% → ';
