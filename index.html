@@ -557,7 +557,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
   } catch (e) { }
 })();
 var DEMO_MODE = false;
-var BUILD_ID = 'a54f3c71d0a8', NEW_VER = false;
+var BUILD_ID = '70be0fbb2b60', NEW_VER = false;
 function verBusy_() {
   if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
   return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
@@ -2223,6 +2223,7 @@ function runwayCard_(rows, k, today) {
   return '<div class="card" style="margin-top:14px"><div class="hd"><b>교체 재고 — 이 속도면 며칠 버티나</b><span class="small muted" style="margin-left:6px">최근 28일 교환 속도 기준</span></div><div class="bd"><div class="tw"><table class="t"><thead><tr><th>기종</th><th>교체 재고</th><th>주당 교환</th><th>버티는 기간</th><th>13주 평균 속도면</th><th>발주 마감</th><th>보충 수량</th><th>판단</th></tr></thead><tbody>' + tr + '</tbody></table></div>' +
     '<div class="muted small" style="margin-top:6px">발주 마감 = 소진일 − 리드타임 ' + k.lead + '일. 보충 수량 = 입고까지 ' + k.lead + '일 쓸 양 + 입고 후 ' + k.cover + '일 분 − 재고. 리드타임과 목표 기간은 맨 아래에서 바꿀 수 있어요.' + (noSn ? ' 출고했는데 교체 S/N을 안 적은 ' + noSn + '개는 재고에서 아직 안 빠져 있어요.' : '') + '</div></div></div>';
 }
+function lotProfit_(l, k) { return l.model === 'P20BOTA25' && k.price && k.unit ? l.q * (k.price - k.unit) : null; }
 function vLoss() {
   var k = lossCost_(), rows = lossRows_(), noCost = !k.unit, today = S.data.meta.today;
   var won = function (v) { return Math.round(v).toLocaleString(); };
@@ -2239,7 +2240,7 @@ function vLoss() {
   var last4 = wks.slice(-5, -1), n4 = sum(last4, function (w) { return byW[w].n; }) / 4, l4 = sum(last4, function (w) { return byW[w].cost; }) / 4;
   var h = '<div class="kpis">' +
     kp('납품 매출', hasSale ? man(rev) : '-', '원', hasSale ? won(k.price) + '원 × ' + won(k.sold) + '개' : '맨 아래에 판매가·납품 수량을 넣으면 계산돼요') +
-    kp('납품 이익', hasSale ? man(profit) : '-', '원', hasSale ? '개당 ' + won(k.price - k.unit) + '원 (판매가 − 원가)' : '') +
+    kp('납품 영업이익', hasSale ? man(profit) : '-', '원', hasSale ? '개당 ' + won(k.price - k.unit) + '원 (판매가 − 원가, 판관비 전)' : '') +
     kp('AS 손실 (지금까지)', noCost ? '-' : man(cost), '원', '교환 ' + rows.length.toLocaleString() + '개 + 창고 ' + mons + '개월 · ' + (hasSale ? '이익의 ' + (cost / profit * 100).toFixed(1) + '%' : '전체 기간'), true) +
     kp('양품화 판매 예정', noCost ? '-' : man(back), '원', nBack + '개 × ' + won(k.resale) + '원 · 팔면 돌아올 돈') +
     kp('양품화 판매 후 손실', noCost ? '-' : man(cost - back), '원', hasSale ? '이익의 ' + ((cost - back) / profit * 100).toFixed(1) + '%' : '', true) +
@@ -2253,11 +2254,11 @@ function vLoss() {
   var gone = rows.filter(function (r) { return !r.u.recvSn && r.kind !== 'lost'; }), g60 = gone.filter(function (r) { return (new Date(today) - new Date(r.d)) / 864e5 > 60; }).length;
   h += '<div class="muted small" style="margin-top:6px">아직 회수 안 된 것 ' + gone.length + '개 (그중 출고 60일 넘은 것 ' + g60 + '개 → 손망실 후보). 양품화 판매 예정 = 양품화로 정리된 회수품 × 양품화 판매가 (아직 팔지 않은 것 포함).</div></div></div>';
   var lots = [], gl = {};
-  (S.data.lots || []).forEach(function (l) { var key = l.model + '|' + l.name; if (!gl[key]) lots.push(gl[key] = { key: key, model: l.model, name: l.name, madeAt: l.madeAt, q: 0 }); gl[key].q += +(l.orderQty || l.qty) || 0; });
+  (S.data.lots || []).forEach(function (l) { var key = l.model + '|' + l.name; if (!gl[key]) lots.push(gl[key] = { key: key, model: l.model, name: l.name, madeAt: l.madeAt, ship: l.shipStatus, q: 0 }); gl[key].q += +(l.orderQty || l.qty) || 0; });
   var byL = {}; rows.forEach(function (r) { var l = lotOf(r.u.recvSn || r.u.origSn); var key = l ? l.model + '|' + l.name : '?'; byL[key] = (byL[key] || 0) + 1; });
-  h += '<div class="card" style="margin-top:14px"><div class="hd"><b>차수별 교환 비율</b><span class="small muted" style="margin-left:6px">오래된 차수일수록 늘어나요</span></div><div class="bd"><div class="tw"><table class="t"><thead><tr><th>차수</th><th>생산일</th><th>수량</th><th>교환 개수</th><th>비율</th></tr></thead><tbody>' +
-    lots.slice().sort(function (a, b) { return String(a.madeAt).localeCompare(String(b.madeAt)); }).map(function (l) { var q = l.q, n = byL[l.key] || 0; return '<tr><td>' + esc(l.model + ' ' + l.name) + '</td><td>' + esc(l.madeAt || '') + '</td><td>' + q.toLocaleString() + '</td><td>' + n + '</td><td>' + (q ? (n / q * 100).toFixed(2) + '%' : '-') + '</td></tr>'; }).join('') +
-    (byL['?'] ? '<tr><td class="muted">S/N 모름</td><td></td><td></td><td>' + byL['?'] + '</td><td></td></tr>' : '') + '</tbody></table></div></div></div>';
+  h += '<div class="card" style="margin-top:14px"><div class="hd"><b>차수별 납품 영업이익 · 교환 비율</b><span class="small muted" style="margin-left:6px">교환은 오래된 차수일수록 늘어나요</span></div><div class="bd"><div class="tw"><table class="t"><thead><tr><th>차수</th><th>생산일</th><th>수량</th><th>납품 영업이익</th><th>교환 개수</th><th>비율</th></tr></thead><tbody>' +
+    lots.slice().sort(function (a, b) { return String(a.madeAt).localeCompare(String(b.madeAt)); }).map(function (l) { var q = l.q, n = byL[l.key] || 0, p = lotProfit_(l, k); return '<tr><td>' + esc(l.model + ' ' + l.name) + '</td><td>' + esc(l.madeAt || '') + '</td><td>' + q.toLocaleString() + '</td><td>' + (p === null ? '-' : won(p) + '원' + (l.ship === 'pending' ? '<div class="small muted">출하 전 · 예상</div>' : l.ship === 'shipping' ? '<div class="small muted">출하 진행 중</div>' : '')) + '</td><td>' + n + '</td><td>' + (q ? (n / q * 100).toFixed(2) + '%' : '-') + '</td></tr>'; }).join('') +
+    (byL['?'] ? '<tr><td class="muted">S/N 모름</td><td></td><td></td><td></td><td>' + byL['?'] + '</td><td></td></tr>' : '') + '</tbody></table></div><div class="muted small" style="margin-top:6px">납품 영업이익 = 수량 × (판매가 − 원가). 판관비는 빼지 않았어요. P20VA는 단가가 확정되지 않아 "-"로 나와요.</div></div></div>';
   var mx = Math.max.apply(null, wks.map(function (w) { return byW[w].n; }).concat([1]));
   h += '<div class="card" style="margin-top:14px"><div class="hd"><b>주별 교환 (최근 16주 · 출고일 기준)</b></div><div class="bd"><div style="display:flex;align-items:flex-end;gap:6px;height:190px">' +
     wks.map(function (w) {
