@@ -19,7 +19,7 @@ import sys, os, json, time, threading, struct, random, traceback, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-VERSION = '1.3.13'
+VERSION = '1.3.14'
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE_FILE = os.path.join(HERE, 'state.json')
 CONFIG_FILE = os.path.join(HERE, 'config.json')
@@ -39,7 +39,7 @@ DEAD_MS = 20000   # 장비 부하는 켜져 있는데 보조배터리 출력이 
 CUT_BAND = 0.3   # 끝나기 직전(전류가 흐르던 마지막) 전압이 차단 전압 + 이 값 이하면 '컷오프', 그보다 높으면 '배터리 차단'
 END_PROBE_MS = 5000   # 부하가 꺼진 뒤 이만큼 지켜보고: 보조배터리 출력이 살아 있으면(ARM_MIN_V 이상) '중간 멈춤', 꺼졌으면 '방전 끝'
 UPDATE_URL = os.environ.get('LT_UPDATE_URL', 'https://tori-forms.github.io/powerbank-as-desk/agent/agent.py')
-UPDATE_EVERY_MS = 600000   # 새 버전 확인 간격 (10분)
+UPDATE_EVERY_MS = 60000   # 새 버전 확인 간격 (1분) — 올리면 서버 PC가 바로 받게
 SILENT_MS = 8000      # 열어 둔 장비가 이만큼 응답이 없으면 연결을 닫았다가 다시 엶 (응답 없는 장비만 부분 재연결)
 
 try:
