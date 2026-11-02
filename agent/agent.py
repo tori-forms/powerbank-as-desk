@@ -19,7 +19,7 @@ import sys, os, json, time, threading, struct, random, traceback, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-VERSION = '1.3.12'
+VERSION = '1.3.13'
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE_FILE = os.path.join(HERE, 'state.json')
 CONFIG_FILE = os.path.join(HERE, 'config.json')
@@ -868,6 +868,17 @@ def prune_lost():
         del DEVS[path]
 
 
+def discard(D):
+    """연결이 끊긴 칸을 기록 없이 지움 (전원이 나가 실물이 다른 번호로 잡힌 뒤 남은 유령 칸). 연결된 장비는 안 지움"""
+    if not D.lost:
+        raise Exception('연결된 장비의 칸은 지울 수 없어요.')
+    log('장비 %s 칸 지움 (연결 끊긴 칸, %s, 결과 저장 안 함)' % (D.no, D.state))
+    del DEVS[D.path]; STATE['devs'].pop(D.path, None)
+    if STATE['chans'].get(D.key) == D.no:
+        del STATE['chans'][D.key]
+    persist(True)
+
+
 def set_no(D, n):
     """칸 번호 지정. 그 번호를 쓰던 장비가 있으면 서로 바꿈"""
     n = int(n)
@@ -1182,6 +1193,9 @@ class Handler(BaseHTTPRequestHandler):
                     start(D, p)
                 elif a == 'stop':
                     stop(D)
+                elif a == 'discard':
+                    discard(D)
+                    return self._send(200, {'ok': True})
                 elif a == 'resume':
                     resume(D, p)
                 elif a == 'sn':

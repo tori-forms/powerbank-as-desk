@@ -557,7 +557,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
   } catch (e) { }
 })();
 var DEMO_MODE = false;
-var BUILD_ID = '7c0134ea7246', NEW_VER = false;
+var BUILD_ID = 'e6d7eaa7dfd2', NEW_VER = false;
 function verBusy_() {
   if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
   return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
@@ -4542,6 +4542,7 @@ function ltCard(D) {
     var a = b.getAttribute('data-lt');
     if (a === 'purauto') { D.purManual = false; D.pur = ''; D.snAt = Date.now(); if (LT.agent) ltAgentCmd(D, 'sn', { sn: ltNorm(sn.value) || D.sn, purSel: '', purSn: '' }); ltDraw(D); return; }
     if (a === 'resume') { var pv = D.partial || D.result || {}; return ask_((D.cond && D.cond.sn || D.sn) + '\n지금까지 ' + (+pv.wh || 0).toFixed(2) + 'Wh · ' + Math.round(+pv.mah || 0).toLocaleString() + 'mAh\n\n같은 조건(' + (D.cond ? D.cond.cur + 'A · 차단 ' + D.cond.cut + 'V' : '') + ')으로 이어서 잴까요? 보조배터리는 그대로 두세요 (다시 충전하면 안 돼요).', { title: '이어서 시험', yes: '이어서 시험' }).then(function (ok) { if (ok) ltAgentCmd(D, 'resume'); }); }
+    if (a === 'discard') return ask_(D.no + '번 칸을 지울까요?\n' + (D.sn ? D.sn + ' ' : '') + '시험 결과는 저장되지 않아요. 실물 장비가 없는 칸만 지워 주세요.', { title: '칸 지우기', yes: '지우기' }).then(function (ok) { if (ok) ltAgentCmd(D, 'discard').then(function (r) { if (r) { toast(D.no + '번 칸을 지웠어요.'); ltAgentPoll(); } }); });
     if (a === 'go') ltAskFull([D]).then(function (ok) { if (ok) ltStart(D); }); else if (a === 'stop') ltStop(D); else if (a === 'skip') ltStart(D, true); else if (a === 'save') ltSave(D);
   });
   ltDraw(D);
@@ -4586,6 +4587,7 @@ function ltDraw(D) {
   var msg = '', ck = D.check;
   if (D.err) msg += '<div class="ltbox bad">' + esc(D.err) + '</div>';
   if (D.msg) msg += '<div class="ltbox ' + D.msg[0] + '">' + esc(D.msg[1]) + '</div>';
+  if (LT.agent && D.lost) msg += '<div class="row" style="margin-top:6px"><button class="btn sm" data-lt="discard">이 칸 지우기 (장비 없음)</button></div>';
   if (D.state === 'paused') msg += '<div class="row" style="margin-top:6px;gap:6px"><button class="btn pri sm" data-lt="resume">▶ 이어서 시험</button><button class="btn sm" data-lt="stop">■ 여기서 종료 (지금까지 값으로 저장)</button></div>';
   if (D.state === 'arm' && D.resuming) msg += '<div class="ltbox warn">⏳ <b>이어서 시험 — 출력 대기 중</b> — 보조배터리 출력이 켜지면 바로 이어서 재요. 꺼져 있으면 전원 버튼을 눌러 주세요. 취소하려면 ■ 정지</div>';
   else if (D.state === 'arm') msg += '<div class="ltbox warn">⏳ <b>출력 대기 중</b> — 보조배터리를 연결하거나 전원 버튼을 누르면 1초 안에 자동으로 시작해요.<br><span class="small">지금 전압 ' + (L ? L.v.toFixed(2) : '-') + 'V · 대기 상태(0V 근처)여도 괜찮아요. 취소하려면 ■ 정지</span></div>';
