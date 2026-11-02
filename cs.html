@@ -557,7 +557,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
   } catch (e) { }
 })();
 var DEMO_MODE = false;
-var BUILD_ID = 'e6d7eaa7dfd2', NEW_VER = false;
+var BUILD_ID = 'd85d16c2c6c8', NEW_VER = false;
 function verBusy_() {
   if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
   return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
@@ -1696,8 +1696,12 @@ function scanTone_(k) {
   } catch (e) { }
 }
 function ofState_() { return S.of = S.of || { found: [], n: 0, last: null }; }
+function ofTargets_() {
+  var out = {}; (S.data.units || []).forEach(function (u) { if (u.outSn) out[u.outSn] = 1; });
+  return orphOpen_().map(function (o) { return o.sn; }).filter(function (sn) { return !out[sn]; });
+}
 function orphFindBox_() {
-  var of = ofState_(), open = orphOpen_().map(function (o) { return o.sn; }), found = of.found.filter(function (sn) { return open.indexOf(sn) >= 0; }), left = open.filter(function (sn) { return found.indexOf(sn) < 0; }), r = of.last;
+  var of = ofState_(), open = ofTargets_(), found = of.found.filter(function (sn) { return open.indexOf(sn) >= 0; }), left = open.filter(function (sn) { return found.indexOf(sn) < 0; }), r = of.last;
   var M = { hit: ['var(--green)', '#fff', '🔔 찾았어요! 따로 빼 두세요'], again: ['var(--amber)', '#fff', '이미 찾은 제품이에요'], no: ['var(--line,#e5e7eb)', 'inherit', '찾는 제품이 아니에요'], bad: ['var(--red)', '#fff', 'S/N을 못 읽었어요 — 한/영 키가 한글이면 영문으로 바꿔 주세요'] };
   return (r ? '<div style="background:' + M[r.k][0] + ';color:' + M[r.k][1] + ';padding:12px 14px;border-radius:10px;margin-top:8px"><div style="font-size:' + (r.k === 'hit' ? 20 : 14) + 'px;font-weight:700">' + M[r.k][2] + '</div>' + (r.sn ? '<div class="mono" style="font-size:' + (r.k === 'hit' ? 18 : 13) + 'px;margin-top:2px">' + esc(r.sn) + '</div>' : '') + '</div>' : '') +
     '<div class="small" style="margin-top:8px"><b>' + open.length + '개 중 ' + found.length + '개 찾음</b> · 찍은 횟수 ' + of.n + '번' + (left.length ? '</div><div class="small muted mono" style="margin-top:4px">아직 못 찾음: ' + left.map(esc).join(', ') + '</div>' : ' · 모두 찾았어요</div>');
@@ -1706,12 +1710,12 @@ function orphFindCard_() {
   if (CS() || !orphOpen_().length) return '';
   return '<div class="card" style="margin-bottom:12px"><div class="hd"><h3>🔎 더미에서 찾기</h3><button class="btn sm" data-act="ofReset" style="margin-left:auto">처음부터</button></div><div class="bd" style="padding-top:0">' +
     '<input class="inp mono bigscan" id="ofScan" style="width:100%;font-size:16px;padding:12px" placeholder="여기를 누르고 더미의 바코드를 계속 찍으세요" autocomplete="off">' +
-    '<div class="small muted" style="margin-top:4px">아래 출처 확인 불가 목록에 있는 제품이면 소리가 크게 나요. 찍어도 기록은 바뀌지 않아요.</div><div id="ofBox">' + orphFindBox_() + '</div></div></div>';
+    '<div class="small muted" style="margin-top:4px">아래 출처 확인 불가 목록에 있는 제품이면 소리가 크게 나요(교환으로 내보낸 제품은 제외). 찍어도 기록은 바뀌지 않아요.</div><div id="ofBox">' + orphFindBox_() + '</div></div></div>';
 }
 function ofScan_(el) {
   var of = ofState_(), raw = el.value; el.value = '';
   if (!raw.trim()) return;
-  of.last = orphFind_(raw, orphOpen_().map(function (o) { return o.sn; }), of.found);
+  of.last = orphFind_(raw, ofTargets_(), of.found);
   of.n++;
   if (of.last.k === 'hit') of.found.push(of.last.sn);
   scanTone_(of.last.k);
