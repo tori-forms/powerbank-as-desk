@@ -557,7 +557,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
   } catch (e) { }
 })();
 var DEMO_MODE = false;
-var BUILD_ID = 'e6ac7084304d', NEW_VER = false;
+var BUILD_ID = '7c0134ea7246', NEW_VER = false;
 function verBusy_() {
   if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
   return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
@@ -960,8 +960,10 @@ function render() {
   if (S.view === 'loadtest') ltBeforeRender();
   var rvKeep = $('#rvScan') ? $('#rvScan').value : '';
   var ofKeep = document.activeElement && document.activeElement.id === 'ofScan';
+  var tailKeep = $('#tailSn') ? $('#tailSn').value : '';
   $('#view').innerHTML = (DEMO_MODE ? '<div class="flag" style="margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#fff7e6;color:#8a5a00;border:1px solid #ffe2a8"><b>데모 화면</b><span>가상 데이터로 만든 예시예요. 실제 AS 현황이 아닙니다.</span><a href="#" data-act="demoLogin" style="margin-left:auto;color:#8a5a00;text-decoration:underline">관리자 접속</a></div>' : '') + fn();
   if (ofKeep && $('#ofScan')) $('#ofScan').focus();
+  if (tailKeep && $('#tailSn')) { $('#tailSn').value = tailKeep; $('#tailSn').dispatchEvent(new Event('input', { bubbles: true })); }
   if (rvKeep && $('#rvScan')) { $('#rvScan').value = rvKeep; $('#rvScan').readOnly = !!S.rvLock; $('#rvScan').dispatchEvent(new Event('input', { bubbles: true })); }
   if (S.view === 'inbox') { loadInboxDetail(); setTimeout(loadSlackImgs, 30); }
   if (S.view === 'loadtest') ltMount();
@@ -1574,6 +1576,7 @@ function retTailFind_(tail) {
     return nos.some(function (n) { return String(n).replace(/\D/g, '').slice(-tail.length) === tail; });
   });
 }
+function tailSns_(raw) { return (String(raw || '').toUpperCase().match(/[A-Z0-9]{8,}/g) || []).filter(function (x, i, a) { return a.indexOf(x) === i; }); }
 function tailCard_() {
   var q = S.tailQ || '', hit = q.length >= 4 ? retTailFind_(q) : [], pick = S.tailPick;
   var body = !q ? '<div class="small muted">반품 송장번호 전체나 끝 4자리를 넣고 [찾기]를 누르세요.</div>'
@@ -1584,9 +1587,10 @@ function tailCard_() {
       var head = '<b>' + esc(c.store) + '</b>&nbsp;<span class="muted small">' + esc(cid(c)) + ' · 남은 ' + open + '/' + (+c.qty || 1) + '개</span>';
       if (!open) return '<div class="btn" style="width:100%;margin-bottom:6px;justify-content:flex-start;opacity:.55;cursor:default">' + head + '&nbsp;<span class="small">· 다 회수됨</span></div>';
       return '<button class="btn' + (on ? ' pri' : '') + '" style="width:100%;margin-bottom:6px;justify-content:flex-start" data-act="tailPick" data-id="' + esc(c.id) + '">' + head + '</button>' +
-        (on ? '<div class="row" style="margin:0 0 8px;align-items:center"><span class="small">회수 수량</span><input class="inp" type="number" min="1" max="' + open + '" id="tailN" style="width:80px"><button class="btn pri" data-act="tailGo" data-id="' + esc(c.id) + '">S/N 미식별로 회수 처리</button></div>' : '');
+        (on ? '<div style="margin:0 0 8px"><textarea class="inp mono" id="tailSn" rows="3" style="width:100%;font-size:15px;padding:10px;resize:vertical" placeholder="찍히는 제품 바코드를 여기에 찍으세요" autocomplete="off"></textarea><div class="small muted" id="tailCnt" style="margin:2px 0 6px"></div>' +
+          '<div class="row" style="align-items:center"><span class="small">바코드를 못 읽는 수량</span><input class="inp" type="number" min="0" max="' + open + '" id="tailN" style="width:80px"><button class="btn pri" data-act="tailGo" data-id="' + esc(c.id) + '" style="margin-left:auto">회수 처리</button></div></div>' : '');
     }).join('');
-  return '<div class="card" style="margin-bottom:12px;flex:1 1 320px;min-width:0"><div class="bd"><div class="row" style="align-items:center"><b style="font-size:16px">🏷️ S/N 미상 회수 등록</b><span class="muted small">바코드가 훼손돼 못 읽을 때</span></div>' +
+  return '<div class="card" style="margin-bottom:12px;flex:1 1 320px;min-width:0"><div class="bd"><div class="row" style="align-items:center"><b style="font-size:16px">🏷️ 송장으로 회수 등록</b><span class="muted small">반품 송장으로 매장을 찾아 S/N이나 수량으로 기록</span></div>' +
     '<div class="row" style="margin-top:8px;flex-wrap:nowrap"><input class="inp mono" id="tailQ" inputmode="numeric" placeholder="반품 송장번호 (전체 또는 끝 4자리)" value="' + esc(q) + '" style="flex:1;min-width:0;font-size:16px"><button class="btn pri" data-act="tailFind">찾기</button></div>' +
     '<div style="margin-top:8px">' + body + '</div></div></div>';
 }
@@ -3703,16 +3707,31 @@ var ACT = {
     toast(p.ask.length + '개를 ' + (IDX.caseById[d.id] || {}).store + ' 회수 처리 칸에 넣었어요. 확인 후 [회수 처리 → 검사중]을 눌러 주세요.');
     if (p.other.length) { $('#scanIn').value = p.other.join('\n'); ACT.scanGo({}, null); }
   },
-  tailFind: function () { S.tailQ = String(($('#tailQ') || {}).value || '').replace(/\D/g, ''); var h = S.tailQ.length >= 4 ? retTailFind_(S.tailQ).filter(function (c) { return IDX.st[c.id].open.length; }) : []; S.tailPick = h.length === 1 ? h[0].id : null; render(); var n = $('#tailN'); if (n) n.focus(); },
-  tailPick: function (d) { S.tailPick = d.id; render(); var n = $('#tailN'); if (n) n.focus(); },
+  tailFind: function () { S.tailQ = String(($('#tailQ') || {}).value || '').replace(/\D/g, ''); var h = S.tailQ.length >= 4 ? retTailFind_(S.tailQ).filter(function (c) { return IDX.st[c.id].open.length; }) : []; S.tailPick = h.length === 1 ? h[0].id : null; render(); var n = $('#tailSn'); if (n) n.focus(); },
+  tailPick: function (d) { S.tailPick = d.id; render(); var n = $('#tailSn'); if (n) n.focus(); },
   tailGo: function (d, b) {
-    var c = IDX.caseById[d.id]; if (!c) return;
-    var open = IDX.st[c.id].open.length, n = Math.floor(+$('#tailN').value || 0);
-    if (n < 1) return toast('회수된 수량을 넣어 주세요.', true);
-    if (n > open) return toast('남은 ' + open + '개보다 많아요.', true);
-    run('receive', { caseId: c.id, recvDate: today(), items: [], recvSns: [], noSn: n }, function (r) {
-      return c.store + ' — S/N 미식별 ' + n + '개 검사중으로 넘겼어요' + (n < open ? ' (아직 ' + (open - n) + '개 남음 → 확인 필요)' : '') + sheetMsg_(r);
-    }, b).then(function () { S.tailQ = ''; S.tailPick = null; render(); });
+    var c = IDX.caseById[d.id]; if (!c || S.busy) return;
+    var open = IDX.st[c.id].open.length, n = Math.floor(+$('#tailN').value || 0), sns = tailSns_($('#tailSn').value);
+    var bad = sns.filter(function (x) { return !modelOfSn(x); });
+    if (bad.length) return toast('S/N 형식이 아니에요: ' + bad.join(', '), true);
+    if (n < 0 || (!sns.length && !n)) return toast('바코드를 찍거나 못 읽는 수량을 넣어 주세요.', true);
+    if (sns.length + n > open) return toast('남은 ' + open + '개보다 많아요 (바코드 ' + sns.length + '개 + 수량 ' + n + '개).', true);
+    if (DEMO_MODE) return toast('데모 화면이라 저장되지 않아요.', true);
+    var orig = unitsOf(c).map(function (u) { return u.origSn; }), diff = sns.filter(function (x) { return orig.indexOf(x) < 0; }).length, fail = [], i = 0;
+    S.busy = true;
+    var next = function () {
+      if (i < sns.length) {
+        var sn = sns[i++]; busyUI_(true, c.store + ' 기록 중 ' + i + '/' + sns.length);
+        return call('assignScan', { sn: sn, caseId: c.id }).catch(function (e) { fail.push(sn + ': ' + (e.message || e)); }).then(next);
+      }
+      if (n) { busyUI_(true, c.store + ' 수량 기록 중'); return call('receive', { caseId: c.id, recvDate: today(), items: [], recvSns: [], noSn: n }).catch(function (e) { fail.push('수량 ' + n + '개: ' + (e.message || e)); }); }
+    };
+    return Promise.resolve().then(next).then(function () { return load(true); }).then(function () {
+      S.busy = false; busyUI_(false);
+      var okN = sns.length + n - fail.length, left = open - okN;
+      toast(fail.length ? c.store + ' — ' + okN + '개 기록, ' + fail.length + '건 실패: ' + fail.join(' / ') : c.store + ' — ' + (sns.length ? 'S/N ' + sns.length + '개' : '') + (sns.length && n ? ' · ' : '') + (n ? 'S/N 미식별 ' + n + '개' : '') + ' 회수 기록' + (diff ? ' · 접수와 다른 S/N ' + diff + '개' : '') + (left > 0 ? ' (아직 ' + left + '개 남음)' : ''), !!fail.length);
+      S.tailQ = ''; S.tailPick = null; render();
+    }, function (e) { S.busy = false; busyUI_(false); toast(e.message || String(e), true); });
   },
   recvOpen: function (d) { S.recvOpen = d.id || null; render(); var s = $('#rcScan'); if (s) s.focus(); },
   recvGo: function (d, b) {
@@ -3939,6 +3958,7 @@ document.addEventListener('click', function (e) {
   var ret = f(el.dataset, el);
   if (ret && ret.catch) ret.catch(function () { });
 });
+document.addEventListener('input', function (e) { if (e.target.id !== 'tailSn') return; var el = $('#tailCnt'), k = tailSns_(e.target.value).length; if (el) el.textContent = k ? k + '개 찍힘' : ''; });
 document.addEventListener('input', function (e) { if (e.target.id !== 'qdSn') return; var h = $('#qdHint'), K = e.target.value.trim() && qdKind_(e.target.value.trim()); if (h) { h.textContent = K ? K.txt : 'S/N을 넣으면 어느 쪽인지 여기 떠요.'; h.style.color = K && K.k === 'in' ? 'var(--violet)' : K && K.k === 'out' ? 'var(--blue)' : K ? 'var(--red)' : ''; } });
 window.addEventListener('unhandledrejection', function (e) { e.preventDefault(); });
 var qTimer;
@@ -4004,6 +4024,7 @@ document.addEventListener('keydown', function (e) {
   if (e.target.id === 'scanIn' && e.key === 'Enter') { e.preventDefault(); ACT.scanGo({}, $('[data-act=scanGo]')); return; }
   if (e.target.id === 'tailQ' && e.key === 'Enter') { e.preventDefault(); ACT.tailFind(); return; }
   if (e.target.id === 'tailN' && e.key === 'Enter') { e.preventDefault(); var g = $('[data-act=tailGo]'); if (g) g.click(); return; }
+  if (e.target.id === 'tailSn' && e.key === 'Tab') { e.preventDefault(); e.target.value += '\n'; e.target.dispatchEvent(new Event('input', { bubbles: true })); return; }
   if (e.target.id === 'ofScan' && (e.key === 'Enter' || e.key === 'Tab')) { e.preventDefault(); ofScan_(e.target); return; }
   if (e.target.id === 'rvScan' && e.key === 'Tab') { e.preventDefault(); e.target.value += '\n'; return; }
   if (e.target.id === 'rcScan' && e.key === 'Enter') {
