@@ -557,7 +557,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
   } catch (e) { }
 })();
 var DEMO_MODE = false;
-var BUILD_ID = '70be0fbb2b60', NEW_VER = false;
+var BUILD_ID = 'e6ac7084304d', NEW_VER = false;
 function verBusy_() {
   if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
   return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
@@ -959,7 +959,9 @@ function render() {
   var fn = { home: vHome, inbox: vInbox, ship: vShip, ret: vReturn, inspect: vInspect, results: vResults, yang: vYang, loss: vLoss, shipqc: vShipQc, shipdoc: vShipDoc, guide: vGuide, stock: vStock, analysis: vAnalysis, settings: vSettings, loadtest: vLoadtest, ltres: vLtRes }[S.view];
   if (S.view === 'loadtest') ltBeforeRender();
   var rvKeep = $('#rvScan') ? $('#rvScan').value : '';
+  var ofKeep = document.activeElement && document.activeElement.id === 'ofScan';
   $('#view').innerHTML = (DEMO_MODE ? '<div class="flag" style="margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#fff7e6;color:#8a5a00;border:1px solid #ffe2a8"><b>데모 화면</b><span>가상 데이터로 만든 예시예요. 실제 AS 현황이 아닙니다.</span><a href="#" data-act="demoLogin" style="margin-left:auto;color:#8a5a00;text-decoration:underline">관리자 접속</a></div>' : '') + fn();
+  if (ofKeep && $('#ofScan')) $('#ofScan').focus();
   if (rvKeep && $('#rvScan')) { $('#rvScan').value = rvKeep; $('#rvScan').readOnly = !!S.rvLock; $('#rvScan').dispatchEvent(new Event('input', { bubbles: true })); }
   if (S.view === 'inbox') { loadInboxDetail(); setTimeout(loadSlackImgs, 30); }
   if (S.view === 'loadtest') ltMount();
@@ -1676,6 +1678,41 @@ function orphCard_() {
     '<div class="bd small muted" style="padding-top:0">' + (CS() ? '회수품 중 어느 매장에서 온 것인지 확인되지 않은 S/N입니다. <b>매장을 알려주시면</b> 해당 AS 건으로 처리하겠습니다.' : '어느 매장 AS 건인지 알 수 없는 S/N이에요. <b>임의로 넣지 말고</b> 고객사(티오더)에 매장 확인을 요청한 뒤, 답변을 받으면 그 AS 건에 배정해 주세요.') + '</div>' +
     '<div class="list" style="max-height:52vh">' + orph.map(orphRow_).join('') + '</div></div>';
 }
+function orphFind_(raw, open, found) {
+  var sn = (String(raw || '').toUpperCase().match(/[A-Z0-9]{8,}/) || [])[0];
+  if (!sn) return { sn: '', k: 'bad' };
+  return { sn: sn, k: open.indexOf(sn) < 0 ? 'no' : found.indexOf(sn) < 0 ? 'hit' : 'again' };
+}
+var scanAC_;
+function scanTone_(k) {
+  try {
+    var a = scanAC_ = scanAC_ || new (window.AudioContext || window.webkitAudioContext)(); a.resume();
+    var T = { hit: [[1047, 0, .15, .6], [1319, .16, .15, .6], [1568, .32, .3, .6]], again: [[660, 0, .12, .3], [660, .18, .12, .3]], no: [[220, 0, .06, .08]], bad: [[150, 0, .35, .3]] }[k];
+    T.forEach(function (x) { var o = a.createOscillator(), g = a.createGain(), t = a.currentTime + x[1]; o.type = k === 'no' ? 'sine' : 'square'; o.frequency.value = x[0]; g.gain.value = x[3]; o.connect(g); g.connect(a.destination); o.start(t); o.stop(t + x[2]); });
+  } catch (e) { }
+}
+function ofState_() { return S.of = S.of || { found: [], n: 0, last: null }; }
+function orphFindBox_() {
+  var of = ofState_(), open = orphOpen_().map(function (o) { return o.sn; }), found = of.found.filter(function (sn) { return open.indexOf(sn) >= 0; }), left = open.filter(function (sn) { return found.indexOf(sn) < 0; }), r = of.last;
+  var M = { hit: ['var(--green)', '#fff', '🔔 찾았어요! 따로 빼 두세요'], again: ['var(--amber)', '#fff', '이미 찾은 제품이에요'], no: ['var(--line,#e5e7eb)', 'inherit', '찾는 제품이 아니에요'], bad: ['var(--red)', '#fff', 'S/N을 못 읽었어요 — 한/영 키가 한글이면 영문으로 바꿔 주세요'] };
+  return (r ? '<div style="background:' + M[r.k][0] + ';color:' + M[r.k][1] + ';padding:12px 14px;border-radius:10px;margin-top:8px"><div style="font-size:' + (r.k === 'hit' ? 20 : 14) + 'px;font-weight:700">' + M[r.k][2] + '</div>' + (r.sn ? '<div class="mono" style="font-size:' + (r.k === 'hit' ? 18 : 13) + 'px;margin-top:2px">' + esc(r.sn) + '</div>' : '') + '</div>' : '') +
+    '<div class="small" style="margin-top:8px"><b>' + open.length + '개 중 ' + found.length + '개 찾음</b> · 찍은 횟수 ' + of.n + '번' + (left.length ? '</div><div class="small muted mono" style="margin-top:4px">아직 못 찾음: ' + left.map(esc).join(', ') + '</div>' : ' · 모두 찾았어요</div>');
+}
+function orphFindCard_() {
+  if (CS() || !orphOpen_().length) return '';
+  return '<div class="card" style="margin-bottom:12px"><div class="hd"><h3>🔎 더미에서 찾기</h3><button class="btn sm" data-act="ofReset" style="margin-left:auto">처음부터</button></div><div class="bd" style="padding-top:0">' +
+    '<input class="inp mono bigscan" id="ofScan" style="width:100%;font-size:16px;padding:12px" placeholder="여기를 누르고 더미의 바코드를 계속 찍으세요" autocomplete="off">' +
+    '<div class="small muted" style="margin-top:4px">아래 출처 확인 불가 목록에 있는 제품이면 소리가 크게 나요. 찍어도 기록은 바뀌지 않아요.</div><div id="ofBox">' + orphFindBox_() + '</div></div></div>';
+}
+function ofScan_(el) {
+  var of = ofState_(), raw = el.value; el.value = '';
+  if (!raw.trim()) return;
+  of.last = orphFind_(raw, orphOpen_().map(function (o) { return o.sn; }), of.found);
+  of.n++;
+  if (of.last.k === 'hit') of.found.push(of.last.sn);
+  scanTone_(of.last.k);
+  var b = $('#ofBox'); if (b) b.innerHTML = orphFindBox_();
+}
 function shortPanel_() {
   var shortCases = S.data.cases.filter(function (c) { return IDX.st[c.id].b === 'ret_short' && tracked_(c); })
     .sort(function (a, b) { return String(a.recvDate).localeCompare(String(b.recvDate)); });
@@ -1691,7 +1728,7 @@ function shortPanel_() {
         '<button class="btn sm" data-act="csHoldOpen" data-id="' + esc(c.id) + '">CS팀 확인중</button>' + phFixBtn_(c) +
         (miss.length ? '<button class="btn sm red" data-act="writeOff" data-id="' + esc(c.id) + '" title="안 들어온 것만 손망실(회수 포기) — 회수된 것은 검사 계속">회수 포기</button>' : '') + '</div></div>';
     }).join('') : '<div class="empty">부족한 건이 없습니다.</div>') + '</div>';
-  return '<div class="split" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><div>' + right + '</div><div>' + (orphCard_() || '<div class="card"><div class="hd"><h3>매장 출처 확인 불가 회수분</h3></div><div class="empty">없습니다.</div></div>') + '</div></div>';
+  return '<div class="split" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><div>' + right + '</div><div>' + orphFindCard_() + (orphCard_() || '<div class="card"><div class="hd"><h3>매장 출처 확인 불가 회수분</h3></div><div class="empty">없습니다.</div></div>') + '</div></div>';
 }
 function scanPanel_(rw) {
   rw = (rw || []).slice().sort(function (a, b) { return String(a.returnDoneAt || a.outDate).localeCompare(String(b.returnDoneAt || b.outDate)); });
@@ -3618,6 +3655,7 @@ var ACT = {
   },
   boxIn: function (d, b) { run('boxIn', { nos: [d.no] }, '박스를 우리 창고 입고로 기록했어요.', b); },
   boxPick: function (d, b) { run('boxPickReq', { nos: [d.no] }, '외주창고 반출 요청함으로 기록했어요.', b); },
+  ofReset: function () { S.of = null; var b = $('#ofBox'), el = $('#ofScan'); if (b) b.innerHTML = orphFindBox_(); if (el) el.focus(); },
   rvUnlock: function () { S.rvLock = null; var el = $('#rvScan'); if (el) { el.readOnly = false; el.focus(); el.dispatchEvent(new Event('input', { bubbles: true })); } },
   rvClear: function () { S.rvLock = null; var r0 = $('#rvScan'); if (r0) r0.readOnly = false; var el = $('#rvScan'); if (el) el.value = ''; var c = $('#rvCnt'); if (c) c.textContent = ''; },
   batchClear: function () { S.scanBatch = null; render(); },
@@ -3966,6 +4004,7 @@ document.addEventListener('keydown', function (e) {
   if (e.target.id === 'scanIn' && e.key === 'Enter') { e.preventDefault(); ACT.scanGo({}, $('[data-act=scanGo]')); return; }
   if (e.target.id === 'tailQ' && e.key === 'Enter') { e.preventDefault(); ACT.tailFind(); return; }
   if (e.target.id === 'tailN' && e.key === 'Enter') { e.preventDefault(); var g = $('[data-act=tailGo]'); if (g) g.click(); return; }
+  if (e.target.id === 'ofScan' && (e.key === 'Enter' || e.key === 'Tab')) { e.preventDefault(); ofScan_(e.target); return; }
   if (e.target.id === 'rvScan' && e.key === 'Tab') { e.preventDefault(); e.target.value += '\n'; return; }
   if (e.target.id === 'rcScan' && e.key === 'Enter') {
     e.preventDefault();
