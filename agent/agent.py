@@ -19,7 +19,7 @@ import sys, os, json, time, threading, struct, random, traceback, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-VERSION = '1.3.14'
+VERSION = '1.3.15'
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE_FILE = os.path.join(HERE, 'state.json')
 CONFIG_FILE = os.path.join(HERE, 'config.json')
@@ -34,7 +34,8 @@ LOG_EVERY_MS = 5000   # 전압 기록 간격 (메모리 절약: 20대 × 8시간
 PLOG_EVERY_MS = 30000 # 파일 저장용 기록 간격
 PURPOSES = ['입고 QC', '회수분 검사', '클레임 자료', '기타']
 ARM_MIN_V = 4.6       # 출력 대기: 이 전압(그리고 차단+0.3V) 이상이 2번 연속 보여야 출력 켜짐으로 봄 (대기 중 잔류 전압 오인 방지)
-FIRE_RETRY = 2        # 부하 ON 후 전류가 안 흐르면 자동으로 다시 시도하는 횟수 (장비 알람 해제·보조배터리 깨우기)
+OFF_GUARD_MS = 120000  # 시작 점검 실패 뒤 이 시간 동안은 부하가 다시 켜져 보이면 끔 (USB 끊김으로 끄기 명령이 빠진 경우)
+FIRE_RETRY = 2       # 부하 ON 후 전류가 안 흐르면 자동으로 다시 시도하는 횟수 (장비 알람 해제·보조배터리 깨우기)
 DEAD_MS = 20000   # 장비 부하는 켜져 있는데 보조배터리 출력이 0V 근처(차단 전압 미만)·전류 0으로 이만큼 이어지면 방전 끝으로 봄 (DL24가 차단을 못 하고 계속 도는 경우)
 CUT_BAND = 0.3   # 끝나기 직전(전류가 흐르던 마지막) 전압이 차단 전압 + 이 값 이하면 '컷오프', 그보다 높으면 '배터리 차단'
 END_PROBE_MS = 5000   # 부하가 꺼진 뒤 이만큼 지켜보고: 보조배터리 출력이 살아 있으면(ARM_MIN_V 이상) '중간 멈춤', 꺼졌으면 '방전 끝'
@@ -109,7 +110,7 @@ class Dev:
         self.arm = None; self.fire_at = 0; self.voc = 0; self.result = None; self.saved = ''; self.saving = False
         self.save_err = ''; self.cid = ''; self.msg = None; self.away_end = False; self.restore = None; self.pur = ''; self.pur_sn = ''
         self.last_rx = 0; self.end_probe = 0; self.pause_ms = 0; self.paused_at = 0; self.pauses = 0; self.resave = False; self.silent_n = 0
-        self.lost_at = 0; self.gaps = 0; self.gap_ms = 0; self.dead_at = 0; self.fresh = False
+        self.lost_at = 0; self.gaps = 0; self.gap_ms = 0; self.dead_at = 0; self.fresh = False; self.off_until = 0
 
     def to_json(self, with_log=False):
         L = self.live
@@ -228,6 +229,14 @@ def on_report(D, u):
     assign_check(D)
     if D.restore is not None:
         apply_restore(D)
+    if L['on'] and (D.state == 'arm' and ms() >= D.arm.get('wait', 0) or D.state == 'idle' and ms() < D.off_until):
+        # 시작 전인데 부하가 켜져 있음 = 점검 실패 때 보낸 '부하 끄기'가 USB 끊김으로 안 들어감 → 다시 끔 (안 끄면 기록 없이 끝까지 방전됨)
+        if D.state == 'arm' and not D.arm.get('offlog'):
+            D.arm['offlog'] = 1; log('장비 %s 시작 전인데 부하가 켜져 있음(%.3fA) → 부하 끔' % (D.no, L['a']))
+        send(D, 0x25, [0, 0, 0, 0])
+        if D.state == 'arm':
+            D.arm['wait'] = ms() + 800; D.arm['hits'] = []
+        return
     if D.state == 'arm' and not L['on'] and ms() >= D.arm.get('wait', 0):   # 출력 대기: 출력이 켜진 게 2번 연속 보이면 바로 부하 ON
         if L['v'] >= max(D.arm['cut'] + 0.3, ARM_MIN_V):
             D.arm['hits'].append(L['v'])
@@ -475,13 +484,13 @@ def eval_check(D):
             D.msg = ['bad', '이어서 시험을 못 했어요 — 전류가 설정값만큼 흐르지 않아요 (%.2fA / 설정 %sA). 보조배터리 출력·케이블을 확인하고 다시 [이어서 시험]을 눌러 주세요.' % (L.get('a', 0), A['cur'])]
             persist(True)
             return
-        D.state = 'idle'
+        D.state = 'idle'; D.off_until = ms() + OFF_GUARD_MS
         D.msg = ['bad', '전류가 설정값만큼 흐르지 않아요 (%.2fA / 설정 %sA, %d번 시도). 케이블 접촉·보조배터리 출력을 확인하고 다시 시작해 주세요.' % (L.get('a', 0), A['cur'], FIRE_RETRY + 1)]
         return
     r = max(0.0, (D.voc - L['v']) / L['a'])
     D.check = {'voc': D.voc, 'vload': L['v'], 'i': L['a'], 'r': r, 'v1': D.voc - r, 'ok': D.voc - r >= CABLE_MIN, 'skip': A['skip']}
     if not D.check['ok'] and not A['skip']:
-        send(D, 0x25, [0, 0, 0, 0]); D.state = 'idle'
+        send(D, 0x25, [0, 0, 0, 0]); D.state = 'idle'; D.off_until = ms() + OFF_GUARD_MS
         persist(True)
         return
     if A.get('retry'):
