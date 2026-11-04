@@ -19,7 +19,7 @@ import sys, os, json, time, threading, struct, random, traceback, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-VERSION = '1.3.15'
+VERSION = '1.3.16'
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE_FILE = os.path.join(HERE, 'state.json')
 CONFIG_FILE = os.path.join(HERE, 'config.json')
@@ -512,7 +512,8 @@ def stop(D):
         D.state = 'paused'; finish(D, 'pausedEnd')   # 중간 멈춤 → 여기서 종료 (멈추기 전까지 잰 값이 결과)
     elif D.state in ('arm', 'check') and D.arm and D.arm.get('resume'):
         D.state = 'done'; D.msg = ['bad', '이어서 시험을 취소했어요. 기존 결과 그대로예요.']
-        D.msg = ['bad', '출력 대기를 취소했어요.' if D.state == 'arm' else '점검을 멈췄어요.']
+    elif D.state in ('arm', 'check'):   # 빠져 있던 줄: 출력 대기 중 ■ 정지가 먹지 않던 문제 (11/4 6번)
+        D.msg =['bad', '출력 대기를 취소했어요.' if D.state == 'arm' else '점검을 멈췄어요.']
         D.state = 'idle'
     persist(True)
 
@@ -1018,7 +1019,7 @@ def main_loop():
             if now - last_flush > 60000 and STATE['pending']:
                 last_flush = now
                 threading.Thread(target=flush_pending, daemon=True).start()
-            if now - last_upd > UPDATE_EVERY_MS and not any(d.state in ('arm', 'check') for d in DEVS.values()):   # 출력 확인 중(몇 초)만 피함 — 시험 중 재시작은 이어서 기록됨
+            if now - last_upd > UPDATE_EVERY_MS and not any(d.state == 'check' or d.state == 'arm' and now - (d.arm or {}).get('at', now) < 120000 for d in DEVS.values()):   # 출력 확인 중(몇 초)만 피함 · 2분 넘게 출력 대기 중인 칸은 사람을 기다리는 것이라 업데이트를 막지 않음 — 시험 중 재시작은 이어서 기록됨
                 last_upd = now
                 threading.Thread(target=self_update, daemon=True).start()
             if now - last_mtime > 10000:   # agent.py가 바뀌면(원격 업데이트) 상태 저장 후 스스로 다시 시작
