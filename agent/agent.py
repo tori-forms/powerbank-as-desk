@@ -19,7 +19,7 @@ import sys, os, json, time, threading, struct, random, traceback, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-VERSION = '1.3.18'
+VERSION = '1.3.19'
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE_FILE = os.path.join(HERE, 'state.json')
 CONFIG_FILE = os.path.join(HERE, 'config.json')
@@ -439,6 +439,8 @@ def start(D, p):
         raise Exception('중간 멈춘 시험이 있어요. [이어서 시험] 또는 [여기서 종료]를 먼저 눌러 주세요.')
     if D.lost:
         raise Exception('USB 연결이 끊겨 있어요.')
+    if D.silent_n:   # USB로는 잡혀 있지만 응답이 없음 — 시작하면 명령을 못 받아 '출력 확인 중'에서 멈춤
+        raise Exception('장비가 응답하지 않아요. USB 케이블을 뺐다 다시 꽂은 뒤 시작해 주세요.')
     cur = float(p.get('cur') or 1); cut = float(p.get('cut') or 4)
     if not (0 < cur <= 5) or not (0 < cut < 20):
         raise Exception('방전 전류(0~5A)와 차단 전압을 확인해 주세요.')
@@ -540,6 +542,8 @@ def pause(D, v_now, why=None):
 def resume(D, p):
     if D.lost:
         raise Exception('USB 연결이 끊겨 있어요.')
+    if D.silent_n:
+        raise Exception('장비가 응답하지 않아요. USB 케이블을 뺐다 다시 꽂은 뒤 이어서 시험해 주세요.')
     if D.state not in ('paused', 'done') or not D.cond or not D.cid:
         raise Exception('이어서 잴 시험이 없어요.')
     if D.state == 'done':   # 이미 끝난(저장된) 시험을 이어서 — 결과의 마지막 값부터
