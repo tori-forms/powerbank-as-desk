@@ -584,7 +584,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
 
 var DEMO_MODE = false;
 
-var BUILD_ID = 'c8643124c7bb', NEW_VER = false;
+var BUILD_ID = '092ced416f44', NEW_VER = false;
 function verBusy_() {
   if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
   return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
@@ -2724,8 +2724,10 @@ function plSamples_(p) {
 }
 function plStat_(p) {
   var o = { sns: plSamples_(p), ok: 0, re: 0, bad: 0, none: 0, rej: [] };
-  o.sns.forEach(function (sn) { o[sqState_(sn).k]++; var r = shipRejOf(sn); if (r) o.rej.push(r); });
+  o.repl = 0;
+  o.sns.forEach(function (sn) { var k = sqState_(sn).k, r = shipRejOf(sn); o[k]++; if (r) o.rej.push(r); if (k === 'bad' || r) o.repl++; });
   o.pass = !!o.sns.length && !o.re && !o.bad && !o.none && !o.rej.length;
+  o.ship = !!o.sns.length && !o.re && !o.none;
   return o;
 }
 function shipPlCard_() {
@@ -2737,7 +2739,7 @@ function shipPlCard_() {
     var o = plStat_(p), n = o.sns.length;
     var res = !n ? '<span class="muted small">샘플 없음</span>' : ['ok', 're', 'bad', 'none'].filter(function (k) { return o[k]; }).map(function (k) { return '<span style="color:' + SQ_K[k][1] + '">' + SQ_K[k][0] + ' ' + o[k] + '</span>'; }).join(' · ') + (o.rej.length ? ' · <b style="color:var(--red)">출하 불합격 ' + o.rej.length + '</b>' : '');
     return '<tr><td><b>' + esc(plName_(p)) + '</b></td><td>' + mtag(p.model) + '</td><td class="mono small">' + esc(stockSn(p, p.fromNo)) + ' ~ ' + esc(String(stockSn(p, p.toNo)).slice(-6)) + '</td><td>' + (+p.qty || 0).toLocaleString() + '</td>' +
-      '<td class="small">' + esc((PL_LOC[p.loc] || {}).s || p.loc || '') + '</td><td>' + n + '개</td><td class="small">' + res + (n ? (o.pass ? ' <b style="color:var(--green)">→ 출하 가능</b>' : ' <b style="color:var(--amber)">→ 보류</b>') : '') + '</td>' +
+      '<td class="small">' + esc((PL_LOC[p.loc] || {}).s || p.loc || '') + '</td><td>' + n + '개</td><td class="small">' + res + (n ? (o.pass ? ' <b style="color:var(--green)">→ 출하 가능</b>' : o.ship ? ' <b style="color:var(--green)">→ 불합격 ' + o.repl + '개 빼고 교환재고로 보충해 출하</b>' : ' <b style="color:var(--amber)">→ 보류</b> <span class="muted">(' + [o.re ? '재시험 ' + o.re : '', o.none ? '시험 전 ' + o.none : ''].filter(String).join(' · ') + ')</span>') : '') + '</td>' +
       '<td class="nowrap"><button class="btn sm pri" data-act="plRep" data-id="' + esc(p.id) + '"' + (n ? '' : ' disabled') + '>📄 출하 성적서</button> <button class="btn sm" data-act="plXlsx" data-id="' + esc(p.id) + '"' + (n ? '' : ' disabled') + '>엑셀</button></td></tr>';
   }).join('') + '</tbody></table></div></div>';
 }
@@ -5175,7 +5177,7 @@ ACT.plRep = function (d) {
   var p = plById_(d.id); if (!p) return;
   var o = plStat_(p), ids = {}, tested = [], none = [];
   o.sns.forEach(function (sn) { var t = ltLastOf_(sn, '입고 QC'); if (t) { ids[t.id] = 1; tested.push(sn); } else none.push(sn); });
-  var verdict = o.pass ? '<b style="color:#1fb86c">출하 합격</b>' : '<b style="color:#e08a00">보류</b> — ' + [o.re ? '재시험 필요 ' + o.re + '개' : '', o.bad ? '용량 불합격 ' + o.bad + '개' : '', o.none ? '용량 시험 전 ' + o.none + '개' : '', o.rej.length ? '출하 불합격 ' + o.rej.length + '개' : ''].filter(String).join(' · ');
+  var verdict = o.pass ? '<b style="color:#1fb86c">출하 합격</b>' : o.ship ? '<b style="color:#1fb86c">출하 합격</b> — 불합격 ' + o.repl + '개(' + [o.bad ? '용량 불합격 ' + o.bad + '개' : '', o.rej.length ? '출하 불합격 등록 ' + o.rej.length + '개' : ''].filter(String).join(' · ') + ')는 빼고 교환재고로 보충해 수량 맞춰 출고' : '<b style="color:#e08a00">보류</b> — ' + [o.re ? '재시험 필요 ' + o.re + '개' : '', o.bad ? '용량 불합격 ' + o.bad + '개' : '', o.none ? '용량 시험 전 ' + o.none + '개' : '', o.rej.length ? '출하 불합격 ' + o.rej.length + '개' : ''].filter(String).join(' · ');
   var info = '<div class="box"><b>대상</b> — ' + esc(plName_(p)) + ' · ' + esc(prodLabel(p.model) || p.model) + ' · S/N ' + esc(stockSn(p, p.fromNo)) + ' ~ ' + esc(stockSn(p, p.toNo)) + ' · 수량 ' + (+p.qty || 0).toLocaleString() + '개<br>' +
     '<b>샘플</b> — ' + o.sns.length + '개 (용량 시험 ' + tested.length + '개)' + (o.rej.length ? '<br><b>출하 불합격</b> — ' + o.rej.map(function (r) { return esc(r.sn + ' ' + (r.why || '')); }).join(', ') : '') + '<br>' +
     '<b>판정</b> — ' + verdict + '</div>';
