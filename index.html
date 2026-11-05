@@ -584,7 +584,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
 
 var DEMO_MODE = false;
 
-var BUILD_ID = 'b28f0860ad38', NEW_VER = false;
+var BUILD_ID = 'c8643124c7bb', NEW_VER = false;
 function verBusy_() {
   if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
   return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
@@ -4222,6 +4222,18 @@ var LT = { devs: [], hist: {}, recent: null, total: 0, q: '', inited: false, wor
 var LT_CABLE_MIN = 4.85;
 var LT_MIN_SEC = 300;
 var LT_SAG = 0.15;
+
+function ltWarned(R) { return !!(R && (R.sag || R.earlySag || R.pathWarn)); }
+function ltWarnHtml(R) {
+  if (!R) return '';
+  var h = '';
+  if (R.earlySag) h += '<br><b>⚠ 초기 전압 하락</b> <span class="small">시작 ' + (+R.vStart).toFixed(2) + 'V → 15분 뒤 ' + (+R.vStable).toFixed(2) + 'V. 케이블·접점 발열인지 보조배터리 출력인지는 아직 몰라요 — 정상 자리·정상 배터리와 바꿔 끼워 재시험해 보세요 (용량 판정엔 영향 없음)</span>';
+  if (R.sag) h += '<br><b>⚠ 출력 전압 저하</b> <span class="small">' + (R.vStable != null ? '안정된 뒤 ' + (+R.vStable).toFixed(2) + 'V → 최저 ' + (+R.vLowLate).toFixed(2) + 'V' : '시험 중간에 시작보다 ' + (R.vStart - R.vMinMid).toFixed(2) + 'V') + ' 떨어졌어요 (원인 미확정 · 내부 확인용)</span>';
+  if (R.pathWarn) h += '<br><b>⚠ 시험 경로 재점검</b> <span class="small">경로 저항 ' + (+R.pathR || 0).toFixed(2) + 'Ω · 안정 전압 ' + (+R.vStable || 0).toFixed(2) + 'V — 케이블 교체·접점 청소 후 재시험해 주세요 (기준 ' + '0.2Ω 이상 또는 4.5V 미만)</span>';
+  return h;
+}
+
+function ltRepWhy(why) { return String(why || '').replace(/ · (출력 전압 저하|초기 전압 하락\([^)]*\)|시험 경로 재점검\([^)]*\))/g, '').replace(/^배터리 차단/, '제품 출력 종료'); }
 var LT_PURPOSES = ['입고 QC', '회수분 검사', '클레임 자료', '기타'];
 var LT_ARM_MIN_V = 4.6;
 var LT_FIRE_RETRY = 2;
@@ -4797,10 +4809,10 @@ function ltDraw(D) {
   var res = '';
   if (R) {
     var sn = c.sn || D.sn, vs = sn ? ltVsFirst(sn, R.wh, c.cur, D.cid) : null, short = R.sec < LT_MIN_SEC, low = !short && R.wh < LT_LOW_WH;
-    res = '<div class="ltbox ' + (R.sag || short || low ? 'warn' : 'ok') + '"><b>결과</b> ' + R.wh.toFixed(2) + 'Wh · ' + Math.round(R.mah).toLocaleString() + 'mAh · ' + ltHms(R.sec) + '<br>' + ltConvTxt(R.mah) + (ltJudge({ mah: R.mah, wh: R.wh, cur: c.cur, cut: c.cut, purpose: c.purpose, sn: c.sn || D.sn }) ? '<br>' + ltJudgeHtml({ mah: R.mah, wh: R.wh, cur: c.cur, cut: c.cut, purpose: c.purpose, sn: c.sn || D.sn }) : '') +
+    res = '<div class="ltbox ' + (ltWarned(R) || short || low ? 'warn' : 'ok') + '"><b>결과</b> ' + R.wh.toFixed(2) + 'Wh · ' + Math.round(R.mah).toLocaleString() + 'mAh · ' + ltHms(R.sec) + '<br>' + ltConvTxt(R.mah) + (ltJudge({ mah: R.mah, wh: R.wh, cur: c.cur, cut: c.cut, purpose: c.purpose, sn: c.sn || D.sn }) ? '<br>' + ltJudgeHtml({ mah: R.mah, wh: R.wh, cur: c.cur, cut: c.cut, purpose: c.purpose, sn: c.sn || D.sn }) : '') +
       (R.avgV != null && R.vStart != null && R.vMinMid != null && R.maxT != null ? '<br><span class="small">평균 ' + R.avgV.toFixed(2) + 'V · 시작 ' + R.vStart.toFixed(2) + 'V · 중간 최저 ' + R.vMinMid.toFixed(2) + 'V · 최고 ' + R.maxT.toFixed(1) + '℃ · ' + esc(D.why) + '</span>' : '') +
       (vs ? '<br><b>최초 시험 대비 ' + vs.pct + '%</b> <span class="small">(최초 ' + ymd(vs.first.startAt) + ' ' + (+vs.first.wh).toFixed(1) + 'Wh)</span>' : '') +
-      (R.sag ? '<br><b>⚠ 출력 전압 저하</b> <span class="small">시험 중간에 시작보다 ' + (R.vStart - R.vMinMid).toFixed(2) + 'V 떨어졌어요 (케이블이 아니라 보조배터리 출력 문제일 수 있음)</span>' : '') +
+      ltWarnHtml(R) +
       (low ? '<br>' + ltLowMsg(R.wh) : '') +
       (/^컷오프/.test(D.why || '') ? '<div class="ltbox warn" style="margin:8px 0 0"><b>컷오프로 끝났어요</b> — 출력 전압이 차단 전압(' + esc(c.cut) + 'V)까지 내려가 장비가 멈췄어요. 배터리가 아직 남아 있을 수 있어요.<br><b>보조배터리 잔량이 0%(완전 방전)인지 확인해 주세요.</b> <span class="small">잔량이 남아 있으면 용량이 작은 게 아니라 이 전류에서 출력 전압을 못 버틴 거예요.</span></div>' : '') +
       (LT.agent && D.state === 'done' && L && !L.on && L.v >= LT_ARM_MIN_V && !next && D.cid ? '<div class="ltbox warn" style="margin:8px 0 0">보조배터리 출력이 아직 <b>' + L.v.toFixed(2) + 'V</b>로 살아 있어요 — 다 닳아서 끝난 게 아니라 <b>중간에 끊긴</b> 것일 수 있어요 (보호 동작·케이블 접촉·장비 알람). <button class="btn sm pri" data-lt="resume" style="margin-left:6px">▶ 이어서 시험</button><div class="small" style="margin-top:4px">이어서 재면 지금 결과(' + R.wh.toFixed(2) + 'Wh)에 더해지고, 끝나면 같은 기록이 고쳐 저장돼요.</div></div>' : '') +
@@ -4866,8 +4878,8 @@ function ltRemoteCard(d, i) {
   if (d.err) msg += '<div class="ltbox bad">' + esc(d.err) + '</div>';
   if (d.msg) msg += '<div class="ltbox ' + esc(d.msg[0]) + '">' + esc(d.msg[1]) + '</div>';
   if (ck && ck.v1 != null && (run || d.state === 'done')) msg += '<div class="small" style="margin-top:6px;color:' + (ck.ok ? 'var(--green)' : 'var(--amber)') + '">' + (ck.ok ? '✓ 케이블 점검 통과' : '⚠ 케이블 점검 무시하고 시험') + ' · 1A 기준 ' + (+ck.v1).toFixed(2) + 'V</div>';
-  if (R) msg += '<div class="ltbox ' + (R.sag || R.wh < LT_LOW_WH ? 'warn' : 'ok') + '"><b>결과</b> ' + R.wh.toFixed(2) + 'Wh · ' + Math.round(R.mah).toLocaleString() + 'mAh · ' + ltHms(R.sec) + '<br>' + ltConvTxt(R.mah) + (ltJudge({ mah: R.mah, wh: R.wh, cur: c.cur, cut: c.cut, purpose: c.purpose, sn: sn }) ? '<br>' + ltJudgeHtml({ mah: R.mah, wh: R.wh, cur: c.cur, cut: c.cut, purpose: c.purpose, sn: sn }) : '') +
-    '<br><span class="small">평균 ' + (+R.avgV).toFixed(2) + 'V · 중간 최저 ' + (+R.vMinMid).toFixed(2) + 'V · ' + esc(d.why || '') + '</span>' + (R.sag ? '<br><b>⚠ 출력 전압 저하</b>' : '') + (R.wh < LT_LOW_WH ? '<br>' + ltLowMsg(R.wh) : '') +
+  if (R) msg += '<div class="ltbox ' + (ltWarned(R) || R.wh < LT_LOW_WH ? 'warn' : 'ok') + '"><b>결과</b> ' + R.wh.toFixed(2) + 'Wh · ' + Math.round(R.mah).toLocaleString() + 'mAh · ' + ltHms(R.sec) + '<br>' + ltConvTxt(R.mah) + (ltJudge({ mah: R.mah, wh: R.wh, cur: c.cur, cut: c.cut, purpose: c.purpose, sn: sn }) ? '<br>' + ltJudgeHtml({ mah: R.mah, wh: R.wh, cur: c.cur, cut: c.cut, purpose: c.purpose, sn: sn }) : '') +
+    '<br><span class="small">평균 ' + (+R.avgV).toFixed(2) + 'V · 중간 최저 ' + (+R.vMinMid).toFixed(2) + 'V · ' + esc(d.why || '') + '</span>' + ltWarnHtml(R) + (R.wh < LT_LOW_WH ? '<br>' + ltLowMsg(R.wh) : '') +
     '<div style="margin-top:4px">' + (d.saved ? '<span style="color:var(--green);font-weight:700">✓ 저장됨</span> <button class="btn sm" data-act="ltRep" data-sn="' + esc(sn) + '">📄 성적서</button>' + ltShipBtn({ mah: R.mah, wh: R.wh, cur: c.cur, cut: c.cut, purpose: c.purpose, sn: sn }) : d.saveErr ? '<span style="color:var(--red)">' + esc(d.saveErr) + '</span>' : '<span class="muted">저장 대기</span>') + '</div></div>';
   return '<div class="card ltdev"><div class="hd"><span class="ltno">' + esc(d.no) + '</span><b>DL24</b>' + (sn ? mtag(modelOfSn(sn)) : '') + '<span style="flex:1"></span><span class="ltpill ' + st[0] + '">' + st[1] + '</span></div><div class="bd">' +
     '<div class="mono" style="font-weight:700;margin-bottom:4px">' + (sn ? esc(sn) : '<span class="muted">S/N 없음</span>') + '</div>' +
@@ -5323,7 +5335,7 @@ function ltReportHtml(rows, none, opt) {
       '<table class="kv"><tr><td>측정 용량</td><td><b>' + N(t.wh, 2) + ' Wh · ' + N(t.mah, 0) + ' mAh</b> (5V 출력)</td><td>3.7V 환산</td><td><b>' + N(conv[i], 0) + ' mAh</b> (표기 ' + N(LT_RATED_MAH, 0) + 'mAh의 ' + N(conv[i] / LT_RATED_MAH * 100, 1) + '%)</td></tr>' +
       '<tr><td>시험 조건</td><td>CC ' + E((+t.cur).toFixed(1)) + 'A · 차단 ' + E((+t.cut).toFixed(1)) + 'V · ' + E(t.cable || '-') + '</td><td>시험 시간</td><td>' + E(ltHms(t.sec)) + '</td></tr>' +
       '<tr><td>전압</td><td>시작 ' + N(t.vStart, 2) + 'V · 평균 ' + N(t.avgV, 2) + 'V · 중간 최저 ' + N(t.vMinMid, 2) + 'V</td><td>최고 온도</td><td>' + (t.maxT ? N(t.maxT, 1) + '℃ (부하 MOS)' : '-') + '</td></tr>' +
-      '<tr><td>케이블 점검</td><td>' + (t.cableV1 ? (t.checkOk === 'Y' ? '통과' : '무시하고 시험') + ' · 1A 기준 ' + N(t.cableV1, 2) + 'V' : '-') + '</td><td>종료</td><td>' + E(t.why || '-') + '</td></tr>' +
+      '<tr><td>케이블 점검</td><td>' + (t.cableV1 ? (t.checkOk === 'Y' ? '통과' : '무시하고 시험') + ' · 1A 기준 ' + N(t.cableV1, 2) + 'V' : '-') + '</td><td>종료</td><td>' + E(ltRepWhy(t.why) || '-') + '</td></tr>' +
       (j ? '<tr><td>판정 근거</td><td colspan="3">' + E(j.why) + '</td></tr>' : '') + '</table>' + ltRepSvg(t) + '</div>';
   }).join('');
   var css = '*{box-sizing:border-box}body{font-family:"Pretendard","Apple SD Gothic Neo","Malgun Gothic",sans-serif;color:#191f28;margin:0;padding:24px;font-size:12px}h1{font-size:22px;margin:0 0 4px}.sub{color:#6b7684;margin-bottom:14px}' +

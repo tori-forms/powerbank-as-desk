@@ -19,7 +19,7 @@ import sys, os, json, time, threading, struct, random, traceback, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-VERSION = '1.3.17'
+VERSION = '1.3.18'
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE_FILE = os.path.join(HERE, 'state.json')
 CONFIG_FILE = os.path.join(HERE, 'config.json')
@@ -29,7 +29,11 @@ ALLOW_ORIGINS = ['https://tori-forms.github.io'] + [o.strip() for o in os.enviro
 VID, PID = 0x0483, 0x5750
 CABLE_MIN = 4.85      # 케이블 점검: 1A 기준 전압이 이보다 낮으면 '케이블 교체'
 MIN_SEC = float(os.environ.get('LT_MIN_SEC', '300'))   # 이보다 짧게 끝난 시험은 자동 저장 안 함
-SAG = 0.15            # 시험 중간에 시작 전압보다 이만큼 떨어지면 '출력 전압 저하'
+SAG = 0.15            # 내부 조사용 경고 기준(합격 판정과 무관): 초기 하락·안정 후 하락이 이만큼 넘으면 경고
+EARLY_SAG = 0.08      # 초기 하락 경고 (11/5 3A 10대: 정상 0.01~0.04V, 5번 자리 0.11V) — 잠정값, 데이터 쌓이면 조정
+SETTLE_MS = 15 * 60000   # 시작 후 이 시간까지는 '초기 구간'(발열 안정화), 그 뒤 5분 중앙값을 '안정 전압'으로 봄
+PATH_R_MAX = 0.2      # 시험 전 점검 경로 저항이 이 이상이면 '시험 경로 재점검' (케이블·접점·배터리 출력 합)
+LOAD_V_MIN = 4.5      # 안정 전압이 이보다 낮으면 '시험 경로 재점검' (처음부터 낮아 하락 경고로는 못 잡는 경우)
 LOG_EVERY_MS = 5000   # 전압 기록 간격 (메모리 절약: 20대 × 8시간도 가볍게)
 PLOG_EVERY_MS = 30000 # 파일 저장용 기록 간격
 PURPOSES = ['입고 QC', '회수분 검사', '클레임 자료', '기타']
@@ -588,13 +592,47 @@ def finish(D, kind):
     R = {'wh': last[3], 'mah': last[4], 'sec': max(0, (last[0] - D.start_at - (D.pause_ms or 0)) / 1000), 'vStart': v_start,
          'avgV': sum(r[1] for r in lg) / n if n else 0, 'vMinMid': min(r[1] for r in mid) if mid else 0,
          'maxT': max([r[5] for r in D.log] + [last[5]]) if (D.log or n) else 0}
-    R['sag'] = bool(R['vMinMid'] and v_start - R['vMinMid'] > SAG)
+    R.update(warns(lg, mid, v_start, (D.check or {}).get('r')))
     D.result = R
     D.log = lg if lg else D.log
     log('장비 %s 종료(%s) %s %.2fWh %dmAh %ds' % (D.no, kind, (D.cond or {}).get('sn') or D.sn, R['wh'], R['mah'], R['sec']))
     if kind in ('auto', 'pausedEnd', 'dead') and ((D.cond or {}).get('sn') or D.sn) and (R['sec'] >= MIN_SEC or D.resave):
         save(D)
     persist(True)
+
+
+def _med(xs):
+    s = sorted(xs); n = len(s)
+    return (s[n // 2] + s[(n - 1) // 2]) / 2.0 if n else 0
+
+
+def warns(lg, mid, v_start, path_r):
+    """내부 조사용 경고(용량·판정과 무관). 초기 하락 / 안정 후 하락 / 시험 경로 재점검을 따로 봄.
+    lg·mid = 전류 흐른 기록 [t, v, a, wh, mah, temp], mid는 끝 5% 뺀 구간"""
+    t0 = lg[0][0] if lg else 0
+    win = [r[1] for r in lg if SETTLE_MS <= r[0] - t0 < SETTLE_MS + 5 * 60000]
+    v_st = _med(win) if win else 0
+    late = [r[1] for r in mid if r[0] - t0 >= SETTLE_MS]
+    sm = [_med(late[i:i + 5]) for i in range(0, max(0, len(late) - 4))]   # 5개 이동 중앙값: 튄 표본 하나엔 반응 안 함
+    v_low = min(sm) if sm else 0
+    w = {'vStable': v_st, 'vLowLate': v_low,
+         'earlySag': bool(v_st and v_start - v_st > EARLY_SAG),
+         'sag': bool(v_st and v_low and v_st - v_low > SAG),
+         'pathR': path_r}
+    w['pathWarn'] = bool((path_r or 0) >= PATH_R_MAX or (v_st and v_st < LOAD_V_MIN))
+    return w
+
+
+def warn_txt(R):
+    """결과 why 끝에 붙는 경고 문구 (성적서에서는 화면이 지움)"""
+    t = ''
+    if R.get('earlySag'):
+        t += ' · 초기 전압 하락(%.2f→%.2fV)' % (R['vStart'], R['vStable'])
+    if R.get('sag'):
+        t += ' · 출력 전압 저하'
+    if R.get('pathWarn'):
+        t += ' · 시험 경로 재점검(경로 저항 %.2fΩ · 안정 전압 %.2fV)' % (R.get('pathR') or 0, R.get('vStable') or 0)
+    return t
 
 
 def curve(D):
@@ -609,7 +647,7 @@ def payload(D):
     sn = c.get('sn') or D.sn
     return {'cid': D.cid, 'sn': sn, 'model': '', 'purpose': c.get('purpose'), 'cable': c.get('cable'), 'cur': c.get('cur'), 'cut': c.get('cut'),
             'startAt': iso(D.start_at), 'endAt': iso(D.end_at), 'wh': R['wh'], 'mah': R['mah'], 'sec': R['sec'], 'vStart': R['vStart'],
-            'avgV': R['avgV'], 'vMinMid': R['vMinMid'], 'maxT': R['maxT'], 'why': D.why + (' · 출력 전압 저하' if R.get('sag') else ''),
+            'avgV': R['avgV'], 'vMinMid': R['vMinMid'], 'maxT': R['maxT'], 'why': D.why + warn_txt(R),
             'ch': str(D.no), 'voc': k.get('voc'), 'vload': k.get('vload'), 'cableV1': k.get('v1'),
             'checkOk': 'Y' if k.get('ok') else 'skip' if k.get('skip') else '', 'curve': curve(D), 'note': 'PC 기록 프로그램' + (' · 중간 멈춤 %d회 이어서 시험' % D.pauses if D.pauses else ''),
             'resume': bool(D.resave), 'pauses': D.pauses}
