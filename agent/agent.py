@@ -19,7 +19,7 @@ import sys, os, json, time, threading, struct, random, traceback, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-VERSION = '1.3.16'
+VERSION = '1.3.17'
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE_FILE = os.path.join(HERE, 'state.json')
 CONFIG_FILE = os.path.join(HERE, 'config.json')
@@ -41,6 +41,7 @@ CUT_BAND = 0.3   # 끝나기 직전(전류가 흐르던 마지막) 전압이 차
 END_PROBE_MS = 5000   # 부하가 꺼진 뒤 이만큼 지켜보고: 보조배터리 출력이 살아 있으면(ARM_MIN_V 이상) '중간 멈춤', 꺼졌으면 '방전 끝'
 UPDATE_URL = os.environ.get('LT_UPDATE_URL', 'https://tori-forms.github.io/powerbank-as-desk/agent/agent.py')
 UPDATE_EVERY_MS = 60000   # 새 버전 확인 간격 (1분) — 올리면 서버 PC가 바로 받게
+STUCK_N = 6           # 응답 없음 다시 열기가 이만큼(약 1분) 이어지면 화면에 'USB 다시 꽂기' 안내
 SILENT_MS = 8000      # 열어 둔 장비가 이만큼 응답이 없으면 연결을 닫았다가 다시 엶 (응답 없는 장비만 부분 재연결)
 
 try:
@@ -114,8 +115,11 @@ class Dev:
 
     def to_json(self, with_log=False):
         L = self.live
+        err = self.err
+        if self.silent_n >= STUCK_N and not err:   # 다시 열기(3초)가 err를 지워 화면엔 '시험 중'으로만 보이던 문제 — 1분 넘게 응답 없으면 계속 표시
+            err = '장비 응답 없음 %d분째 — USB 케이블을 뺐다 다시 꽂아 주세요 (그동안 측정값은 장비에 쌓여 이어져요)' % max(1, round((ms() - (self.lost_at or self.last_rx or ms())) / 60000.0))
         o = {'no': self.no, 'sn': self.sn, 'state': self.state, 'live': L, 'mode': self.mode, 'setCur': self.set_cur, 'setCut': self.set_cut,
-             'err': self.err, 'lost': self.lost, 'check': self.check, 'cond': self.cond, 'result': self.result, 'saved': self.saved,
+             'err': err, 'lost': self.lost, 'check': self.check, 'cond': self.cond, 'result': self.result, 'saved': self.saved,
              'saving': self.saving, 'saveErr': self.save_err, 'msg': self.msg, 'startAt': self.start_at, 'endAt': self.end_at,
              'why': self.why, 'cid': self.cid, 'base': self.base, 'armCut': self.arm['cut'] if self.arm else None, 'pur': self.pur, 'purSn': self.pur_sn,
              'pauseMs': self.pause_ms, 'pausedAt': self.paused_at, 'pauses': self.pauses, 'partial': partial(self), 'resuming': bool(self.arm and self.arm.get('resume')), 'gaps': self.gaps, 'gapMs': self.gap_ms}
