@@ -309,6 +309,7 @@ table.t tr.click:hover td{background:#f9fafb}
 .step.ok:before{background:var(--brand)} .step.ok i{border-color:var(--brand);background:var(--brand)}
 .gal .ph{border-radius:14px;border:none}
 @media (max-width:860px){.side{border-right:none;border-bottom:1px solid var(--line)} .top{padding:14px 16px 8px} #view{padding:10px 16px 60px}}
+@media (min-width:861px){.nav{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain}}
 
 @media (max-width:860px){
   html,body{-webkit-text-size-adjust:100%}
@@ -584,7 +585,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
 
 var DEMO_MODE = false;
 
-var BUILD_ID = 'd4f5fbaf9ea0', NEW_VER = false;
+var BUILD_ID = 'f195c569fbdc', NEW_VER = false;
 function verBusy_() {
   if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
   return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
