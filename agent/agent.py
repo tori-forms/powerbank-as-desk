@@ -19,7 +19,7 @@ import sys, os, json, time, threading, struct, random, traceback, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-VERSION = '1.3.19'
+VERSION = '1.3.20'
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE_FILE = os.path.join(HERE, 'state.json')
 CONFIG_FILE = os.path.join(HERE, 'config.json')
@@ -1009,7 +1009,7 @@ def live_snapshot():
             lg = D.log; k = max(1, -(-len(lg) // 120))
             o['curve'] = [round(r[1], 3) for r in lg[::k]] + ([round(lg[-1][1], 3)] if (len(lg) - 1) % k else [])
         devs.append(o)
-    return {'host': socket.gethostname()[:40], 'version': VERSION, 'at': ms(), 'pending': len(STATE['pending']), 'devices': devs, 'hidCount': HIDN[0], 'log': LOG_TAIL[-60:]}
+    return {'host': socket.gethostname()[:40], 'version': VERSION, 'pid': os.getpid(), 'at': ms(), 'pending': len(STATE['pending']), 'devices': devs, 'hidCount': HIDN[0], 'log': LOG_TAIL[-60:]}
 
 
 def live_push():
@@ -1294,6 +1294,20 @@ def status_page():
                '완료' if s['configured'] else 'AS Desk 용량 테스트 화면을 한 번 열면 자동으로 됩니다', rows or '<tr><td colspan="6">연결된 장비 없음</td></tr>'))
 
 
+class _OneServer(ThreadingHTTPServer):
+    # 한 PC에 기록 프로그램이 하나만 돌게: Windows는 SO_REUSEADDR면 같은 포트에 두 번 바인드돼서 '이미 실행 중' 검사가 안 걸렸음 (11/9 서버 PC 2개 동시 실행)
+    allow_reuse_address = False
+
+    def server_bind(self):
+        if hasattr(socket, 'SO_EXCLUSIVEADDRUSE'):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        ThreadingHTTPServer.server_bind(self)
+
+
+def make_server(port):
+    return _OneServer(('127.0.0.1', port), Handler)
+
+
 def main():
     CONFIG.update(jload(CONFIG_FILE, {}))
     STATE.update(jload(STATE_FILE, {}))
@@ -1308,7 +1322,7 @@ def main():
     srv = None
     for i in range(20):   # 다시 시작할 때 이전 프로세스가 포트를 놓을 때까지 잠깐 기다림
         try:
-            srv = ThreadingHTTPServer(('127.0.0.1', PORT), Handler)
+            srv = make_server(PORT)
             break
         except OSError:
             time.sleep(0.5)
