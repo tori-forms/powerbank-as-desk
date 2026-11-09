@@ -571,7 +571,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
   } catch (e) { }
 })();
 var DEMO_MODE = false;
-var BUILD_ID = 'f200339448a7', NEW_VER = false;
+var BUILD_ID = '5dd823709926', NEW_VER = false;
 function verBusy_() {
   if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
   return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
@@ -1025,7 +1025,7 @@ function dashModel_(model) {
   cases.forEach(function (c) {
     var k = storeKeyC(c.store);
     var r = by[k] = by[k] || { key: k, store: String(c.store || '').trim(), cases: [], need: 0, missN: 0, loss: 0, link: [], miss: [], got: [], cnt: { ok: 0, bad: 0, force: 0, wait: 0, loss: 0 }, stage: 'done', ec: 0, lastOut: '' };
-    var stg = dashCaseStage_(c), memo = String(c.note || '').match(/P20BOTA25\d{7}/g) || [], cus = unitsOf(c);
+    var stg = dashCaseStage_(c), memo = String(c.note || '').match(/P20BOTA25\d{7}(?!\d)/g) || [], cus = unitsOf(c);
     var known = {}; cus.forEach(function (u) { known[u.origSn] = 1; known[u.recvSn] = 1; known[u.outSn] = 1; });
     var spare = memo.filter(function (sn, i) { return !known[sn] && !recvAll[sn] && memo.indexOf(sn) === i; });
     r.cases.push({ c: c, stage: stg });
