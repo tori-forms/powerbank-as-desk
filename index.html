@@ -571,7 +571,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
   } catch (e) { }
 })();
 var DEMO_MODE = false;
-var BUILD_ID = '5c16b56f6f44', NEW_VER = false;
+var BUILD_ID = 'f200339448a7', NEW_VER = false;
 function verBusy_() {
   if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
   return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
@@ -1078,7 +1078,7 @@ function dashXlsxRows_(stores, unknown) {
       var c = cs.c, us = unitsOf(c), L = function (f) { return us.map(f).join('\n'); };
       rows.push([c.store, d10(c.outDate), us.filter(function (u) { return dashVerdict_(u) !== 'loss'; }).length,
         L(function (u) { return u.origSn || '(S/N 미상)'; }), L(function (u) { return u.outSn || '-'; }),
-        L(function (u) { var v = dashVerdict_(u); return gotRecv(u) ? u.recvSn : v === 'loss' ? '-' : link[u.id] ? '메모에만 ' + link[u.id] : '미회수'; }),
+        L(function (u) { var v = dashVerdict_(u); return gotRecv(u) ? u.recvSn : v === 'loss' ? '-' : link[u.id] ? '창고 실물 확인 필요 ' + link[u.id] : '미회수'; }),
         L(function (u) { return gotRecv(u) ? d10(u.recvAt || c.recvDate) || '-' : '-'; }),
         L(function (u) { return VT[dashVerdict_(u)]; }), STG[cs.stage]]);
     });
@@ -1094,7 +1094,7 @@ function vHome() {
   var h = '<div class="kpis k7">' +
     kp('회수해야 하는 수량', K.need, K.loss ? '손망실·처분 ' + K.loss + ' 별도' : '교환 출고 전체', '#3182f6', 'all') +
     kp('회수됨', K.got, K.need ? Math.round(K.got / K.need * 100) + '%' : '-', '#8b95a1', 'all') +
-    kp('미회수', '<span style="color:var(--red)">' + K.miss + '</span>', K.link ? '연결 필요 ' + K.link + '개 별도' : '아직 안 들어옴', '#f04452', 'miss') +
+    kp('미회수', '<span style="color:var(--red)">' + K.miss + '</span>', K.link ? '창고 실물 확인 필요 ' + K.link + '개 별도' : '아직 안 들어옴', '#f04452', 'miss') +
     kp('정상 (양품화 대상)', '<span style="color:var(--green)">' + K.ok + '</span>', K.yang ? '용량 80%↑ 확인 ' + K.yang : '검사 완료', '#1fb86c', 'done') +
     kp('불량', K.bad + K.force, K.force ? '외력 ' + K.force + ' 포함' : '검사 완료', '#f04452', 'done') +
     kp('검사 전', '<span style="color:var(--violet)">' + K.wait + '</span>', '들어옴 · 판정 전', '#7b61ff', 'judge') +
@@ -1105,7 +1105,7 @@ function vHome() {
     '<button class="btn sm" data-act="dashXlsx" data-v="filtered">⬇ 걸러진 것만 엑셀</button><button class="btn sm pri" data-act="dashXlsx" data-v="all">⬇ 엑셀 받기</button></div>' +
     '<div class="dash-fl">' + FL.map(function (x) { return '<button class="dash-c' + (f === x[0] ? ' on' : '') + (x[0] === 'ec' ? ' ec' : '') + '" data-act="dashF" data-v="' + x[0] + '">' + x[1] + ' ' + dashFilter_(M.stores, x[0]).length + '</button>'; }).join('') + '</div>' +
     (M.unknown.length ? '<div class="dash-unk">매장 모르는 S/N <b>' + M.unknown.length + '개</b> — ' + M.unknown.slice(0, 6).map(function (o) { return '<span class="dsn ec" data-act="dashEc" data-sn="' + esc(o.sn) + '" data-o="1">' + esc(String(o.sn).slice(-5)) + '</span>'; }).join('') + (M.unknown.length > 6 ? ' …' : '') + ' <a href="#" data-act="go" data-v="inspect">매장 출처 확인 →</a></div>' : '') +
-    '<div class="dash-lg">회수되어야 하는 S/N: <b style="color:var(--red)">빨강</b> = 아직 안 들어옴, <b style="color:var(--amber)">주황</b> = 메모·스캔에만 있음 · 실제 회수된 S/N: <span style="color:var(--green)">정상</span> · <span style="color:var(--red)">불량</span> · <span style="color:var(--violet)">검사 전</span> · <span style="color:var(--amber)">확인 필요(누르면 이카운트 조회 안내)</span> · 끝 5자리</div>';
+    '<div class="dash-lg">회수되어야 하는 S/N: <b style="color:var(--red)">빨강</b> = 아직 안 들어옴, <b style="color:var(--amber)">주황</b> = 메모에만 적혀 있음(창고 실물 확인 필요) · 실제 회수된 S/N: <span style="color:var(--green)">정상</span> · <span style="color:var(--red)">불량</span> · <span style="color:var(--violet)">검사 전</span> · <span style="color:var(--amber)">확인 필요(누르면 이카운트 조회 안내)</span> · 끝 5자리</div>';
   var sn5 = function (x) { return /^P20/.test(x) ? x.slice(-5) : x; };
   var VC = { ok: 'var(--green)', bad: 'var(--red)', force: 'var(--gray)', wait: 'var(--violet)' };
   var rows = list.map(function (r) {
@@ -1114,14 +1114,14 @@ function vHome() {
     r.cases.forEach(function (cs) { unitsOf(cs.c).forEach(function (u) {
       if (dashVerdict_(u) === 'loss') return;
       if (!u.origSn) { unk++; if (miss[u.id]) unkMiss++; return; }
-      tgt.push(miss[u.id] ? '<b style="color:var(--red)">' + esc(sn5(u.origSn)) + '</b>' : link[u.id] ? '<b style="color:var(--amber)" title="메모나 연결 안 된 스캔에만 있어요 — 회수 처리에서 연결해 주세요">' + esc(sn5(u.origSn)) + '</b>' : esc(sn5(u.origSn)));
+      tgt.push(miss[u.id] ? '<b style="color:var(--red)">' + esc(sn5(u.origSn)) + '</b>' : link[u.id] ? '<b style="color:var(--amber)" title="AS 건 메모에만 적혀 있고 스캔 기록이 없어요 — 창고에 실물이 있는지 확인 후 스캔">' + esc(sn5(u.origSn)) + '</b>' : esc(sn5(u.origSn)));
     }); });
     if (unk) tgt.push('<span class="muted">S/N 미상 ' + unk + (unkMiss ? '(미회수 ' + unkMiss + ')' : '') + '</span>');
     var got = r.got.map(function (g) {
       var isEc = g.kind === 'ec' || g.kind === 'other';
       var tail = g.kind === 'ex' ? ' ← ' + esc(cid(IDX.caseById[g.ref] || { id: g.ref })) + ' 교환품' : g.kind === 'other' ? ' 다른 매장 출고품' : g.kind === 'ec' ? ' 확인 필요' : g.kind === 'ecDone' ? ' 이카운트: ' + esc(g.ec) : g.kind === 'typo' ? ' 접수 오기?' : '';
       return '<span style="color:' + (isEc ? 'var(--amber)' : VC[g.v] || 'inherit') + (isEc ? ';cursor:pointer;text-decoration:underline dotted' : '') + '"' + (isEc ? ' data-act="dashEc" data-sn="' + esc(g.sn) + '" data-u="' + esc(g.u.id) + '"' : '') + '>' + esc(sn5(g.sn)) + (tail ? '<small>' + tail + '</small>' : '') + '</span>';
-    }).concat(r.link.map(function (x) { return '<span style="color:var(--amber)" title="메모나 연결 안 된 스캔에만 있어요">' + esc(sn5(x.sn)) + '<small> 연결 필요</small></span>'; }));
+    }).concat(r.link.map(function (x) { return '<span style="color:var(--amber)" title="AS 건 메모에만 적혀 있고 스캔 기록이 없어요 — 창고에 실물이 있는지 확인 후 스캔">' + esc(sn5(x.sn)) + '<small> 창고 실물 확인 필요</small></span>'; }));
     var c = r.cnt, cnt = [c.ok ? '정상 ' + c.ok : '', c.bad ? '불량 ' + c.bad : '', c.force ? '외력 ' + c.force : '', c.wait ? '검사 전 ' + c.wait : '', c.loss ? '손망실·처분 ' + c.loss : ''].filter(String).join(' · ');
     var pill = r.stage === 'miss' ? '<span class="pill p-retreq">미회수 ' + (r.missN || r.link.length) + '</span>' : r.stage === 'judge' ? '<span class="pill p-inspect">검사(판정) 전</span>' : '<span class="pill p-done">검사(판정) 완료</span>';
     return '<tr><td style="min-width:140px"><b>' + esc(r.store) + '</b></td><td class="nowrap">' + r.need + (r.missN ? ' <small style="color:var(--red)">(미회수 ' + r.missN + ')</small>' : '') + '</td>' +
