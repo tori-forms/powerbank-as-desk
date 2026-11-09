@@ -571,7 +571,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
   } catch (e) { }
 })();
 var DEMO_MODE = false;
-var BUILD_ID = '9b0c4af5599b', NEW_VER = false;
+var BUILD_ID = 'abd218d3beed', NEW_VER = false;
 function verBusy_() {
   if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
   return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
@@ -1098,7 +1098,7 @@ function vHome() {
     kp('회수해야 하는 수량', K.need, K.loss ? '손망실·처분 ' + K.loss + ' 별도' : '교환 출고 전체', '#3182f6', 'all') +
     kp('회수됨', K.got, K.need ? Math.round(K.got / K.need * 100) + '%' : '-', '#8b95a1', 'all') +
     kp('미회수', '<span style="color:var(--red)">' + K.miss + '</span>', K.link ? '연결 필요 ' + K.link + '개 별도' : '아직 안 들어옴', '#f04452', 'miss') +
-    kp('정상 (양품화 대상)', '<span style="color:var(--green)">' + K.yang + '</span>', '정상 판정 ' + K.ok, '#1fb86c', 'done') +
+    kp('정상 (양품화 대상)', '<span style="color:var(--green)">' + K.ok + '</span>', K.yang ? '용량 80%↑ 확인 ' + K.yang : '검사 완료', '#1fb86c', 'done') +
     kp('불량', K.bad + K.force, K.force ? '외력 ' + K.force + ' 포함' : '검사 완료', '#f04452', 'done') +
     kp('검사 전', '<span style="color:var(--violet)">' + K.wait + '</span>', '들어옴 · 판정 전', '#7b61ff', 'judge') +
     kp('S/N 출고매장 확인 필요', '<span style="color:var(--amber)">' + K.ec + '</span>', '이카운트 조회', '#ff8a00', 'ec') + '</div>';
