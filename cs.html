@@ -366,6 +366,19 @@ table.t tr.click:hover td{background:#f9fafb}
 .lthist{margin-top:6px;color:var(--ink2);line-height:1.6}
 .ltbox{border-radius:10px;padding:8px 10px;font-size:13px;margin-top:8px;line-height:1.55}
 .ltbox.ok{background:var(--greenSoft);color:#0b6b3a} .ltbox.bad{background:var(--redSoft);color:var(--red)} .ltbox.warn{background:var(--amberSoft);color:#8a4b00}
+.dash-fl{display:flex;flex-wrap:wrap;gap:6px;padding:12px 20px 0}
+.dash-c{border:none;background:#f2f4f6;color:var(--ink2);border-radius:999px;padding:6px 12px;font-size:13px;font-weight:600;cursor:pointer}
+.dash-c.on{background:var(--brand);color:#fff}.dash-c.ec:not(.on){background:var(--amberSoft);color:#b25f00}
+.dash-lg,.dash-unk{font-size:12px;color:var(--ink3);padding:10px 20px 0}.dash-unk{color:var(--ink2)}
+.dash-t{width:100%;border-collapse:collapse;font-size:13px}.dash-t th{white-space:nowrap}.dash-t td{vertical-align:top}
+.dash-t td:first-child{min-width:170px}.dash-t td:nth-child(2){min-width:120px;white-space:nowrap}.dash-t td:nth-child(5){min-width:110px}
+.dash-t tr.dash-miss td:first-child{box-shadow:inset 4px 0 0 var(--red)}
+.dsn{display:inline-block;font:12px/1.2 ui-monospace,Consolas,monospace;padding:3px 7px;border-radius:7px;margin:2px 3px 2px 0;background:#f2f4f6;color:var(--ink2);white-space:nowrap}
+.dsn.miss{background:#fff;border:1px dashed #b0b8c1;color:var(--ink3)}.dsn.ok{background:var(--greenSoft);color:#11804a}.dsn.bad{background:var(--redSoft);color:#c8303d}
+.dsn.wait{background:var(--violetSoft);color:#5b3fd1}.dsn.force{background:#eceef1;color:#6b7684}.dsn.ex{background:#e3f5f9;color:#0b7a95}.dsn.ec{background:var(--amberSoft);color:#b25f00}
+.dsn[data-act]{cursor:pointer;text-decoration:underline dotted}
+.dtag{display:inline-block;font-size:12px;font-weight:600;padding:2px 8px;border-radius:999px;margin:1px 3px 1px 0}
+.dtag.ok{background:var(--greenSoft);color:#11804a}.dtag.bad{background:var(--redSoft);color:#c8303d}.dtag.wait{background:var(--violetSoft);color:#5b3fd1}.dtag.force{background:#eceef1;color:#6b7684}.dtag.ec{background:var(--amberSoft);color:#b25f00}
 </style>
 </head>
 <body>
@@ -558,7 +571,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
   } catch (e) { }
 })();
 var DEMO_MODE = false;
-var BUILD_ID = 'a6fac084b423', NEW_VER = false;
+var BUILD_ID = '9b0c4af5599b', NEW_VER = false;
 function verBusy_() {
   if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
   return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
@@ -919,10 +932,10 @@ function counts() {
 }
 
 var VIEWS = [
-  ['home', '▦', '대시보드'], ['inbox', '✉', '인입함'], ['ship', '⇢', '출고 현황'], ['ret', '⇠', '회수 현황'], ['inspect', '⚗', 'AS 회수분 검사판정'], ['results', '✔', 'AS 회수분 검사 결과'], ['yang', '♻', '양품화'], ['shipqc', '✓', '수입검사/HQC 불량 등록'], ['shipdoc', '📄', '출하 성적서'], ['loadtest', '⚡', '용량 테스트'], ['ltres', '📊', '용량 테스트 결과'],
+  ['home', '▦', '대시보드'], ['todo', '!', '처리할 일'], ['inbox', '✉', '인입함'], ['ship', '⇢', '출고 현황'], ['ret', '⇠', '회수 현황'], ['inspect', '⚗', 'AS 회수분 검사판정'], ['results', '✔', 'AS 회수분 검사 결과'], ['yang', '♻', '양품화'], ['shipqc', '✓', '수입검사/HQC 불량 등록'], ['shipdoc', '📄', '출하 성적서'], ['loadtest', '⚡', '용량 테스트'], ['ltres', '📊', '용량 테스트 결과'],
   ['stock', '▣', '재고'], ['analysis', '▤', '불량 분석'], ['loss', '₩', '손실'], ['settings', '⚙', '설정·동기화']
 ];
-var CS_HIDE = { yang: 1, loss: 1, inbox: 1, inspect: 1, stock: 1, settings: 1, guide: 1, loadtest: 1, ltres: 1, shipqc: 1, shipdoc: 1 };
+var CS_HIDE = { todo: 1, yang: 1, loss: 1, inbox: 1, inspect: 1, stock: 1, settings: 1, guide: 1, loadtest: 1, ltres: 1, shipqc: 1, shipdoc: 1 };
 var CS_ACT = { guideP: 1, allCases: 1, resF: 1, resCsv: 1, resOpen: 1, go: 1, 'case': 1, closeDrawer: 1, closeModal: 1, inboxFilter: 1, inboxSel: 1, toggleOld: 1, toTop: 1, slkBig: 1, ship: 1, ret: 1, anModel: 1, searchStore: 1, reload: 1 };
 var CS_IN = { q: 1, modelF: 1, anMonths: 1, anFrom: 1, anTo: 1, resP: 1 };
 function csScrub_() {
@@ -942,7 +955,7 @@ function isMobile_() { return window.matchMedia ? window.matchMedia('(max-width:
 function render() {
   if (GATED || !$('#nav')) return;
   var k = counts();
-  var badge = CS() ? {} : { inbox: k.inboxNew, ship: k.ship_wait, ret: k.retAll, inspect: k.recv_wait + k.inspectUnits + (S.data.orphans || []).filter(function (o) { return o.status === 'open'; }).length };
+  var badge = CS() ? {} : { todo: k.inboxNew + k.ship_wait + k.retAll + k.recv_wait + k.inspectUnits, inbox: k.inboxNew, ship: k.ship_wait, ret: k.retAll, inspect: k.recv_wait + k.inspectUnits + (S.data.orphans || []).filter(function (o) { return o.status === 'open'; }).length };
   if (CS() && CS_HIDE[S.view]) S.view = 'home';
   $('#nav').innerHTML = VIEWS.filter(function (v) { return !(CS() && CS_HIDE[v[0]]); }).map(function (v) {
     var n = badge[v[0]];
@@ -957,7 +970,7 @@ function render() {
   $('#title').textContent = t[2];
   var sub = { home: '', inbox: 'Slack #ext-볼타레스-티오더 접수 양식 자동 수집', cases: '교환 출고 → 반품 신청 → 회수 입고', inspect: '바코드 스캔으로 회수 매칭 → 판정 · 원인 · 처분', results: 'AS 회수품 · 수입검사 · 고객사 HQC에서 확인된 불량의 검사 결과 — 판정별로 전산 처리할 때 보세요', loss: '성능저하 · 증상 없음으로 교환해 준 손실 (교체품 · 택배 · 인건비 − 양품화 회수) — 사내 전용', yang: 'AS 회수분 중 용량이 양산 차수 평균 80% 이상이면 양품화 대상 · 미만이거나 다른 불량이면 양품화 불가 — 사내 전용', shipqc: '교체 재고 수입검사 · 납품 출하검사 불량을 한 곳에서 — 사내 전용', shipdoc: '파렛트별 출하 성적서 (샘플 = 파렛트 안에서 용량 테스트한 S/N) — 사내 전용', guide: '제품 구성 · 사양 · 사용 방법 · 매뉴얼', analysis: '모델별 불량 데이터', stock: '폼즈 지하1층 창고 · 3PL 창고에 있는 재고를 파렛트 단위로 — 입고·출고 기록과 양산 차수는 오른쪽 탭', settings: '연동 상태와 티오더 시트 동기화', ltres: '저장된 용량 시험 전체 — 기간·구분·조건으로 거르거나 S/N으로 찾아요' }[S.view] || '';
   $('#subtitle').textContent = sub; $('#subtitle').style.display = sub ? '' : 'none';
-  var fn = { home: vHome, inbox: vInbox, ship: vShip, ret: vReturn, inspect: vInspect, results: vResults, yang: vYang, loss: vLoss, shipqc: vShipQc, shipdoc: vShipDoc, guide: vGuide, stock: vStock, analysis: vAnalysis, settings: vSettings, loadtest: vLoadtest, ltres: vLtRes }[S.view];
+  var fn = { home: vHome, todo: vTodo, inbox: vInbox, ship: vShip, ret: vReturn, inspect: vInspect, results: vResults, yang: vYang, loss: vLoss, shipqc: vShipQc, shipdoc: vShipDoc, guide: vGuide, stock: vStock, analysis: vAnalysis, settings: vSettings, loadtest: vLoadtest, ltres: vLtRes }[S.view];
   if (S.view === 'loadtest') ltBeforeRender();
   var rvKeep = $('#rvScan') ? $('#rvScan').value : '';
   var ofKeep = document.activeElement && document.activeElement.id === 'ofScan';
@@ -976,8 +989,148 @@ function render() {
   S.inboxTap = false;
   if (S.caseSel) openCase(S.caseSel, true);
 }
+var DASH_LOSS = ['손망실(회수 포기)', '회수불가', '분실', '고객 폐기'];
+function dashVerdict_(u) {
+  if (u._ph) return 'miss';
+  if (!gotRecv(u) && u.disposition && u.disposition !== '미회수') return 'loss';
+  if (isMiss(u)) return 'miss';
+  var v = String(u.verdict || '');
+  if (v === '정상' || /^정상 노화/.test(v)) return 'ok';
+  if (v === '불량') return 'bad';
+  if (v === '외력/사용자 과실') return 'force';
+  return 'wait';
+}
+function dashCaseStage_(c) {
+  var vs = unitsOf(c).map(dashVerdict_);
+  return vs.indexOf('miss') >= 0 ? 'miss' : vs.indexOf('wait') >= 0 ? 'judge' : 'done';
+}
+function dashSnKind_(u, outIdx) {
+  if (!gotRecv(u) || !u.origSn || u.recvSn === u.origSn || u.recvSn === 'S/N 미식별') return '';
+  if (/이카운트: /.test(u.flags || '')) return 'ecDone';
+  var o = outIdx[u.recvSn];
+  if (o) return o.key === storeKeyC(u.store || (IDX.caseById[u.caseId] || {}).store) ? 'ex' : 'other';
+  var pn = function (x) { var m = /^(.*?)(\d+)$/.exec(String(x || '')); return m ? [m[1], +m[2]] : ['', NaN]; }, r = pn(u.recvSn), c = IDX.caseById[u.caseId];
+  if (c && unitsOf(c).some(function (x) { var q = pn(x.origSn); return x.origSn && q[0] === r[0] && Math.abs(q[1] - r[1]) <= 10; })) return 'typo';
+  return 'ec';
+}
+function dashModel_(model) {
+  var cases = S.data.cases.filter(function (c) { return String(c.model || '').split('/')[0] === model; });
+  var outIdx = {};
+  S.data.units.forEach(function (u) { var c = IDX.caseById[u.caseId]; if (u.outSn && c) outIdx[u.outSn] = { key: storeKeyC(c.store), caseId: c.id }; });
+  var openOr = (S.data.orphans || []).filter(function (o) { return o.status === 'open' && (modelOfSn(o.sn) || model) === model; });
+  var recvAll = {}; S.data.units.forEach(function (u) { if (gotRecv(u)) recvAll[u.recvSn] = 1; });
+  var orSn = {}; openOr.forEach(function (o) { orSn[o.sn] = 1; });
+  var kpi = { need: 0, got: 0, miss: 0, link: 0, ok: 0, yang: 0, bad: 0, force: 0, wait: 0, ec: 0, loss: 0 };
+  var by = {}, RANK = { miss: 0, judge: 1, done: 2 };
+  cases.forEach(function (c) {
+    var k = storeKeyC(c.store);
+    var r = by[k] = by[k] || { key: k, store: String(c.store || '').trim(), cases: [], need: 0, missN: 0, loss: 0, link: [], miss: [], got: [], cnt: { ok: 0, bad: 0, force: 0, wait: 0, loss: 0 }, stage: 'done', ec: 0, lastOut: '' };
+    var stg = dashCaseStage_(c), memo = String(c.note || '').match(/P20BOTA25\d{7}/g) || [], cus = unitsOf(c);
+    var known = {}; cus.forEach(function (u) { known[u.origSn] = 1; known[u.recvSn] = 1; known[u.outSn] = 1; });
+    var spare = memo.filter(function (sn, i) { return !known[sn] && !recvAll[sn] && memo.indexOf(sn) === i; });
+    r.cases.push({ c: c, stage: stg });
+    if (RANK[stg] < RANK[r.stage]) r.stage = stg;
+    if (String(c.outDate || '') > r.lastOut) r.lastOut = String(c.outDate || '');
+    var later = [];
+    cus.forEach(function (u) {
+      var v = dashVerdict_(u);
+      if (v === 'loss') { r.loss++; r.cnt.loss++; kpi.loss++; return; }
+      r.need++; kpi.need++;
+      if (v === 'miss') {
+        var item = { sn: missSn(u), cid: cid(c), days: days(c.outDate), u: u, c: c };
+        if (u.origSn && (memo.indexOf(u.origSn) >= 0 || orSn[u.origSn])) { r.link.push(item); kpi.link++; }
+        else later.push(item);
+        return;
+      }
+      var kind = dashSnKind_(u, outIdx), o = outIdx[u.recvSn];
+      if (kind === 'ec' || kind === 'other') { r.ec++; kpi.ec++; }
+      r.got.push({ sn: u.recvSn, cid: cid(c), v: v, kind: kind, ref: kind === 'ex' && o ? o.caseId : '', ec: (/이카운트: ([^/]+)/.exec(u.flags || '') || [])[1] || '', u: u, c: c });
+      r.cnt[v]++; kpi[v]++; kpi.got++;
+      if ((v === 'ok' || v === 'wait') && yangOf_(u)[0] === 'ok') kpi.yang++;
+    });
+    later.sort(function (a, b) { return (a.u.origSn ? 1 : 0) - (b.u.origSn ? 1 : 0); }).forEach(function (item) {
+      if (spare.length) { item.sn = spare.shift(); r.link.push(item); kpi.link++; }
+      else { r.miss.push(item); r.missN++; kpi.miss++; }
+    });
+  });
+  var unknown = [];
+  openOr.forEach(function (o) {
+    if (!String(o.store || '').trim()) { unknown.push(o); return; }
+    var r = by[storeKeyC(o.store)]; if (r) { r.ec++; kpi.ec++; } else unknown.push(o);
+  });
+  var stores = Object.keys(by).map(function (k) { return by[k]; }).sort(function (a, b) {
+    return RANK[a.stage] - RANK[b.stage] || b.missN - a.missN || b.lastOut.localeCompare(a.lastOut);
+  });
+  return { stores: stores, kpi: kpi, unknown: unknown };
+}
+function dashFilter_(stores, f) {
+  if (f === 'ec') return stores.filter(function (r) { return r.ec > 0; });
+  if (f === 'miss' || f === 'judge' || f === 'done') return stores.filter(function (r) { return r.stage === f; });
+  return stores;
+}
+function dashXlsxRows_(stores, unknown) {
+  var STG = { miss: '미회수', judge: '검사(판정) 전', done: '검사(판정) 완료' };
+  var VT = { ok: '정상', bad: '불량', force: '외력/사용자 과실', wait: '검사 전', loss: '손망실·처분', miss: '-' };
+  var WHY = { other: 'S/N 다름(다른 매장 출고품)', ec: '이카운트 조회 필요', typo: '접수 S/N 오기 추정(번호 10 이내)' };
+  var rows = [['매장', '접수번호', '출고일', '회수 대상 S/N', '교환 출고 S/N', '실제 회수 S/N', '회수일', '단계', '판정', '양품화', '확인 필요 사유', '이카운트 확인 매장']];
+  var link = {}, kind = {};
+  stores.forEach(function (r) { r.link.forEach(function (x) { link[x.u.id] = 1; }); r.got.forEach(function (g) { kind[g.u.id] = g; }); });
+  stores.forEach(function (r) {
+    r.cases.forEach(function (cs) {
+      var c = cs.c;
+      unitsOf(c).forEach(function (u) {
+        var v = dashVerdict_(u), g = kind[u.id] || {};
+        rows.push([c.store, cid(c), d10(c.outDate), u.origSn || '(S/N 미상)', u.outSn || '', gotRecv(u) ? u.recvSn : '', gotRecv(u) ? d10(u.recvAt || c.recvDate) : '',
+          STG[cs.stage], VT[v], v === 'ok' || v === 'wait' ? (yangOf_(u)[0] === 'ok' ? '양품화' : v === 'ok' ? '확인' : '') : '',
+          link[u.id] ? '메모/스캔에만 있음' : WHY[g.kind] || '', g.ec || '']);
+      });
+    });
+  });
+  (unknown || []).forEach(function (o) { rows.push(['(매장 모름)', '', '', '', '', o.sn, d10(o.at), '', '', '', '매장 출처 확인 필요', '']); });
+  return rows;
+}
 function vHome() {
   if (CS()) return vHomeCs();
+  var model = S.dashModel || 'P20BOTA25', f = S.dashF || 'all';
+  var M = dashModel_(model), K = M.kpi, list = dashFilter_(M.stores, f);
+  var kp = function (label, v, desc, color, val) { return '<div class="kpi" data-act="dashF" data-v="' + val + '"><div class="bar" style="background:' + color + '"></div><div class="l">' + label + '</div><div class="v">' + v + '<small>EA</small></div><div class="d">' + desc + '</div></div>'; };
+  var h = '<div class="kpis k7">' +
+    kp('회수해야 하는 수량', K.need, K.loss ? '손망실·처분 ' + K.loss + ' 별도' : '교환 출고 전체', '#3182f6', 'all') +
+    kp('회수됨', K.got, K.need ? Math.round(K.got / K.need * 100) + '%' : '-', '#8b95a1', 'all') +
+    kp('미회수', '<span style="color:var(--red)">' + K.miss + '</span>', K.link ? '연결 필요 ' + K.link + '개 별도' : '아직 안 들어옴', '#f04452', 'miss') +
+    kp('정상 (양품화 대상)', '<span style="color:var(--green)">' + K.yang + '</span>', '정상 판정 ' + K.ok, '#1fb86c', 'done') +
+    kp('불량', K.bad + K.force, K.force ? '외력 ' + K.force + ' 포함' : '검사 완료', '#f04452', 'done') +
+    kp('검사 전', '<span style="color:var(--violet)">' + K.wait + '</span>', '들어옴 · 판정 전', '#7b61ff', 'judge') +
+    kp('S/N 출고매장 확인 필요', '<span style="color:var(--amber)">' + K.ec + '</span>', '이카운트 조회', '#ff8a00', 'ec') + '</div>';
+  var FL = [['all', '전체'], ['miss', '미회수'], ['judge', '검사(판정) 전'], ['done', '검사(판정) 완료'], ['ec', 'S/N 출고매장 확인 필요']];
+  h += '<div class="card"><div class="hd"><h3>매장별 회수·판정</h3><span class="muted small">' + list.length + '개 매장</span><span style="flex:1"></span>' +
+    '<select class="inp" id="dashModelF" style="width:auto">' + prodOpts(model) + '</select>' +
+    '<button class="btn sm" data-act="dashXlsx" data-v="filtered">⬇ 걸러진 것만 엑셀</button><button class="btn sm pri" data-act="dashXlsx" data-v="all">⬇ 엑셀 받기</button></div>' +
+    '<div class="dash-fl">' + FL.map(function (x) { return '<button class="dash-c' + (f === x[0] ? ' on' : '') + (x[0] === 'ec' ? ' ec' : '') + '" data-act="dashF" data-v="' + x[0] + '">' + x[1] + ' ' + dashFilter_(M.stores, x[0]).length + '</button>'; }).join('') + '</div>' +
+    (M.unknown.length ? '<div class="dash-unk">매장 모르는 S/N <b>' + M.unknown.length + '개</b> — ' + M.unknown.slice(0, 6).map(function (o) { return '<span class="dsn ec" data-act="dashEc" data-sn="' + esc(o.sn) + '" data-o="1">' + esc(String(o.sn).slice(-5)) + '</span>'; }).join('') + (M.unknown.length > 6 ? ' …' : '') + ' <a href="#" data-act="go" data-v="inspect">매장 출처 확인 →</a></div>' : '') +
+    '<div class="dash-lg">들어온 S/N: <span class="dsn ok">정상</span><span class="dsn bad">불량</span><span class="dsn force">외력</span><span class="dsn wait">검사 전</span><span class="dsn ex">이전 교환 출고품</span><span class="dsn ec">출고매장 확인</span> · <span class="dsn miss">점선</span> = 아직 안 들어옴</div>';
+  var sn5 = function (x) { return /^P20/.test(x) ? x.slice(-5) : x; };
+  var more = function (a, n) { return a.length > n ? a.slice(0, n).join('') + '<span class="dsn">…외 ' + (a.length - n) + '</span>' : a.join(''); };
+  var rows = list.map(function (r) {
+    var mi = r.miss.map(function (x) { return '<span class="dsn miss">' + esc(sn5(x.sn)) + '·' + esc(x.cid) + '</span>'; }).concat(r.link.map(function (x) { return '<span class="dsn ec" title="건 메모나 연결 안 된 스캔에 이 S/N이 있어요 — 회수 처리에서 연결해 주세요">' + esc(sn5(x.sn)) + ' 메모/스캔 — 연결 필요</span>'; }));
+    var gt = r.got.map(function (g) {
+      var isEc = g.kind === 'ec' || g.kind === 'other', cls = isEc ? 'ec' : g.kind === 'ex' || g.kind === 'ecDone' ? 'ex' : g.v;
+      var t = esc(sn5(g.sn)) + (g.kind === 'ex' ? ' ← ' + esc(cid(IDX.caseById[g.ref] || { id: g.ref })) + ' 교환품' : g.kind === 'other' ? ' 다른 매장 출고품' : g.kind === 'ec' ? ' 이카운트' : g.kind === 'ecDone' ? ' 이카운트: ' + esc(g.ec) : g.kind === 'typo' ? ' 접수 오기?' : '');
+      return '<span class="dsn ' + cls + '"' + (isEc ? ' data-act="dashEc" data-sn="' + esc(g.sn) + '" data-u="' + esc(g.u.id) + '"' : '') + ' title="' + esc(g.cid) + '">' + t + '</span>';
+    });
+    var oldest = r.miss.reduce(function (m, x) { return x.days !== null && x.days > m ? x.days : m; }, -1);
+    var sub = r.missN ? '<small style="color:var(--red)">미회수 ' + r.missN + (oldest >= 0 ? ' · 출고 후 ' + oldest + '일' : '') + '</small>' : r.link.length ? '<small style="color:var(--amber)">연결 필요 ' + r.link.length + '</small>' : '<small style="color:var(--green)">다 들어옴</small>';
+    var c = r.cnt, tg = function (n, cls, t) { return n ? '<span class="dtag ' + cls + '">' + t + ' ' + n + '</span>' : ''; };
+    return '<tr' + (r.stage === 'miss' ? ' class="dash-miss"' : '') + '><td><b>' + esc(r.store) + '</b><br><small class="muted">' + r.cases.length + '건</small></td>' +
+      '<td><b>' + r.need + '</b><br>' + sub + (r.loss ? '<br><small class="muted">손망실·처분 ' + r.loss + ' 별도</small>' : '') + '</td>' +
+      '<td>' + (mi.length ? more(mi, 40) : '<span class="muted">—</span>') + '</td><td>' + (gt.length ? more(gt, 60) : '<span class="muted">—</span>') + '</td>' +
+      '<td>' + tg(c.ok, 'ok', '정상') + tg(c.bad, 'bad', '불량') + tg(c.force, 'force', '외력') + tg(c.wait, 'wait', '검사 전') + tg(c.loss, 'force', '손망실·처분') + (r.ec ? '<br>' + tg(r.ec, 'ec', '확인') : '') + '</td></tr>';
+  });
+  h += '<div class="tw"><table class="dash-t"><thead><tr><th>매장</th><th>회수해야 하는 수량</th><th>아직 안 들어온 S/N</th><th>들어온 S/N</th><th>판정</th></tr></thead><tbody>' +
+    (rows.length ? rows.join('') : '<tr><td colspan="5"><div class="empty">해당하는 매장이 없어요.</div></td></tr>') + '</tbody></table></div></div>';
+  return h;
+}
+function vTodo() {
   var k = counts();
   var kp = function (label, v, unit, desc, color, act) {
     return '<div class="kpi" data-act="' + act[0] + '" data-v="' + (act[1] || '') + '"><div class="bar" style="background:' + color + '"></div><div class="l">' + label + '</div><div class="v">' + v + '<small>' + unit + '</small></div><div class="d">' + desc + '</div></div>';
@@ -3280,7 +3433,7 @@ function ask_(msg, opt) {
     var id = 'ask' + Date.now(), hasIn = opt.input !== undefined;
     var bg = document.createElement('div'); bg.className = 'modal-bg'; bg.id = id; bg.style.zIndex = '2000';
     bg.innerHTML = '<div class="modal" style="max-width:460px"><div class="mh"><b style="flex:1">' + esc(opt.title || '확인') + '</b></div><div class="mb"><div style="white-space:pre-line;line-height:1.6">' + esc(msg) + '</div>' +
-      (hasIn ? '<input class="inp" id="' + id + 'i" style="width:100%;margin-top:10px" value="' + esc(opt.input || '') + '" placeholder="' + esc(opt.ph || '') + '">' : '') +
+      (hasIn ? '<input class="inp" id="' + id + 'i" style="width:100%;margin-top:10px" value="' + esc(opt.input || '') + '" placeholder="' + esc(opt.ph || '') + '"' + (opt.list ? ' list="' + id + 'l"' : '') + '>' + (opt.list ? '<datalist id="' + id + 'l">' + opt.list.map(function (x) { return '<option value="' + esc(x) + '">'; }).join('') + '</datalist>' : '') : '') +
       '</div><div class="mf"><button class="btn" id="' + id + 'n">' + esc(opt.no || '취소') + '</button><button class="btn pri" id="' + id + 'y">' + esc(opt.yes || '확인') + '</button></div></div>';
     document.body.appendChild(bg);
     var inp = hasIn ? document.getElementById(id + 'i') : null, closed = false;
@@ -3306,6 +3459,21 @@ function selSns(cls) { return $$('.' + cls + ':checked').map(function (x) { retu
 var ACT = {
   reload: function () { load(); },
   go: function (d) { S.view = d.v; S.q = ''; closeDrawer(); render(); window.scrollTo(0, 0); },
+  dashF: function (d) { S.dashF = d.v; render(); },
+  dashXlsx: function (d) {
+    var M = dashModel_(S.dashModel || 'P20BOTA25'), filt = d.v === 'filtered';
+    var rows = dashXlsxRows_(filt ? dashFilter_(M.stores, S.dashF || 'all') : M.stores, filt && (S.dashF || 'all') !== 'all' ? [] : M.unknown);
+    saveBlob_(xlsxBlob_(rows, '회수판정', [24, 12, 11, 20, 20, 20, 11, 14, 14, 8, 24, 20]), 'AS_recovery_' + today().replace(/-/g, '') + (filt ? '_filtered' : '') + '.xlsx');
+  },
+  dashEc: function (d, b) {
+    try { navigator.clipboard.writeText(d.sn); } catch (e) { }
+    var stores = {}; S.data.cases.forEach(function (c) { if (c.store) stores[String(c.store).trim()] = 1; });
+    ask_(d.sn + ' (S/N 복사됨)\n\n이 S/N은 우리 출고 기록에 없거나 다른 매장으로 나간 제품이에요.\n이카운트 MyPage › S/N 탭에서 찾아 주세요:\n· 품목 \'볼타레스보조배터리(2만/P20BOTA25)\'\n· 창고는 비워 두기\n· 기준일자 넉넉히 → F8\n\n찾은 매장을 적어 주세요.', { title: 'S/N 출고매장 확인', input: '', ph: '예: 포베이(롯데프리미엄아울렛김해점)', yes: '저장', list: Object.keys(stores).sort() }).then(function (v) {
+      v = v === null ? null : String(v).trim(); if (!v) return;
+      if (d.o) run('orphanUpdate', { sn: d.sn, store: v }, '매장을 적어 뒀어요.', b);
+      else run('unitEcStore', { unitId: d.u, store: v }, '매장을 적어 뒀어요. 시트 비고란에도 올라가요.', b);
+    });
+  },
   ship: function (d) { S.view = 'ship'; S.shipF = d.v; closeDrawer(); render(); },
   ret: function (d) { S.view = 'ret'; S.retF = d.v; closeDrawer(); render(); },
   quickReturn: function (d, b) {
@@ -4003,6 +4171,7 @@ document.addEventListener('input', function (e) {
 });
 document.addEventListener('change', function (e) {
   if (e.target.id === 'modelF') { S.model = e.target.value; render(); }
+  if (e.target.id === 'dashModelF') { S.dashModel = e.target.value; render(); }
   if (e.target.id === 'anMonths') { S.an.months = +e.target.value; render(); }
   if (e.target.id === 'anFrom' || e.target.id === 'anTo') { S.an[e.target.id === 'anFrom' ? 'from' : 'to'] = e.target.value; render(); }
   if (e.target.id === 'resP') { S.resP = e.target.value; render(); }
