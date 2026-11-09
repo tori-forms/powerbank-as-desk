@@ -571,7 +571,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
   } catch (e) { }
 })();
 var DEMO_MODE = false;
-var BUILD_ID = '14e2e05d9d04', NEW_VER = false;
+var BUILD_ID = 'd2aa37c524c8', NEW_VER = false;
 function verBusy_() {
   if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
   return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
@@ -1071,22 +1071,18 @@ function dashFilter_(stores, f) {
 function dashXlsxRows_(stores, unknown) {
   var STG = { miss: '미회수', judge: '검사(판정) 전', done: '검사(판정) 완료' };
   var VT = { ok: '정상', bad: '불량', force: '외력/사용자 과실', wait: '검사 전', loss: '손망실·처분', miss: '-' };
-  var WHY = { other: 'S/N 다름(다른 매장 출고품)', ec: '이카운트 조회 필요', typo: '접수 S/N 오기 추정(번호 10 이내)' };
-  var rows = [['매장', '출고일', '회수 대상 S/N', '교환 출고 S/N', '실제 회수 S/N', '회수일', '단계', '판정', '양품화', '확인 필요 사유', '이카운트 확인 매장']];
-  var link = {}, kind = {};
-  stores.forEach(function (r) { r.link.forEach(function (x) { link[x.u.id] = 1; }); r.got.forEach(function (g) { kind[g.u.id] = g; }); });
+  var rows = [['매장', '출고일', '회수해야 하는 수량', '회수 대상 S/N', '교환 출고 S/N', '실제 회수 S/N', '회수일(스캔)', '판정', '진행상태']];
   stores.forEach(function (r) {
     r.cases.forEach(function (cs) {
-      var c = cs.c;
-      unitsOf(c).forEach(function (u) {
-        var v = dashVerdict_(u), g = kind[u.id] || {};
-        rows.push([c.store, d10(c.outDate), u.origSn || '(S/N 미상)', u.outSn || '', gotRecv(u) ? u.recvSn : '', gotRecv(u) ? d10(u.recvAt || c.recvDate) : '',
-          STG[cs.stage], VT[v], v === 'ok' || v === 'wait' ? (yangOf_(u)[0] === 'ok' ? '양품화' : v === 'ok' ? '확인' : '') : '',
-          link[u.id] ? '메모/스캔에만 있음' : WHY[g.kind] || '', g.ec || '']);
-      });
+      var c = cs.c, us = unitsOf(c), L = function (f) { return us.map(f).join('\n'); };
+      rows.push([c.store, d10(c.outDate), us.filter(function (u) { return dashVerdict_(u) !== 'loss'; }).length,
+        L(function (u) { return u.origSn || '(S/N 미상)'; }), L(function (u) { return u.outSn || '-'; }),
+        L(function (u) { var v = dashVerdict_(u); return gotRecv(u) ? u.recvSn : v === 'loss' ? '-' : '미회수'; }),
+        L(function (u) { return gotRecv(u) ? d10(u.recvAt || c.recvDate) || '-' : '-'; }),
+        L(function (u) { return VT[dashVerdict_(u)]; }), STG[cs.stage]]);
     });
   });
-  (unknown || []).forEach(function (o) { rows.push(['(매장 모름)', '', '', '', o.sn, d10(o.at), '', '', '', '매장 출처 확인 필요', '']); });
+  if ((unknown || []).length) rows.push(['(매장 모름)', '', '', '', '', unknown.map(function (o) { return o.sn; }).join('\n'), unknown.map(function (o) { return d10(o.at); }).join('\n'), '', '매장 출처 확인 필요']);
   return rows;
 }
 function vHome() {
@@ -3441,7 +3437,7 @@ var ACT = {
   dashXlsx: function (d) {
     var M = dashModel_(S.dashModel || 'P20BOTA25'), filt = d.v === 'filtered';
     var rows = dashXlsxRows_(filt ? dashFilter_(M.stores, S.dashF || 'all') : M.stores, filt && (S.dashF || 'all') !== 'all' ? [] : M.unknown);
-    saveBlob_(xlsxBlob_(rows, '회수판정', [24, 11, 20, 20, 20, 11, 14, 14, 8, 24, 20]), 'AS_recovery_' + today().replace(/-/g, '') + (filt ? '_filtered' : '') + '.xlsx');
+    saveBlob_(xlsxBlob_(rows, '회수판정', [26, 11, 10, 20, 20, 20, 13, 14, 15]), 'AS_recovery_' + today().replace(/-/g, '') + (filt ? '_filtered' : '') + '.xlsx');
   },
   dashEc: function (d, b) {
     try { navigator.clipboard.writeText(d.sn); } catch (e) { }
