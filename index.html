@@ -571,7 +571,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
   } catch (e) { }
 })();
 var DEMO_MODE = false;
-var BUILD_ID = 'd2aa37c524c8', NEW_VER = false;
+var BUILD_ID = '5c16b56f6f44', NEW_VER = false;
 function verBusy_() {
   if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
   return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
@@ -1071,13 +1071,14 @@ function dashFilter_(stores, f) {
 function dashXlsxRows_(stores, unknown) {
   var STG = { miss: '미회수', judge: '검사(판정) 전', done: '검사(판정) 완료' };
   var VT = { ok: '정상', bad: '불량', force: '외력/사용자 과실', wait: '검사 전', loss: '손망실·처분', miss: '-' };
-  var rows = [['매장', '출고일', '회수해야 하는 수량', '회수 대상 S/N', '교환 출고 S/N', '실제 회수 S/N', '회수일(스캔)', '판정', '진행상태']];
+  var rows = [['매장', '출고일', '회수해야 하는 수량', '회수 대상 S/N', '교환 출고 S/N', '실제 회수 S/N', '회수일(스캔)', '판정', '진행상태']], link = {};
+  stores.forEach(function (r) { r.link.forEach(function (x) { link[x.u.id] = x.sn; }); });
   stores.forEach(function (r) {
     r.cases.forEach(function (cs) {
       var c = cs.c, us = unitsOf(c), L = function (f) { return us.map(f).join('\n'); };
       rows.push([c.store, d10(c.outDate), us.filter(function (u) { return dashVerdict_(u) !== 'loss'; }).length,
         L(function (u) { return u.origSn || '(S/N 미상)'; }), L(function (u) { return u.outSn || '-'; }),
-        L(function (u) { var v = dashVerdict_(u); return gotRecv(u) ? u.recvSn : v === 'loss' ? '-' : '미회수'; }),
+        L(function (u) { var v = dashVerdict_(u); return gotRecv(u) ? u.recvSn : v === 'loss' ? '-' : link[u.id] ? '메모에만 ' + link[u.id] : '미회수'; }),
         L(function (u) { return gotRecv(u) ? d10(u.recvAt || c.recvDate) || '-' : '-'; }),
         L(function (u) { return VT[dashVerdict_(u)]; }), STG[cs.stage]]);
     });
