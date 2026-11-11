@@ -13,13 +13,13 @@
 
 DL24 USB(HID 0483:5750) 보고서: [55 05 01 명령 d0 d1 d2 d3 EE FF …] 64바이트
   0x05 측정값 요청 → AA 05 .. 05 (전압·전류·Wh·mAh·온도·부하 ON)
-  0x03 설정 조회(전류·차단전압·모드) / 0x21 전류 설정 / 0x29 차단 전압 설정 / 0x25 부하 ON(1)·OFF(0)
+  0x03 설정 조회(전류·차단전압·모드) / 0x21 전류 설정 / 0x29 차단 전압 설정 / 0x25 부하 ON(1)·OFF(0) / 0x34 누적 Ah·Wh 0으로(약 2초 뒤 반영)
 """
 import sys, os, json, time, threading, struct, random, traceback, urllib.request, socket
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-VERSION = '1.3.20'
+VERSION = '1.3.21'
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE_FILE = os.path.join(HERE, 'state.json')
 CONFIG_FILE = os.path.join(HERE, 'config.json')
@@ -245,7 +245,7 @@ def on_report(D, u):
         if D.state == 'arm':
             D.arm['wait'] = ms() + 800; D.arm['hits'] = []
         return
-    if D.state == 'arm' and not L['on'] and ms() >= D.arm.get('wait', 0):   # 출력 대기: 출력이 켜진 게 2번 연속 보이면 바로 부하 ON
+    if D.state == 'arm' and not L['on'] and ms() >= max(D.arm.get('wait', 0), D.arm.get('ready', 0)):   # 출력 대기: 출력이 켜진 게 2번 연속 보이면 바로 부하 ON
         if L['v'] >= max(D.arm['cut'] + 0.3, ARM_MIN_V):
             D.arm['hits'].append(L['v'])
             if len(D.arm['hits']) >= 2:
@@ -304,7 +304,8 @@ def on_report(D, u):
 def rematch(D, L):
     """다시 잡힌 장비가 원래 어느 칸이었는지 DL24 안 누적 mAh로 찾음.
     허브가 끊겼다 붙으면 USB 경로가 바뀌고(DL24는 USB 시리얼이 없거나 다 같음) 새 칸으로 잡히거나 남의 칸에 붙던 문제.
-    DL24는 누적값을 장비마다 따로 쌓고(시험 시작 때도 안 지움) 끊긴 동안에도 계속 방전하므로
+    DL24는 누적값을 장비마다 따로 쌓고(1.3.21~ 새 시험 시작 때 0으로 지움) 끊긴 동안에도 계속 방전하므로
+    shortcut: 같은 전류로 몇십 초 안에 함께 시작한 칸끼리는 값이 비슷해 못 가릴 수 있음 → 그땐 경로·번호 방식으로 돌아감. 허브 끊김 뒤 칸이 뒤섞이면 Wh·전압도 같이 보도록 보강
     '끊기기 전 값 + 끊긴 시간 × 전류' 근처인 칸이 하나뿐이면 그 칸."""
     now = L['t']; hit = []
     for X in DEVS.values():
@@ -452,12 +453,13 @@ def start(D, p):
     D.msg = None; D.check = None; D.result = None; D.saved = ''; D.save_err = ''; D.cid = ''
     D.pause_ms = 0; D.paused_at = 0; D.pauses = 0; D.resave = False; D.end_probe = 0; D.gaps = 0; D.gap_ms = 0
     send(D, 0x25, [0, 0, 0, 0]); time.sleep(0.25)   # 직전 시험이 차단으로 끝난 상태(장비 알람)를 먼저 풀어 둠 — 첫 부하 ON이 알람 해제로만 쓰이는 것 방지
+    send(D, 0x34); time.sleep(0.12)   # 장비 누적 Ah·Wh 0으로 → 끊겨도 장비 화면 = 이번 시험 값 (민규님 11/11, 서버 PC 실측 2초 안에 반영). 이어서 시험(resume)엔 안 보냄
     send(D, 0x21, f32(cur)); time.sleep(0.12)
     send(D, 0x29, f32(cut)); time.sleep(0.12)
     send(D, 0x03)
     picked = D.pur if D.pur and (not D.pur_sn or D.pur_sn == D.sn) else ''   # 지금 꽂은 배터리(S/N)에 고른 시험 구분만 인정
     purpose = p.get('purpose') if p.get('purpose') in PURPOSES else (picked or '입고 QC')
-    D.arm = {'cur': cur, 'cut': cut, 'skip': bool(p.get('skip')), 'hits': [], 'at': ms(), 'purpose': purpose, 'cable': str(p.get('cable') or '')[:40], 'retry': 0, 'wait': 0}
+    D.arm = {'cur': cur, 'cut': cut, 'skip': bool(p.get('skip')), 'hits': [], 'at': ms(), 'purpose': purpose, 'cable': str(p.get('cable') or '')[:40], 'retry': 0, 'wait': 0, 'ready': ms() + 3000}   # ready: 0x34 반영(약 2초) 전에 부하 ON → base가 지우기 전 값으로 잡혀 '장비 재시작'으로 멈추는 것 방지
     D.state = 'arm'
     persist(True)
 
