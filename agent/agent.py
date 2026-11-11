@@ -13,13 +13,13 @@
 
 DL24 USB(HID 0483:5750) 보고서: [55 05 01 명령 d0 d1 d2 d3 EE FF …] 64바이트
   0x05 측정값 요청 → AA 05 .. 05 (전압·전류·Wh·mAh·온도·부하 ON)
-  0x03 설정 조회(전류·차단전압·모드) / 0x21 전류 설정 / 0x29 차단 전압 설정 / 0x25 부하 ON(1)·OFF(0) / 0x34 누적 Ah·Wh 0으로(약 2초 뒤 반영)
+  0x03 설정 조회(전류·차단전압·모드) / 0x21 전류 설정 / 0x29 차단 전압 설정 / 0x25 부하 ON(1)·OFF(0) / 0x32 OK 버튼(결과 화면 닫기) / 0x34 누적 Ah·Wh 0으로(약 2초 뒤 반영)
 """
 import sys, os, json, time, threading, struct, random, traceback, urllib.request, socket
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-VERSION = '1.3.21'
+VERSION = '1.3.22'
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE_FILE = os.path.join(HERE, 'state.json')
 CONFIG_FILE = os.path.join(HERE, 'config.json')
@@ -453,6 +453,8 @@ def start(D, p):
     D.msg = None; D.check = None; D.result = None; D.saved = ''; D.save_err = ''; D.cid = ''
     D.pause_ms = 0; D.paused_at = 0; D.pauses = 0; D.resave = False; D.end_probe = 0; D.gaps = 0; D.gap_ms = 0
     send(D, 0x25, [0, 0, 0, 0]); time.sleep(0.25)   # 직전 시험이 차단으로 끝난 상태(장비 알람)를 먼저 풀어 둠 — 첫 부하 ON이 알람 해제로만 쓰이는 것 방지
+    if D.state == 'done':   # 직전 시험이 끝난 장비 = 결과 화면(List of test completion reports)이 떠 있음 → OK(0x32)로 닫아야 화면 숫자가 0으로 보임. 평소 화면에선 안 누름(11/11 일반 화면 0x32는 부하 안 켜짐까지만 확인)
+        send(D, 0x32); time.sleep(0.25)
     send(D, 0x34); time.sleep(0.12)   # 장비 누적 Ah·Wh 0으로 → 끊겨도 장비 화면 = 이번 시험 값 (민규님 11/11, 서버 PC 실측 2초 안에 반영). 이어서 시험(resume)엔 안 보냄
     send(D, 0x21, f32(cur)); time.sleep(0.12)
     send(D, 0x29, f32(cut)); time.sleep(0.12)
