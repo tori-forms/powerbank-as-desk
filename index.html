@@ -571,7 +571,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
   } catch (e) { }
 })();
 var DEMO_MODE = false;
-var BUILD_ID = '466ecaa5a146', NEW_VER = false;
+var BUILD_ID = 'b9df82ed56c3', NEW_VER = false;
 function verBusy_() {
   if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
   return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
@@ -945,10 +945,11 @@ function counts() {
 }
 
 var VIEWS = [
-  ['home', '▦', '대시보드'], ['lookup', '🔍', 'S/N 조회'], ['inbox', '✉', '인입함'], ['ship', '⇢', '출고 현황'], ['ret', '⇠', '회수 현황'], ['inspect', '⚗', 'AS 회수분 검사판정'], ['results', '✔', 'AS 회수분 검사 결과'], ['yang', '♻', '양품화'], ['shipqc', '✓', '수입검사/HQC 불량 등록'], ['shipdoc', '📄', '출하 성적서'], ['loadtest', '⚡', '용량 테스트'], ['ltres', '📊', '용량 테스트 결과'],
-  ['stock', '▣', '재고'], ['analysis', '▤', '불량 분석'], ['loss', '₩', '손실'], ['settings', '⚙', '설정·동기화']
+  ['home', '▦', '대시보드'], ['lookup', '🔍', 'S/N 조회'], ['inbox', '✉', '인입함'], ['ship', '⇢', '출고 현황'], ['ret', '⇠', '회수 현황'], ['recv', '📥', 'AS 회수분 등록'], ['inspect', '⚗', 'AS 회수분 검사 판정'], ['results', '✔', 'AS 회수분 검사 결과'], ['yang', '♻', '양품화'], ['shipqc', '✓', '수입검사/HQC 불량 등록'], ['shipdoc', '📄', '출하 성적서'], ['loadtest', '⚡', '용량 테스트'], ['ltres', '📊', '용량 테스트 결과'],
+  ['export', '⬇', '자료 추출'], ['stock', '▣', '재고'], ['analysis', '▤', '불량 분석'], ['loss', '₩', '손실'], ['settings', '⚙', '설정·동기화']
 ];
-var CS_HIDE = { lookup: 1, yang: 1, loss: 1, inbox: 1, inspect: 1, stock: 1, settings: 1, guide: 1, loadtest: 1, ltres: 1, shipqc: 1, shipdoc: 1 };
+var IN_HIDE = { inbox: 1, ship: 1, ret: 1 };
+var CS_HIDE = { lookup: 1, yang: 1, loss: 1, inbox: 1, recv: 1, inspect: 1, export: 1, stock: 1, settings: 1, guide: 1, loadtest: 1, ltres: 1, shipqc: 1, shipdoc: 1 };
 var CS_ACT = { guideP: 1, allCases: 1, resF: 1, resCsv: 1, resOpen: 1, go: 1, 'case': 1, closeDrawer: 1, closeModal: 1, inboxFilter: 1, inboxSel: 1, toggleOld: 1, toTop: 1, slkBig: 1, ship: 1, ret: 1, anModel: 1, searchStore: 1, reload: 1 };
 var CS_IN = { q: 1, modelF: 1, anMonths: 1, anFrom: 1, anTo: 1, resP: 1 };
 function csScrub_() {
@@ -968,9 +969,9 @@ function isMobile_() { return window.matchMedia ? window.matchMedia('(max-width:
 function render() {
   if (GATED || !$('#nav')) return;
   var k = counts();
-  var badge = CS() ? {} : { inbox: k.inboxNew, ship: k.ship_wait, ret: k.retAll, inspect: k.recv_wait + k.inspectUnits + (S.data.orphans || []).filter(function (o) { return o.status === 'open'; }).length };
+  var badge = CS() ? {} : { inbox: k.inboxNew, ship: k.ship_wait, ret: k.retAll, recv: k.recv_wait + orphOpen_().length, inspect: k.inspectUnits };
   if (CS() && CS_HIDE[S.view]) S.view = 'home';
-  $('#nav').innerHTML = VIEWS.filter(function (v) { return !(CS() && CS_HIDE[v[0]]); }).map(function (v) {
+  $('#nav').innerHTML = VIEWS.filter(function (v) { return !(CS() ? CS_HIDE : IN_HIDE)[v[0]]; }).map(function (v) {
     var n = badge[v[0]];
     return '<button data-act="go" data-v="' + v[0] + '" class="' + (S.view === v[0] ? 'on' : '') + '"><span class="ic">' + v[1] + '</span>' + v[2] + (v[0] === 'settings' && !(S.data.meta.admin && S.setOk) ? ' 🔒' : '') +
       (n !== undefined ? '<span class="cnt ' + (n ? '' : 'z') + '">' + n + '</span>' : '') + '</button>';
@@ -981,9 +982,9 @@ function render() {
   var t = VIEWS.filter(function (v) { return v[0] === S.view; })[0];
   document.body.classList.toggle('cs', CS());
   $('#title').textContent = t[2];
-  var sub = { home: '', inbox: 'Slack #ext-볼타레스-티오더 접수 양식 자동 수집', cases: '교환 출고 → 반품 신청 → 회수 입고', inspect: '바코드 스캔으로 회수 매칭 → 판정 · 원인 · 처분', results: 'AS 회수품 · 수입검사 · 고객사 HQC에서 확인된 불량의 검사 결과 — 판정별로 전산 처리할 때 보세요', loss: '성능저하 · 증상 없음으로 교환해 준 손실 (교체품 · 택배 · 인건비 − 양품화 회수) — 사내 전용', yang: 'AS 회수분 중 용량이 양산 차수 평균 80% 이상이면 양품화 대상 · 미만이거나 다른 불량이면 양품화 불가 — 사내 전용', shipqc: '교체 재고 수입검사 · 납품 출하검사 불량을 한 곳에서 — 사내 전용', shipdoc: '파렛트별 출하 성적서 (샘플 = 파렛트 안에서 용량 테스트한 S/N) — 사내 전용', guide: '제품 구성 · 사양 · 사용 방법 · 매뉴얼', analysis: '모델별 불량 데이터', stock: '폼즈 지하1층 창고 · 3PL 창고에 있는 재고를 파렛트 단위로 — 입고·출고 기록과 양산 차수는 오른쪽 탭', settings: '연동 상태와 티오더 시트 동기화', ltres: '저장된 용량 시험 전체 — 기간·구분·조건으로 거르거나 S/N으로 찾아요', lookup: '바코드를 찍거나 S/N 여러 개를 붙여넣으면 매장 · 상태 · 판정 · 용량이 바로 나와요' }[S.view] || '';
+  var sub = { home: '', inbox: 'Slack #ext-볼타레스-티오더 접수 양식 자동 수집', cases: '교환 출고 → 반품 신청 → 회수 입고', export: '필요한 자료를 골라 엑셀 한 파일로 — 자료마다 시트 하나', recv: '도착한 회수품 바코드를 찍어 AS 건에 등록 · 수량 부족 · 출처 모르는 S/N 확인', inspect: '등록된 회수품의 판정 · 원인 · 처분', results: 'AS 회수품 · 수입검사 · 고객사 HQC에서 확인된 불량의 검사 결과 — 판정별로 전산 처리할 때 보세요', loss: '성능저하 · 증상 없음으로 교환해 준 손실 (교체품 · 택배 · 인건비 − 양품화 회수) — 사내 전용', yang: 'AS 회수분 중 용량이 양산 차수 평균 80% 이상이면 양품화 대상 · 미만이거나 다른 불량이면 양품화 불가 — 사내 전용', shipqc: '교체 재고 수입검사 · 납품 출하검사 불량을 한 곳에서 — 사내 전용', shipdoc: '파렛트별 출하 성적서 (샘플 = 파렛트 안에서 용량 테스트한 S/N) — 사내 전용', guide: '제품 구성 · 사양 · 사용 방법 · 매뉴얼', analysis: '모델별 불량 데이터', stock: '폼즈 지하1층 창고 · 3PL 창고에 있는 재고를 파렛트 단위로 — 입고·출고 기록과 양산 차수는 오른쪽 탭', settings: '연동 상태와 티오더 시트 동기화', ltres: '저장된 용량 시험 전체 — 기간·구분·조건으로 거르거나 S/N으로 찾아요', lookup: '바코드를 찍거나 S/N 여러 개를 붙여넣으면 매장 · 상태 · 판정 · 용량이 바로 나와요' }[S.view] || '';
   $('#subtitle').textContent = sub; $('#subtitle').style.display = sub ? '' : 'none';
-  var fn = { home: vHome, lookup: lookPanel_, inbox: vInbox, ship: vShip, ret: vReturn, inspect: vInspect, results: vResults, yang: vYang, loss: vLoss, shipqc: vShipQc, shipdoc: vShipDoc, guide: vGuide, stock: vStock, analysis: vAnalysis, settings: vSettings, loadtest: vLoadtest, ltres: vLtRes }[S.view];
+  var fn = { home: vHome, lookup: lookPanel_, inbox: vInbox, ship: vShip, ret: vReturn, recv: vRecv, inspect: vInspect, export: vExport, results: vResults, yang: vYang, loss: vLoss, shipqc: vShipQc, shipdoc: vShipDoc, guide: vGuide, stock: vStock, analysis: vAnalysis, settings: vSettings, loadtest: vLoadtest, ltres: vLtRes }[S.view];
   if (S.view === 'loadtest') ltBeforeRender();
   var rvKeep = $('#rvScan') ? $('#rvScan').value : '';
   var ofKeep = document.activeElement && document.activeElement.id === 'ofScan';
@@ -1117,7 +1118,7 @@ function vHome() {
     '<select class="inp" id="dashModelF" style="width:auto">' + prodOpts(model) + '</select>' +
     '<button class="btn sm" data-act="dashXlsx" data-v="filtered">⬇ 걸러진 것만 엑셀</button><button class="btn sm pri" data-act="dashXlsx" data-v="all">⬇ 엑셀 받기</button></div>' +
     '<div class="dash-fl">' + FL.map(function (x) { return '<button class="dash-c' + (f === x[0] ? ' on' : '') + (x[0] === 'ec' ? ' ec' : '') + '" data-act="dashF" data-v="' + x[0] + '">' + x[1] + ' ' + dashFilter_(M.stores, x[0]).length + '</button>'; }).join('') + '</div>' +
-    (M.unknown.length ? '<div class="dash-unk">매장 모르는 S/N <b>' + M.unknown.length + '개</b> — ' + M.unknown.slice(0, 6).map(function (o) { return '<span class="dsn ec" data-act="dashEc" data-sn="' + esc(o.sn) + '" data-o="1">' + esc(String(o.sn).slice(-5)) + '</span>'; }).join('') + (M.unknown.length > 6 ? ' …' : '') + ' <a href="#" data-act="go" data-v="inspect">매장 출처 확인 →</a></div>' : '') +
+    (M.unknown.length ? '<div class="dash-unk">매장 모르는 S/N <b>' + M.unknown.length + '개</b> — ' + M.unknown.slice(0, 6).map(function (o) { return '<span class="dsn ec" data-act="dashEc" data-sn="' + esc(o.sn) + '" data-o="1">' + esc(String(o.sn).slice(-5)) + '</span>'; }).join('') + (M.unknown.length > 6 ? ' …' : '') + ' <a href="#" data-act="insp" data-v="short">매장 출처 확인 →</a></div>' : '') +
     '<div class="dash-lg">회수되어야 하는 S/N: <b style="color:var(--red)">빨강</b> = 아직 안 들어옴, <b style="color:var(--amber)">주황</b> = 메모에만 적혀 있음(창고 실물 확인 필요) · 실제 회수된 S/N: <span style="color:var(--green)">정상</span> · <span style="color:var(--red)">불량</span> · <span style="color:var(--violet)">검사 전</span> · <span style="color:var(--amber)">확인 필요(누르면 이카운트 조회 안내)</span> · 끝 5자리</div>';
   var sn5 = function (x) { return /^P20/.test(x) ? x.slice(-5) : x; };
   var VC = { ok: 'var(--green)', bad: 'var(--red)', force: 'var(--gray)', wait: 'var(--violet)' };
@@ -1646,17 +1647,80 @@ function caseDrawer(c) {
     '<input class="inp" id="closeReason" placeholder="종결 사유 (예: 고객 취소, 중복 접수)" style="flex:1;min-width:200px"><button class="btn red" data-act="closeCase" data-id="' + esc(c.id) + '">AS 종결</button>') + '</div></div>';
   return h + '</div>';
 }
+function vRecv() {
+  var rw = byBucket('recv_wait'), nShort = byBucket('ret_short').length + orphOpen_().length;
+  var sub = S.insp === 'short' ? 'short' : 'recv';
+  var tabs = '<div class="tabs">' +
+    '<button class="' + (sub === 'recv' ? 'on' : '') + '" data-act="inspTab" data-v="recv">회수 예정 · 회수 처리<span class="n">' + rw.length + '</span></button>' +
+    '<button class="' + (sub === 'short' ? 'on' : '') + '" data-act="inspTab" data-v="short">확인 필요<span class="n"' + (nShort ? ' style="background:var(--red);color:#fff"' : '') + '>' + nShort + '</span></button></div>';
+  return tabs + scopeBar(0) + (sub === 'short' ? shortPanel_() : scanPanel_(rw));
+}
+var EX_SETS = [
+  ['asunits', 'AS 건 · S/N 전체', 'S/N 한 줄씩 — 매장 · 접수 · 출고 · 회수 · 판정 · 처분 (기간 = 접수일)'],
+  ['dash', '매장별 회수 · 판정 현황', '대시보드 표와 같은 내용 (기간 상관없이 현재 상태)'],
+  ['results', '회수분 검사 결과', '판정 끝난 회수품 — 증상 · 원인 · 용량 % (기간 = 검사일)'],
+  ['lt', '용량 시험 기록', '저장된 용량 시험 전체, 연습 기록 제외 (기간 = 시험일)']
+];
+var EX_RAW = { cases: 'AS 건(원본)', units: 'S-N(원본)', ships: '택배 송장', log: '작업 기록', stock: '교체 재고', stockout: '재고 출고', lots: '양산 차수', pallets: '파렛트', shipinsp: '납품 검사', shiprej: '납품 불합격', orphans: '출처 확인 불가', todos: '처리할 일', intakes: 'Slack 접수 이력', inbox: '인입함', requests: 'Slack 요청' };
+function exIn_(d) { d = d10(d); return d && (!S.exFrom || d >= S.exFrom) && (!S.exTo || d <= S.exTo); }
+function exNoRange_() { return !S.exFrom && !S.exTo; }
+function vExport() {
+  ltPerLoad_();
+  S.exSel = S.exSel || { asunits: 1 };
+  var chk = function (k, name, desc) { return '<label style="display:flex;gap:8px;align-items:flex-start;padding:8px 10px;border:1px solid var(--line);border-radius:10px"><input type="checkbox" class="exChk" data-k="' + k + '"' + (S.exSel[k] ? ' checked' : '') + ' style="margin-top:3px"><span><b>' + esc(name) + '</b>' + (desc ? '<br><span class="small muted">' + esc(desc) + '</span>' : '') + '</span></label>'; };
+  var raw = Object.keys(EX_RAW).filter(function (k) { return Array.isArray(S.data[k]); });
+  return '<div class="card"><div class="hd"><h3>기간</h3><span class="muted small">비워 두면 전체 기간</span></div><div class="bd" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
+    '<input type="date" class="inp" id="exFrom" value="' + esc(S.exFrom || '') + '"> ~ <input type="date" class="inp" id="exTo" value="' + esc(S.exTo || '') + '"></div></div>' +
+    '<div class="card" style="margin-top:14px"><div class="hd"><h3>정리된 자료</h3></div><div class="bd" style="display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr))">' +
+    EX_SETS.map(function (x) { return chk(x[0], x[1], x[0] === 'lt' && !LT.perAll ? x[2] + ' · 불러오는 중…' : x[2]); }).join('') + '</div></div>' +
+    '<div class="card" style="margin-top:14px"><div class="hd"><h3>원본 표</h3><span class="muted small">전산에 저장된 칸 그대로 (기간 = 만든 날짜)</span></div><div class="bd" style="display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(200px,1fr))">' +
+    raw.map(function (k) { return chk('raw:' + k, EX_RAW[k] + ' (' + S.data[k].length + ')', ''); }).join('') + '</div></div>' +
+    '<div style="margin-top:14px;display:flex;justify-content:flex-end"><button class="btn pri" data-act="exGo">⬇ 고른 자료 엑셀로 받기</button></div>';
+}
+document.addEventListener('change', function (e) {
+  var t = e.target;
+  if (t.id === 'exFrom' || t.id === 'exTo') S[t.id] = t.value;
+  else if (t.classList && t.classList.contains('exChk')) { S.exSel = S.exSel || {}; if (t.checked) S.exSel[t.getAttribute('data-k')] = 1; else delete S.exSel[t.getAttribute('data-k')]; }
+});
+function exSheets_() {
+  var out = [], sel = S.exSel || {};
+  if (sel.asunits) out.push({ name: 'AS 건·SN', rows: [['문의번호', '매장', '모델', '출처', '접수일', '불량 인입 사유', '증상', '출고일', '출고 송장', '반품 송장', '회수일', '접수 S/N', '출고 S/N', '회수 S/N', '양산 차수', '판정', '검사 증상', '원인', '용량(%)', '처분', '검사일', '종결', '종결 사유', '메모']].concat(S.data.units.filter(function (u) {
+    var c = IDX.caseById[u.caseId] || {}; return exNoRange_() || exIn_(c.createdAt || c.outDate);
+  }).map(function (u) {
+    var c = IDX.caseById[u.caseId] || {}, l = lotOf(u.recvSn || u.origSn);
+    return [c.inquiryNo ? inqNo(c.inquiryNo) : '', c.store || u.store, String(u.model || caseModel(c)).split('/')[0], c.source, d10(c.createdAt), c.reasonCode, c.symptom, d10(c.outDate), c.outTracking, c.returnTracking, d10(c.recvDate),
+      u._ph ? '' : u.origSn, u.outSn, u._ph ? '' : u.recvSn, l ? l.name : '', u.verdict, u.testSymptom, cz(u.cause), u.capPct, u.disposition, d10(u.testDate), c.closed === 'Y' ? '종결' : '', c.closedReason, c.note];
+  })) });
+  if (sel.dash) { var M = dashModel_(S.dashModel || 'P20BOTA25'); out.push({ name: '매장별 회수·판정', rows: dashXlsxRows_(M.stores, M.unknown) }); }
+  if (sel.results) out.push({ name: '검사 결과', rows: resRows_(resList_().filter(function (u) { return exNoRange_() || exIn_(resDate_(u)); })) });
+  if (sel.lt) out.push({ name: '용량 시험', rows: [['시험일시', 'S/N', '모델', '구분', '조건', '결과(mAh)', 'Wh', '소요 시간', '판정', '판정 근거']].concat((LT.perAll || []).filter(function (t) {
+    return ltRealSn(t.sn) && (exNoRange_() || exIn_(t.startAt || t.createdAt));
+  }).map(function (t) {
+    var j = ltJudge(t);
+    return [String(t.startAt || t.createdAt || '').slice(0, 16).replace('T', ' '), t.sn, modelOfSn(t.sn) || t.model || '', LT_PUR_LABEL[t.purpose] || t.purpose, ltCondTxt_(t), Math.round(+t.mah || 0), Math.round((+t.wh || 0) * 100) / 100, ltHms(+t.sec), j ? j.txt : '', j ? j.why || '' : ''];
+  })) });
+  Object.keys(EX_RAW).forEach(function (k) {
+    if (!sel['raw:' + k] || !Array.isArray(S.data[k])) return;
+    var rs = S.data[k].filter(function (r) { return exNoRange_() || exIn_(r.createdAt || r.at || r.postedAt || r.outAt || r.receivedAt); });
+    var cols = []; rs.forEach(function (r) { Object.keys(r).forEach(function (c) { if (c.charAt(0) !== '_' && cols.indexOf(c) < 0) cols.push(c); }); });
+    out.push({ name: EX_RAW[k], rows: [cols.length ? cols : ['(없음)']].concat(rs.map(function (r) {
+      return cols.map(function (c) { var v = r[c]; v = v != null && typeof v === 'object' ? JSON.stringify(v) : v; return typeof v === 'string' && v.length > 32000 ? v.slice(0, 32000) : v; });
+    })) });
+  });
+  return out;
+}
+function exGo_() {
+  if (!Object.keys(S.exSel || {}).length) return toast('받을 자료를 하나 이상 골라 주세요.', true);
+  if (S.exSel.lt && !LT.perAll) return toast('용량 시험 기록을 불러오는 중이에요. 잠시 뒤 다시 눌러 주세요.', true);
+  if (S.exFrom && S.exTo && S.exFrom > S.exTo) return toast('기간 시작일이 끝일보다 늦어요.', true);
+  var sh = exSheets_();
+  saveBlob_(xlsxBook_(sh), 'AS_export_' + (exNoRange_() ? 'all' : (S.exFrom || '').replace(/-/g, '') + '-' + (S.exTo || '').replace(/-/g, '')) + '_' + today().replace(/-/g, '') + '.xlsx');
+  toast(sh.map(function (s) { return s.name + ' ' + (s.rows.length - 1); }).join(' · ') + '줄 내려받았어요.');
+}
 function vInspect() {
   var q = inspectQueue();
   var qAll = S.data.units.filter(function (u) { var c = IDX.caseById[u.caseId]; return c && c.closed !== 'Y' && !u.verdict && !u.disposition && u.recvSn; });
-  var rw = byBucket('recv_wait'), nShort = byBucket('ret_short').length + orphOpen_().length;
-  if (S.insp === 'look') S.insp = '';
-  var sub = S.insp === 'scan' ? 'recv' : S.insp || (rw.length || !q.length ? 'recv' : 'judge');
-  var tabs = '<div class="tabs">' +
-    '<button class="' + (sub === 'recv' ? 'on' : '') + '" data-act="inspTab" data-v="recv">① 회수 예정 · 회수 처리<span class="n">' + rw.length + '</span></button>' +
-    '<button class="' + (sub === 'judge' ? 'on' : '') + '" data-act="inspTab" data-v="judge">② 검사중<span class="n">' + q.length + '</span></button>' +
-    '<button class="' + (sub === 'short' ? 'on' : '') + '" data-act="inspTab" data-v="short">③ 확인 필요<span class="n"' + (nShort ? ' style="background:var(--red);color:#fff"' : '') + '>' + nShort + '</span></button></div>';
-  return tabs + scopeBar(qAll.length - q.length).replace('건 숨김', '개 숨김 · 이전 건도 바코드를 찍으면 다시 여기에 떠요') + (sub === 'recv' ? scanPanel_(rw) : sub === 'short' ? shortPanel_() : judgePanel_(q));
+  return scopeBar(qAll.length - q.length).replace('건 숨김', '개 숨김 · 이전 건도 바코드를 찍으면 다시 여기에 떠요') + judgePanel_(q);
 }
 function lookOf_(sn) {
   var out = [];
@@ -1669,7 +1733,7 @@ function lookOf_(sn) {
   return out;
 }
 function lookState_(x) {
-  if (x.o) return x.o.status === 'open' ? ['매장 출처 확인 불가 (③ 확인 필요)', 'p-red', '확인 필요'] : ['출처 확인 불가 목록 — 정리됨', 'p-gray', '기타'];
+  if (x.o) return x.o.status === 'open' ? ['매장 출처 확인 불가 (AS 회수분 등록 › 확인 필요)', 'p-red', '확인 필요'] : ['출처 확인 불가 목록 — 정리됨', 'p-gray', '기타'];
   var u = x.u, c = x.c;
   if (x.role === 'out') return ['교환품으로 매장에 출고됨', 'p-blue', '교환 출고'];
   if (x.role === 'orig' && u.recvSn && u.recvSn !== u.origSn) return ['접수 S/N — 실제로는 ' + u.recvSn + '(으)로 회수', 'p-partial', '다른 S/N으로 회수'];
@@ -1965,9 +2029,9 @@ function scanPanel_(rw) {
         '<div class="small muted">이번에 찍은 S/N ' + grp[id].length + '개 · ' + esc(c.reasonCode || '') + ' · 출고 ' + md(c.outDate) + '</div></div>';
     }).join('') + '</div></div>';
   var nShort = shortCases.length + orphOpen_().length;
-  var shortHint = nShort ? '<div class="card" style="margin-bottom:12px;border:1.5px solid var(--red)"><div class="bd" style="display:flex;align-items:center;gap:8px"><b style="color:var(--red)">⚠️ 확인 필요 ' + nShort + '건</b><span class="small muted">수량 부족 · S/N 불일치 · 매장 출처 확인 불가</span><span style="flex:1"></span><button class="btn sm" data-act="inspTab" data-v="short">③ 확인 필요 보기</button></div></div>' : '';
+  var shortHint = nShort ? '<div class="card" style="margin-bottom:12px;border:1.5px solid var(--red)"><div class="bd" style="display:flex;align-items:center;gap:8px"><b style="color:var(--red)">⚠️ 확인 필요 ' + nShort + '건</b><span class="small muted">수량 부족 · S/N 불일치 · 매장 출처 확인 불가</span><span style="flex:1"></span><button class="btn sm" data-act="inspTab" data-v="short">확인 필요 보기</button></div></div>' : '';
   return scanBar + '<div class="split" style="grid-template-columns:minmax(0,1fr) 380px"><div>' + expect + '</div><div>' + shortHint + left + '</div></div>' +
-    '<div class="note" style="margin-top:12px">반품이 도착하면 <b>회수 예정</b>에 기종·S/N별로 올라옵니다. 실물을 확인하고 <b>회수 처리</b>를 누르면 <b>② 검사중</b>으로 넘어가요. 예정보다 적게 들어왔거나 접수 S/N과 다르면 오른쪽 <b>확인 필요</b>로 바로 넘어갑니다.</div>';
+    '<div class="note" style="margin-top:12px">반품이 도착하면 <b>회수 예정</b>에 기종·S/N별로 올라옵니다. 실물을 확인하고 <b>회수 처리</b>를 누르면 <b>AS 회수분 검사 판정</b>으로 넘어가요. 예정보다 적게 들어왔거나 접수 S/N과 다르면 오른쪽 <b>확인 필요</b>로 바로 넘어갑니다.</div>';
 }
 function inspList_() {
   return inspectQueue().filter(function (u) { return !S.inspAge || ageOf_(u).label === S.inspAge; }).sort(function (a, b) {
@@ -2003,7 +2067,7 @@ function judgePanel_(q) {
     '<span id="inspAutoBad"></span>' + (ltPreload_(q), '') +
     (q.length ? '<button class="btn sm" data-act="inspSnAll">S/N 한번에 보기</button><button class="btn sm" data-act="inspXlsx">엑셀 받기</button>' : '') + '</div>' +
     '<div class="split" style="grid-template-columns:340px minmax(0,1fr)"><div class="card list">' +
-    (list || '<div class="empty">' + (q.length ? '검색 결과가 없습니다.' : '검사중인 제품이 없습니다. ① 회수 예정에서 회수 처리하면 여기에 올라와요.') + '</div>') +
+    (list || '<div class="empty">' + (q.length ? '검색 결과가 없습니다.' : '검사중인 제품이 없습니다. AS 회수분 등록에서 회수 처리하면 여기에 올라와요.') + '</div>') +
     '</div><div>' + ((S.inspScan || []).length ? scanInspect_() : S.inspStore ? storeInspect_(S.inspStore, by[S.inspStore] || []) : '<div class="card"><div class="empty">왼쪽에서 매장을 선택해 주세요.</div></div>') + '</div></div>';
 }
 function snLike_(x) { return /^[A-Z][A-Z0-9]{5,}\d{4,}$/.test(x); }
@@ -2602,13 +2666,15 @@ function vResults() {
 }
 function resCsv_() {
   var f = S.resF || 'all', list = resAgeF_(resTabList_()).filter(function (u) { return f === 'all' || u.verdict === f; });
-  var rows = [['검사일', '매장', '문의번호', '출고일', '접수 S/N', '회수 S/N', '모델', '판정', '증상', '원인', '용량(%)', '처분', '검사 의견', '사용 시작일', '시작일 기준', '사용 기간(일)', '사용 기간']].concat(list.map(function (u) {
+  var blob = xlsxBlob_(resRows_(list), '검사결과', [11, 24, 11, 11, 20, 20, 12, 10, 12, 18, 8, 12, 50, 11, 13, 10, 12]);
+  saveBlob_(blob, 'AS_inspection_' + today().replace(/-/g, '') + '.xlsx');
+  toast(list.length + '개를 엑셀로 내려받았습니다.');
+}
+function resRows_(list) {
+  return [['검사일', '매장', '문의번호', '출고일', '접수 S/N', '회수 S/N', '모델', '판정', '증상', '원인', '용량(%)', '처분', '검사 의견', '사용 시작일', '시작일 기준', '사용 기간(일)', '사용 기간']].concat(list.map(function (u) {
     var c = IDX.caseById[u.caseId] || {};
     return [resDate_(u), c.store || u.store, c.inquiryNo ? inqNo(c.inquiryNo) : '', c.outDate, u.origSn, u.recvSn, String(u.model || caseModel(c)).split('/')[0], u.verdict, u.testSymptom, cz(u.cause), u.capPct, u.disposition, u.opinion].concat((function (a) { return [a.start, a.kind, a.days, a.label]; })(ageOf_(u)));
   }));
-  var blob = xlsxBlob_(rows, '검사결과', [11, 24, 11, 11, 20, 20, 12, 10, 12, 18, 8, 12, 50, 11, 13, 10, 12]);
-  saveBlob_(blob, 'AS_inspection_' + today().replace(/-/g, '') + '.xlsx');
-  toast(list.length + '개를 엑셀로 내려받았습니다.');
 }
 function saveBlob_(blob, name) {
   if (window.navigator && navigator.msSaveOrOpenBlob) return navigator.msSaveOrOpenBlob(blob, name);
@@ -3568,7 +3634,7 @@ var ACT = {
     var v = (el.value || '').trim(); if (!v) return toast('출고 송장번호를 입력해 주세요.', true);
     run('addTracking', { caseId: d.id, type: 'out', text: v }, function (r) { return '출고 송장을 등록했습니다 — 배송 중' + sheetMsg_(r); }, b);
   },
-  insp: function (d) { S.view = 'inspect'; S.insp = d.v; S.q = ''; closeDrawer(); render(); window.scrollTo(0, 0); },
+  insp: function (d) { S.view = d.v === 'judge' ? 'inspect' : 'recv'; S.insp = d.v; S.q = ''; closeDrawer(); render(); window.scrollTo(0, 0); },
   addTrk: function (d, b) {
     var el = $(d.type === 'out' ? '#addOut' : '#addRet'); if (!el || !el.value.trim()) return toast('송장번호를 입력해 주세요.', true);
     run('addTracking', { caseId: d.id, type: d.type, text: el.value }, function (r) { return '송장을 추가했습니다' + sheetMsg_(r); }, b);
@@ -3854,7 +3920,8 @@ var ACT = {
       $('#bulkOut').innerHTML = '<table class="t"><tbody>' + r.results.map(function (x) { return '<tr><td class="mono">' + esc(x.no) + '</td><td>' + (x.ok ? '<span class="pill p-green">연결</span> ' + esc(x.store || '') : '<span class="pill p-red">실패</span>') + '</td><td class="small muted">' + esc(x.msg) + '</td></tr>'; }).join('') + '</tbody></table>';
     });
   },
-  inspTab: function (d) { S.insp = d.v; render(); },
+  exGo: function () { exGo_(); },
+  inspTab: function (d) { S.insp = d.v; S.view = d.v === 'judge' ? 'inspect' : 'recv'; render(); },
   inspSnAll: function () {
     var us = inspList_(), sns = us.map(function (u) { return u.recvSn; });
     modal('검사중 S/N ' + sns.length + '개' + (S.inspAge ? ' · ' + S.inspAge : ''),
@@ -3901,7 +3968,7 @@ var ACT = {
     el.value = ''; render();
     var m = batchMatch_(S.scanBatch.sns), un = m.unknown.filter(function (x) { return !(S.data.orphans || []).some(function (o) { return o.sn === x.sn && o.status === 'open'; }); });
     if (un.length) call('orphanAdd', { items: un.map(function (x) { return { sn: x.sn, kind: x.inbox ? 'inbox' : 'unknown', inboxId: x.inbox ? x.inbox.id : '', store: x.inbox ? x.inbox.store : '', msg: x.inbox ? '' : '접수된 AS 건에 없는 S/N' }; }) }).then(function (r) { if (r && r.auto && r.auto.length) toast('우리 교환품 ' + r.auto.length + '개는 같은 매장 건에 바로 회수 연결했어요 — ' + r.auto.map(function (x) { return x.store + ' ' + x.label; }).join(', ')); return load(true); }).catch(function () { });
-    toast(sns.length + '개 확인 — 일치 ' + m.matchedN + '개 · 이미 처리됨 ' + m.dup.length + '개' + (m.unknown.length ? ' · 매장 출처 확인 불가 ' + m.unknown.length + '개 (③ 확인 필요 탭)' : ''));
+    toast(sns.length + '개 확인 — 일치 ' + m.matchedN + '개 · 이미 처리됨 ' + m.dup.length + '개' + (m.unknown.length ? ' · 매장 출처 확인 불가 ' + m.unknown.length + '개 (AS 회수분 등록 › 확인 필요)' : ''));
     var r2 = $('#rvScan'); if (r2) r2.focus();
   },
   boxIn: function (d, b) { run('boxIn', { nos: [d.no] }, '박스를 우리 창고 입고로 기록했어요.', b); },
@@ -4029,7 +4096,7 @@ var ACT = {
     if (!sns.length) return toast('바코드를 찍거나 S/N을 입력해 주세요.', true);
     run('scanReturns', { sns: sns }, function (r) {
       var ok = r.results.filter(function (x) { return x.status === 'ok'; }).length, un = r.results.filter(function (x) { return x.status === 'unknown' || x.status === 'inbox'; }).length, dup = r.results.filter(function (x) { return x.status === 'dup'; }).length;
-      return '회수 처리 ' + ok + '개' + (dup ? ' · 이미 처리된 S/N ' + dup + '개' : '') + (un ? ' · ⚠️ 매장 출처 확인 불가 ' + un + '개 (③ 확인 필요 탭)' : '');
+      return '회수 처리 ' + ok + '개' + (dup ? ' · 이미 처리된 S/N ' + dup + '개' : '') + (un ? ' · ⚠️ 매장 출처 확인 불가 ' + un + '개 (AS 회수분 등록 › 확인 필요)' : '');
     }, b).then(function (r) {
       S.scan = (r.results || []).reverse().concat(S.scan || []).slice(0, 200);
       S.insp = 'recv'; render();
@@ -5243,7 +5310,7 @@ function ltPerRows_() {
 function ltPerLoad_(force) {
   if (LT.perLoading || (LT.perAll && !force)) return;
   LT.perLoading = true;
-  ltQ_({ all: 1 }).then(function (r) { LT.perAll = r.tests || []; LT.perLoading = false; ltRefreshPerCard(); if (S.view === 'yang' || S.view === 'loss') render(); },
+  ltQ_({ all: 1 }).then(function (r) { LT.perAll = r.tests || []; LT.perLoading = false; ltRefreshPerCard(); if (S.view === 'yang' || S.view === 'loss' || S.view === 'export') render(); },
     function (e) { LT.perLoading = false; LT.perAll = LT.perAll || []; toast(e.message || String(e), true); ltRefreshPerCard(); });
 }
 function ltCondTxt_(t) { return 'CC ' + (+t.cur) + 'A · 차단 ' + (+t.cut) + 'V'; }
