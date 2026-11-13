@@ -571,7 +571,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
   } catch (e) { }
 })();
 var DEMO_MODE = false;
-var BUILD_ID = 'cf956900b101', NEW_VER = false;
+var BUILD_ID = '7349d5aeff3d', NEW_VER = false;
 function verBusy_() {
   if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
   return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
@@ -595,9 +595,9 @@ function verCheck_() {
 }
 document.addEventListener('paste', function (e) {
   if (!e.target || e.target.id !== 'inspQ') return;
-  var t = (e.clipboardData || window.clipboardData).getData('text');
-  if (inspScanSns_(t).length < 2) return;
-  e.preventDefault();
+  var t = (e.clipboardData || window.clipboardData).getData('text'), tk = inspScanSns_(t);
+  if (tk.length < 2 || !tk.every(snLike_)) return;
+  e.preventDefault(); clearTimeout(qTimer);
   var r0 = inspScanAdd_(t);
   S.inspQ = ''; e.target.value = '';
   render();
@@ -1654,8 +1654,64 @@ function vInspect() {
   var tabs = '<div class="tabs">' +
     '<button class="' + (sub === 'recv' ? 'on' : '') + '" data-act="inspTab" data-v="recv">① 회수 예정 · 회수 처리<span class="n">' + rw.length + '</span></button>' +
     '<button class="' + (sub === 'judge' ? 'on' : '') + '" data-act="inspTab" data-v="judge">② 검사중<span class="n">' + q.length + '</span></button>' +
-    '<button class="' + (sub === 'short' ? 'on' : '') + '" data-act="inspTab" data-v="short">③ 확인 필요<span class="n"' + (nShort ? ' style="background:var(--red);color:#fff"' : '') + '>' + nShort + '</span></button></div>';
+    '<button class="' + (sub === 'short' ? 'on' : '') + '" data-act="inspTab" data-v="short">③ 확인 필요<span class="n"' + (nShort ? ' style="background:var(--red);color:#fff"' : '') + '>' + nShort + '</span></button>' +
+    '<button class="' + (sub === 'look' ? 'on' : '') + '" data-act="inspTab" data-v="look">④ S/N 조회</button></div>';
+  if (sub === 'look') return tabs + lookPanel_();
   return tabs + scopeBar(qAll.length - q.length).replace('건 숨김', '개 숨김 · 이전 건도 바코드를 찍으면 다시 여기에 떠요') + (sub === 'recv' ? scanPanel_(rw) : sub === 'short' ? shortPanel_() : judgePanel_(q));
+}
+function lookOf_(sn) {
+  var out = [];
+  S.data.units.forEach(function (u) {
+    var role = u.recvSn === sn && !u._ph ? 'recv' : u.origSn === sn ? 'orig' : u.outSn === sn ? 'out' : '';
+    if (role) out.push({ u: u, c: IDX.caseById[u.caseId] || {}, role: role });
+  });
+  (S.data.orphans || []).forEach(function (o) { if (o.sn === sn) out.push({ o: o }); });
+  return out;
+}
+function lookState_(x) {
+  if (x.o) return x.o.status === 'open' ? ['매장 출처 확인 불가 (③ 확인 필요)', 'p-red', '확인 필요'] : ['출처 확인 불가 목록 — 정리됨', 'p-gray', '기타'];
+  var u = x.u, c = x.c;
+  if (x.role === 'out') return ['교환품으로 매장에 출고됨', 'p-blue', '교환 출고'];
+  if (x.role === 'orig' && u.recvSn && u.recvSn !== u.origSn) return ['접수 S/N — 실제로는 ' + u.recvSn + '(으)로 회수', 'p-partial', '다른 S/N으로 회수'];
+  if (u.verdict) return [(u.verdict === '외력/사용자 과실' ? '외력' : u.verdict) + ' 판정 · ' + (u.disposition || '처분 대기'), u.verdict === '불량' ? 'p-red' : u.verdict === '정상' ? 'p-green' : 'p-partial', '판정 완료'];
+  if (u.disposition) return [u.disposition, 'p-gray', '처분'];
+  if (c.closed === 'Y') return ['종결', 'p-closed', '종결'];
+  if (u.recvSn) return ['회수됨 · 검사중 (판정 전)', 'p-inspect', '검사중'];
+  var b = BUCKET[(IDX.st[c.id] || {}).b] || ['-', 'p-gray'];
+  return ['회수 전 · ' + b[0], b[1], '회수 전'];
+}
+function lookPanel_() {
+  setTimeout(lookPaint_, 0);
+  return '<div class="card"><div class="hd"><h3>S/N 조회</h3><span class="muted small">바코드를 찍거나 여러 개를 붙여넣으면 바로 매장 · 상태 · 판정이 나와요 (조회만 해요)</span><span style="flex:1"></span>' +
+    '<button class="btn sm" data-act="lookClear">지우기</button></div><div class="bd">' +
+    '<textarea class="inp mono" id="lookQ" rows="4" style="width:100%" placeholder="S/N을 찍거나 붙여넣으세요 — 한 줄에 하나, 띄어쓰기·쉼표로 나눠도 돼요">' + esc(S.lookQ || '') + '</textarea>' +
+    '<div id="lookRes" style="margin-top:10px"></div></div></div>';
+}
+var LK_TRIED = {};
+function lookPaint_() {
+  var box = $('#lookRes'); if (!box) return;
+  var sns = inspScanSns_(S.lookQ).filter(function (x, i, a) { return a.indexOf(x) === i; });
+  if (!sns.length) { box.innerHTML = '<div class="empty">찍은 S/N이 없어요.</div>'; return; }
+  var need = sns.filter(function (x) { return !(x in LT.hist) && !LK_TRIED[x]; });
+  if (need.length) { need.forEach(function (x) { LK_TRIED[x] = 1; }); var pt = []; for (var i = 0; i < need.length; i += 250) pt.push(ltLoadHist(need.slice(i, i + 250))); Promise.all(pt).then(lookPaint_); }
+  var cnt = {}, rows = [];
+  sns.forEach(function (sn) {
+    var hits = lookOf_(sn), h = LT.hist[sn], t = h && h.length ? h[h.length - 1] : null, j = t && ltJudge(t);
+    var lt = h === null || h === undefined ? '<span class="muted">불러오는 중…</span>' : t ? ymd(t.startAt) + ' ' + esc(LT_PUR_LABEL[t.purpose] || t.purpose) + ' · ' + Math.round(+t.mah).toLocaleString() + 'mAh' + (j ? ' · <b>' + esc(j.txt) + '</b>' : '') : '<span class="muted">없음</span>';
+    if (!hits.length) { cnt['전산에 없음'] = (cnt['전산에 없음'] || 0) + 1; rows.push('<tr><td class="mono">' + esc(sn) + '</td><td colspan="5"><span class="pill p-gray">전산에 없는 S/N</span> <span class="small muted">AS 건 · 회수 기록 · 출처 확인 불가 목록 어디에도 없어요</span></td><td class="small">' + lt + '</td></tr>'); return; }
+    hits.forEach(function (x, i) {
+      var st = lookState_(x), k = st[2]; cnt[k] = (cnt[k] || 0) + 1;
+      var u = x.u || {}, c = x.c || {};
+      rows.push('<tr' + (c.id ? ' class="click" data-act="case" data-id="' + esc(c.id) + '"' : '') + '><td class="mono">' + (i ? '' : esc(sn)) + '</td>' +
+        '<td>' + (x.o ? esc(x.o.store || '-') : '<b>' + esc(c.store || '') + '</b> <span class="muted mono small">' + esc(cid(c)) + '</span>') + '</td>' +
+        '<td><span class="pill ' + st[1] + '">' + esc(st[0]) + '</span></td>' +
+        '<td class="small">' + esc([u.testSymptom, cz(u.cause)].filter(Boolean).join(' · ') || '-') + '</td>' +
+        '<td class="nowrap">' + (u.capPct ? esc(u.capPct) + '%' : '-') + '</td><td class="nowrap">' + esc(u.testDate || '-') + '</td><td class="small">' + lt + '</td></tr>');
+    });
+  });
+  box.innerHTML = '<div class="small" style="margin-bottom:6px"><b>' + sns.length + '개 조회</b> · ' + Object.keys(cnt).map(function (k) { return esc(k) + ' ' + cnt[k]; }).join(' · ') + '</div>' +
+    '<div class="tw"><table class="t"><thead><tr><th>S/N</th><th>매장 · AS 건</th><th>상태</th><th>증상 · 원인</th><th>용량</th><th>검사일</th><th>마지막 용량 시험</th></tr></thead><tbody>' + rows.join('') + '</tbody></table></div>' +
+    '<div class="small muted" style="margin-top:6px">줄을 누르면 그 AS 건이 열려요.</div>';
 }
 function recvCard_(c) {
   var st = IDX.st[c.id], us = st.open, on = S.recvOpen === c.id;
@@ -1927,7 +1983,7 @@ function judgePanel_(q) {
   var oldest = function (id) { return by[id].map(function (u) { return recvTs_(u) || Infinity; }).reduce(function (a, b) { return Math.min(a, b); }, Infinity); };
   order.sort(function (a, b) { return oldest(a) - oldest(b) || String((IDX.caseById[a] || {}).store).localeCompare(String((IDX.caseById[b] || {}).store)); });
   var f = String(S.inspQ || '').trim().toUpperCase();
-  var fs = inspScanSns_(f), many = fs.length > 1;
+  var fs = inspScanSns_(f), many = fs.length > 1 && fs.every(snLike_);
   var shown = !f ? order : order.filter(function (id) { var c = IDX.caseById[id] || {}; return many ? by[id].some(function (u) { return fs.indexOf(String(u.recvSn || '')) >= 0; }) : String(c.store || '').toUpperCase().indexOf(f) >= 0 || cid(c).indexOf(f) >= 0 || by[id].some(function (u) { return String(u.recvSn || '').indexOf(f) >= 0; }); });
   if (S.inspStore && !IDX.caseById[S.inspStore]) S.inspStore = null;
   if (!S.inspStore && shown.length) S.inspStore = shown[0];
@@ -1950,6 +2006,7 @@ function judgePanel_(q) {
     (list || '<div class="empty">' + (q.length ? '검색 결과가 없습니다.' : '검사중인 제품이 없습니다. ① 회수 예정에서 회수 처리하면 여기에 올라와요.') + '</div>') +
     '</div><div>' + ((S.inspScan || []).length ? scanInspect_() : S.inspStore ? storeInspect_(S.inspStore, by[S.inspStore] || []) : '<div class="card"><div class="empty">왼쪽에서 매장을 선택해 주세요.</div></div>') + '</div></div>';
 }
+function snLike_(x) { return /^[A-Z][A-Z0-9]{5,}\d{4,}$/.test(x); }
 function inspScanSns_(v) { return String(v || '').toUpperCase().split(/[\s,;]+/).filter(Boolean).map(function (x) { return x.replace(/^P20BPTA/, 'P20BOTA'); }); }
 function inspScanAdd_(v) {
   var sns = inspScanSns_(v).filter(function (x, i, a) { return a.indexOf(x) === i; }), out = { tokens: sns.length, added: [], dup: [], miss: [] };
@@ -2045,7 +2102,8 @@ function inspectForm(u, many) {
     OPINION_TPL.map(function (t, i) { return '<span class="chip" data-act="tpl" data-i="' + i + '" title="' + esc(t[0]) + '">' + esc(t[0].slice(0, 22)) + '…</span>'; }).join('') + '</div>' +
     '<textarea class="inp" id="in_op" rows="3">' + esc(u.opinion || '') + '</textarea></div>' +
     '<div class="fld" style="margin-top:12px"><span>처리 (어떻게 했는지)</span>' + chips('disposition', L.DISPOSITIONS.filter(function (x) { return ['미회수', '회수불가', '분실', '고객 폐기', '손망실(회수 포기)'].indexOf(x) < 0 || x === u.disposition; }), u.disposition) + '</div>' +
-    '<div class="row" style="margin-top:16px"><button class="btn pri" data-act="saveInspect">' + (many ? '선택한 ' + many.length + '개 저장' : '저장') + '</button><span class="muted small">원인은 판정에 따라 자동 추천됩니다 (정상 → 재현 안 됨, 용량 80% 미만 → 셀 용량 저하)</span></div></div></div>';
+    '<div class="row" style="margin-top:16px"><button class="btn pri" data-act="saveInspect">' + (many ? '선택한 ' + many.length + '개 저장' : '저장') + '</button>' +
+    (!many && u.verdict ? '<button class="btn" data-act="inspUndo" data-id="' + esc(u.id) + '" title="판정을 지우고 검사중으로 — 재시험해서 다시 판정할 때">↩ 판정 되돌리기</button>' : '') + '<span class="muted small">원인은 판정에 따라 자동 추천됩니다 (정상 → 재현 안 됨, 용량 80% 미만 → 셀 용량 저하)</span></div></div></div>';
 }
 function chipVal(name) {
   var on = $$('#inspCard .chips[data-name="' + name + '"] .chip.on'), out = [];
@@ -4075,6 +4133,13 @@ var ACT = {
   inspStore: function (d) { S.inspStore = d.id; S.inspPick = []; S.inspScan = []; render(); },
   inspScanDel: function (d) { S.inspScan = (S.inspScan || []).filter(function (id) { return id !== d.id; }); render(); },
   inspScanClear: function () { S.inspScan = []; render(); },
+  inspUndo: function (d, b) {
+    var u = IDX.unitById[d.id]; if (!u) return;
+    if (!askGate_((u.recvSn || u.origSn) + '의 판정 [' + u.verdict + (u.cause ? ' / ' + cz(u.cause) : '') + ']을 지우고 검사중으로 되돌릴까요? 티오더 시트 회수분 테스트 결과의 판정 칸도 비워요.', function () { ACT.inspUndo(d, b); })) return;
+    run('inspectUndo', { unitId: u.id }, function (r) { return '판정을 되돌렸어요 — 검사중' + (r.sheet === 'cleared' || r.sheet === 'removed' ? ' · 시트 판정 칸 비움' : r.sheet === 'row shifted' ? ' · 시트 행이 밀려 시트는 직접 확인해 주세요' : ''); }, b)
+      .then(function () { S.inspPick = [u.id]; S.inspScan = []; render(); });
+  },
+  lookClear: function () { S.lookQ = ''; var q = $('#lookQ'); if (q) { q.value = ''; q.focus(); } lookPaint_(); },
   inspAutoBad: function (d, b) {
     var us = inspList_().filter(ltRecallBad_);
     if (!us.length) return toast('용량 시험에서 80% 미만으로 나온 회수분이 없어요.', true);
@@ -4163,7 +4228,8 @@ document.addEventListener('click', function (e) {
 document.addEventListener('input', function (e) { if (e.target.id !== 'tailSn') return; var el = $('#tailCnt'), k = tailSns_(e.target.value).length; if (el) el.textContent = k ? k + '개 찍힘' : ''; });
 document.addEventListener('input', function (e) { if (e.target.id !== 'qdSn') return; var h = $('#qdHint'), K = e.target.value.trim() && qdKind_(e.target.value.trim()); if (h) { h.textContent = K ? K.txt : 'S/N을 넣으면 어느 쪽인지 여기 떠요.'; h.style.color = K && K.k === 'in' ? 'var(--violet)' : K && K.k === 'out' ? 'var(--blue)' : K ? 'var(--red)' : ''; } });
 window.addEventListener('unhandledrejection', function (e) { e.preventDefault(); });
-var qTimer;
+var qTimer, lkTimer;
+document.addEventListener('input', function (e) { if (e.target.id !== 'lookQ') return; S.lookQ = e.target.value; clearTimeout(lkTimer); lkTimer = setTimeout(lookPaint_, 150); });
 document.addEventListener('input', function (e) {
   if (e.target.id !== 'rvScan') return;
   var v = e.target.value, done = /\s$/.test(v) ? v : v.replace(/\S*$/, ''), toks = done.toUpperCase().match(/[A-Z0-9]{8,}/g) || [];
@@ -4240,8 +4306,10 @@ document.addEventListener('keydown', function (e) {
     e.target.value = ''; return;
   }
   if (e.target.id === 'inspQ' && e.key === 'Enter') {
+    var tk = inspScanSns_(e.target.value);
+    if (!tk.length || !tk.every(snLike_)) return;
+    clearTimeout(qTimer);
     var r0 = inspScanAdd_(e.target.value);
-    if (!r0.tokens) return;
     S.inspQ = ''; e.target.value = '';
     if (r0.added.length) render();
     var msg = r0.tokens === 1 ? (r0.added.length ? r0.added[0] + ' 추가' : r0.dup.length ? r0.dup[0] + ' 이미 찍었어요' : r0.miss[0] + ' — 검사중 목록에 없는 S/N이에요') :
@@ -4691,11 +4759,19 @@ function ltFlush() {
 }
 
 function ltLoadHist(sns) {
-  sns = (sns || []).filter(function (s, i, a) { return s && !(s in LT.hist) && a.indexOf(s) === i; });
-  if (!sns.length) return Promise.resolve();
-  sns.forEach(function (s) { LT.hist[s] = null; });
-  return ltQ_({ sns: sns }).then(function (r) { sns.forEach(function (s) { LT.hist[s] = ((r && r.bySn) || {})[s] || []; }); },
-    function () { sns.forEach(function (s) { delete LT.hist[s]; }); });
+  LT.pend = LT.pend || {};
+  var all = (sns || []).filter(function (x, i, a) { return x && a.indexOf(x) === i; });
+  var waits = all.filter(function (x) { return LT.pend[x]; }).map(function (x) { return LT.pend[x]; });
+  sns = all.filter(function (x) { return !(x in LT.hist); });
+  if (sns.length) {
+    sns.forEach(function (x) { LT.hist[x] = null; });
+    var pr = ltQ_({ sns: sns }).then(function (r) { sns.forEach(function (x) { LT.hist[x] = ((r && r.bySn) || {})[x] || []; }); },
+      function () { sns.forEach(function (x) { delete LT.hist[x]; }); });
+    pr.then(function () { sns.forEach(function (x) { if (LT.pend[x] === pr) delete LT.pend[x]; }); });
+    sns.forEach(function (x) { LT.pend[x] = pr; });
+    waits.push(pr);
+  }
+  return Promise.all(waits);
 }
 function ltLoadRecent() {
   return ltQ_({ recent: 1 }).then(function (r) { LT.recent = r.tests || []; LT.total = r.total || 0; if (S.view === 'ltres' && !LT.q) ltRefreshHistCard(); }, function () { LT.recent = LT.recent || []; });
@@ -5032,13 +5108,17 @@ function ltRecallCap_(u) {
   var la = ltLotAvg_(sn);
   return { t: t, j: ltJudge(t), pct: la && la.fixed ? String(Math.floor(+t.mah / la.avg * 100)) : '' };
 }
-function ltRecallBad_(u) { var r = ltRecallCap_(u); return !!(r && r.j && r.j.cls === 'bad'); }
+function ltRecallBad_(u) {
+  var r = ltRecallCap_(u);
+  if (!r || !r.j || r.j.cls !== 'bad' || !/^(컷오프|배터리 차단|차단 전압 도달|보조배터리 출력 꺼짐)/.test(String(r.t.why || ''))) return false;
+  return S.data.units.filter(function (x) { return x.recvSn === u.recvSn; }).length === 1;
+}
 var LT_BAD_TPL = OPINION_TPL[1];
 function ltInspAuto_() {
   var card = $('#inspCard'); if (!card) return;
   var us = (card.getAttribute('data-ids') || '').split(',').map(function (id) { return IDX.unitById[id]; }).filter(Boolean);
   var caps = {}, bad = 0;
-  us.forEach(function (u) { var r = ltRecallCap_(u); if (!r) return; if (r.pct) caps[u.id] = r.pct; if (r.j && r.j.cls === 'bad') bad++; });
+  us.forEach(function (u) { var r = ltRecallCap_(u); if (!r) return; if (r.pct) caps[u.id] = r.pct; if (ltRecallBad_(u)) bad++; });
   card.setAttribute('data-caps', JSON.stringify(caps));
   var cap = $('#in_cap');
   if (cap && cap.value === '') { if (us.length === 1) cap.value = caps[us[0].id] || ''; else if (Object.keys(caps).length) cap.placeholder = 'S/N별 자동'; }
@@ -5054,7 +5134,7 @@ function ltPreload_(us) {
   if (!need.length) return setTimeout(inspAutoPaint_, 0);
   need.forEach(function (s) { LT_TRIED[s] = 1; });
   var parts = []; for (var i = 0; i < need.length; i += 250) parts.push(need.slice(i, i + 250));
-  Promise.all(parts.map(ltLoadHist)).then(inspAutoPaint_);
+  Promise.all(parts.map(ltLoadHist)).then(function () { inspAutoPaint_(); if ($('#ltInsp')) ltInspFill(); });
 }
 function inspAutoPaint_() {
   var el = $('#inspAutoBad'); if (!el) return;
