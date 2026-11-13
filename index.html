@@ -571,7 +571,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
   } catch (e) { }
 })();
 var DEMO_MODE = false;
-var BUILD_ID = '7349d5aeff3d', NEW_VER = false;
+var BUILD_ID = '75e948eda272', NEW_VER = false;
 function verBusy_() {
   if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
   return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
@@ -1665,7 +1665,8 @@ function lookOf_(sn) {
     var role = u.recvSn === sn && !u._ph ? 'recv' : u.origSn === sn ? 'orig' : u.outSn === sn ? 'out' : '';
     if (role) out.push({ u: u, c: IDX.caseById[u.caseId] || {}, role: role });
   });
-  (S.data.orphans || []).forEach(function (o) { if (o.sn === sn) out.push({ o: o }); });
+  var hasU = out.length;
+  (S.data.orphans || []).forEach(function (o) { if (o.sn === sn && (o.status === 'open' || !hasU)) out.push({ o: o }); });
   return out;
 }
 function lookState_(x) {
