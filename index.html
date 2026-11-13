@@ -571,7 +571,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
   } catch (e) { }
 })();
 var DEMO_MODE = false;
-var BUILD_ID = 'eb895e4974ab', NEW_VER = false;
+var BUILD_ID = '7d4f996f6917', NEW_VER = false;
 function verBusy_() {
   if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
   return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
@@ -1855,7 +1855,7 @@ function tailCard_() {
         (on ? '<div style="margin:0 0 8px"><textarea class="inp mono" id="tailSn" rows="3" style="width:100%;font-size:15px;padding:10px;resize:vertical" placeholder="찍히는 제품 바코드를 여기에 찍으세요" autocomplete="off"></textarea><div class="small muted" id="tailCnt" style="margin:2px 0 6px"></div>' +
           '<div class="row" style="align-items:center"><span class="small">바코드를 못 읽는 수량</span><input class="inp" type="number" min="0" max="' + open + '" id="tailN" style="width:80px"><button class="btn pri" data-act="tailGo" data-id="' + esc(c.id) + '" style="margin-left:auto">회수 처리</button></div></div>' : '');
     }).join('');
-  return '<div class="card" style="margin-bottom:12px;flex:1 1 320px;min-width:0"><div class="bd"><div class="row" style="align-items:center"><b style="font-size:16px">🏷️ 송장으로 회수 등록</b><span class="muted small">반품 송장으로 매장을 찾아 S/N이나 수량으로 기록</span></div>' +
+  return '<div class="card" style="margin-bottom:12px;flex:1 1 320px;min-width:0"><div class="bd"><div class="row" style="align-items:center"><b style="font-size:16px">🏷️ 송장으로 회수 등록</b><span class="muted small">바코드가 훼손돼 S/N을 못 읽는 제품에 사용 — 반품 송장으로 매장을 찾아 수량으로 기록</span></div>' +
     '<div class="row" style="margin-top:8px;flex-wrap:nowrap"><input class="inp mono" id="tailQ" inputmode="numeric" placeholder="반품 송장번호 (전체 또는 끝 4자리)" value="' + esc(q) + '" style="flex:1;min-width:0;font-size:16px"><button class="btn pri" data-act="tailFind">찾기</button></div>' +
     '<div style="margin-top:8px">' + body + '</div></div></div>';
 }
