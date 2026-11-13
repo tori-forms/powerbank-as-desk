@@ -571,7 +571,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
   } catch (e) { }
 })();
 var DEMO_MODE = false;
-var BUILD_ID = '5dd823709926', NEW_VER = false;
+var BUILD_ID = '5ccd6b97f240', NEW_VER = false;
 function verBusy_() {
   if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
   return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
@@ -1930,10 +1930,21 @@ function judgePanel_(q) {
   return '<div class="tool"><input class="inp" id="inspQ" placeholder="매장명 · S/N 검색 (S/N 찍고 Enter)" value="' + esc(S.inspQ || '') + '" style="width:300px">' +
     ageSel_('inspAge', S.inspAge || '', qAll) +
     '<span class="muted small">검사중 ' + order.length + '개 매장 · ' + q.length + '개 · 오늘 판정 ' + recent.length + '개</span><span class="sp"></span>' +
+    '<span id="inspAutoBad"></span>' + (ltPreload_(q), '') +
     (q.length ? '<button class="btn sm" data-act="inspSnAll">S/N 한번에 보기</button><button class="btn sm" data-act="inspXlsx">엑셀 받기</button>' : '') + '</div>' +
     '<div class="split" style="grid-template-columns:340px minmax(0,1fr)"><div class="card list">' +
     (list || '<div class="empty">' + (q.length ? '검색 결과가 없습니다.' : '검사중인 제품이 없습니다. ① 회수 예정에서 회수 처리하면 여기에 올라와요.') + '</div>') +
-    '</div><div>' + (S.inspStore ? storeInspect_(S.inspStore, by[S.inspStore] || []) : '<div class="card"><div class="empty">왼쪽에서 매장을 선택해 주세요.</div></div>') + '</div></div>';
+    '</div><div>' + ((S.inspScan || []).length ? scanInspect_() : S.inspStore ? storeInspect_(S.inspStore, by[S.inspStore] || []) : '<div class="card"><div class="empty">왼쪽에서 매장을 선택해 주세요.</div></div>') + '</div></div>';
+}
+function scanInspect_() {
+  var units = S.inspScan.map(function (id) { return IDX.unitById[id]; }).filter(Boolean);
+  S.inspScan = units.map(function (u) { return u.id; });
+  if (!units.length) return '<div class="card"><div class="empty">찍은 S/N이 없어요.</div></div>';
+  var stores = {}; units.forEach(function (u) { stores[(IDX.caseById[u.caseId] || {}).store || ''] = 1; });
+  return '<div class="card" style="margin-bottom:12px"><div class="hd"><h3>찍은 S/N ' + units.length + '개</h3><span class="muted small">매장 ' + Object.keys(stores).length + '곳</span><span style="flex:1"></span><button class="btn sm" data-act="inspScanClear">모두 빼기</button></div><div class="bd" style="padding-top:0">' +
+    '<div class="small muted" style="margin-bottom:6px">위 칸에 계속 찍으면 여기에 쌓여요. 잘못 찍은 건 눌러서 빼세요.</div><div class="snpicks">' +
+    units.map(function (u) { var c = IDX.caseById[u.caseId] || {}; return '<span class="snpick on" data-act="inspScanDel" data-id="' + esc(u.id) + '" title="' + esc(c.store || '') + ' — 눌러서 빼기"><span class="ck">✕</span><span class="mono">' + esc(u.recvSn) + '</span><span class="small muted">' + esc(c.store || '') + '</span>' + (u.verdict ? '<span class="pill ' + (u.verdict === '불량' ? 'p-red' : u.verdict === '정상' ? 'p-green' : 'p-partial') + '">' + esc(u.verdict) + '</span>' : '') + '</span>'; }).join('') +
+    '</div></div></div>' + inspectForm(units[0], units);
 }
 function storeInspect_(caseId, pend) {
   var c = IDX.caseById[caseId] || {};
@@ -4019,8 +4030,9 @@ var ACT = {
     if (cap !== '' && +cap < 80 && !cause) cause = '셀 용량 저하(80% 미만)';
     if (!verdict) return toast('판정을 선택해 주세요.', true);
     var body = { verdict: verdict, testSymptom: chipVal('testSymptom'), cause: cause, opinion: $('#in_op').value, lot: $('#in_lot').value, capPct: cap, testDate: $('#in_date').value, disposition: chipVal('disposition') };
+    if (ids.length > 1 && cap === '') { try { body.caps = JSON.parse(card.getAttribute('data-caps') || '{}'); } catch (e) { } }
     var after = function () {
-      S.inspPick = [];
+      S.inspPick = []; S.inspScan = [];
       if (S.view === 'inspect') { var left = inspectQueue().filter(function (u) { return u.caseId === S.inspStore; }); if (left.length === 1) S.inspPick = [left[0].id]; }
       else { var next = inspectQueue().filter(function (u) { return ids.indexOf(u.id) < 0; })[0]; S.inspSel = next ? next.id : null; }
       render();
@@ -4033,7 +4045,19 @@ var ACT = {
     body.unitId = ids[0];
     run('inspect', body, function (r) { return '검사 결과를 저장했습니다' + sheetMsg_(r); }, b).then(after);
   },
-  inspStore: function (d) { S.inspStore = d.id; S.inspPick = []; render(); },
+  inspStore: function (d) { S.inspStore = d.id; S.inspPick = []; S.inspScan = []; render(); },
+  inspScanDel: function (d) { S.inspScan = (S.inspScan || []).filter(function (id) { return id !== d.id; }); render(); },
+  inspScanClear: function () { S.inspScan = []; render(); },
+  inspAutoBad: function (d, b) {
+    var us = inspList_().filter(ltRecallBad_);
+    if (!us.length) return toast('용량 시험에서 80% 미만으로 나온 회수분이 없어요.', true);
+    var st = {}; us.forEach(function (u) { st[u.caseId] = 1; });
+    if (!askGate_(us.length + '개(매장 ' + Object.keys(st).length + '곳)를 [불량 · 성능 저하 · 셀 용량 저하(80% 미만) · 폐기]로 저장할까요? 회수 뒤 용량 시험에서 80% 미만으로 나온 것만이에요.', function () { ACT.inspAutoBad(d, b); })) return;
+    var caps = {}; us.forEach(function (u) { var r = ltRecallCap_(u); if (r && r.pct) caps[u.id] = r.pct; });
+    run('inspectBatch', { unitIds: us.map(function (u) { return u.id; }), caps: caps, verdict: LT_BAD_TPL[1], testSymptom: LT_BAD_TPL[2], cause: LT_BAD_TPL[3], opinion: LT_BAD_TPL[0], lot: '', testDate: today(), disposition: DEFAULT_DISP[LT_BAD_TPL[1]] },
+      function (r) { return r.count + '개 불량 판정 저장' + (r.failed && r.failed.length ? ' · 실패 ' + r.failed.length + '개' : '') + sheetMsg_(r); }, b)
+      .then(function () { S.inspPick = []; S.inspScan = []; render(); });
+  },
   inspPick: function (d) { var p = S.inspPick || [], k = p.indexOf(d.id); if (k >= 0) p.splice(k, 1); else p.push(d.id); S.inspPick = p; render(); },
   inspPickAll: function () { S.inspPick = inspectQueue().filter(function (u) { return u.caseId === S.inspStore; }).map(function (u) { return u.id; }); render(); },
   inspPickNone: function () { S.inspPick = []; render(); },
@@ -4191,7 +4215,11 @@ document.addEventListener('keydown', function (e) {
   if (e.target.id === 'inspQ' && e.key === 'Enter') {
     var sv = e.target.value.toUpperCase().replace(/\s/g, '').replace(/^P20BPTA/, 'P20BOTA');
     var hu = inspectQueue().filter(function (u) { return u.recvSn === sv; })[0] || S.data.units.filter(function (u) { return u.recvSn === sv && u.verdict; })[0];
-    if (hu) { S.inspStore = hu.caseId; S.inspPick = [hu.id]; S.inspQ = ''; render(); toast(sv + ' 선택'); var q2 = $('#inspQ'); if (q2) q2.focus(); }
+    S.inspQ = ''; e.target.value = '';
+    if (!hu) { toast(sv + ' — 검사중 목록에 없는 S/N이에요.', true); return; }
+    S.inspScan = S.inspScan || [];
+    if (S.inspScan.indexOf(hu.id) >= 0) { toast(sv + ' 이미 찍었어요 (' + S.inspScan.length + '개)'); return; }
+    S.inspScan.push(hu.id); render(); toast(sv + ' 추가 · ' + S.inspScan.length + '개'); var q2 = $('#inspQ'); if (q2) q2.focus();
     return;
   }
   if (e.target.id === 'scan' && e.key === 'Enter') {
@@ -4967,7 +4995,43 @@ function ltInspFill() {
     var hit = sns.filter(function (s) { return (LT.hist[s] || []).length; });
     box.innerHTML = '⚡ <b>용량 테스트 이력</b> · ' + (hit.length ? hit.length + '/' + sns.length + '개 기록 있음<br>' + hit.map(function (s) { var l = LT.hist[s]; return '<span class="mono">' + esc(s) + '</span> 최초 ' + ltOne(l[0]) + (l.length > 1 ? ' · 직전 ' + ltOne(l[l.length - 1]) : ''); }).join('<br>') : '<span class="muted">선택한 S/N 모두 기록 없음</span>');
   };
-  paint(); ltLoadHist(sns).then(paint);
+  paint(); ltLoadHist(sns).then(function () { paint(); ltInspAuto_(); });
+}
+function ltRecallCap_(u) {
+  var sn = u.recvSn || u.origSn, since = u.recvAt ? d10(u.recvAt) : '';
+  var l = (LT.hist[sn] || []).filter(function (t) { return t.purpose === '회수분 검사' && +t.wh >= LT_LOW_WH && String(t.startAt || t.createdAt).slice(0, 10) >= since; });
+  var t = l[l.length - 1]; if (!t) return null;
+  var la = ltLotAvg_(sn);
+  return { t: t, j: ltJudge(t), pct: la && la.fixed ? String(Math.floor(+t.mah / la.avg * 100)) : '' };
+}
+function ltRecallBad_(u) { var r = ltRecallCap_(u); return !!(r && r.j && r.j.cls === 'bad'); }
+var LT_BAD_TPL = OPINION_TPL[1];
+function ltInspAuto_() {
+  var card = $('#inspCard'); if (!card) return;
+  var us = (card.getAttribute('data-ids') || '').split(',').map(function (id) { return IDX.unitById[id]; }).filter(Boolean);
+  var caps = {}, bad = 0;
+  us.forEach(function (u) { var r = ltRecallCap_(u); if (!r) return; if (r.pct) caps[u.id] = r.pct; if (r.j && r.j.cls === 'bad') bad++; });
+  card.setAttribute('data-caps', JSON.stringify(caps));
+  var cap = $('#in_cap');
+  if (cap && cap.value === '') { if (us.length === 1) cap.value = caps[us[0].id] || ''; else if (Object.keys(caps).length) cap.placeholder = 'S/N별 자동'; }
+  if (!bad || bad !== us.length || chipVal('verdict')) return;
+  setChip('verdict', LT_BAD_TPL[1]); setChip('testSymptom', LT_BAD_TPL[2]); setChip('cause', LT_BAD_TPL[3]);
+  if (!chipVal('disposition')) setChip('disposition', DEFAULT_DISP[LT_BAD_TPL[1]]);
+  var op = $('#in_op'); if (op && !op.value) op.value = LT_BAD_TPL[0];
+  var box = $('#ltInsp'); if (box) box.innerHTML += '<br><b style="color:var(--red)">→ 용량 시험 80% 미만이라 불량으로 채웠어요. 확인하고 저장만 누르세요.</b>';
+}
+var LT_TRIED = {};
+function ltPreload_(us) {
+  var need = us.map(function (u) { return u.recvSn; }).filter(function (s, i, a) { return s && !(s in LT.hist) && !LT_TRIED[s] && a.indexOf(s) === i; });
+  if (!need.length) return setTimeout(inspAutoPaint_, 0);
+  need.forEach(function (s) { LT_TRIED[s] = 1; });
+  var parts = []; for (var i = 0; i < need.length; i += 250) parts.push(need.slice(i, i + 250));
+  Promise.all(parts.map(ltLoadHist)).then(inspAutoPaint_);
+}
+function inspAutoPaint_() {
+  var el = $('#inspAutoBad'); if (!el) return;
+  var n = inspList_().filter(ltRecallBad_).length;
+  el.innerHTML = n ? '<button class="btn sm pri" data-act="inspAutoBad" title="회수 뒤 용량 시험에서 80% 미만으로 나온 회수분을 [불량 · 성능 저하 · 셀 용량 저하 · 폐기]로 저장">⚡ 용량 80% 미만 ' + n + '개 한 번에 불량</button>' : '';
 }
 function ltRealSn(sn) { return !!modelOfSn(sn) && !!snSplit(sn); }
 function ltXlsx() {
