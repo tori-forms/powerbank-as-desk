@@ -571,7 +571,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
   } catch (e) { }
 })();
 var DEMO_MODE = false;
-var BUILD_ID = '7d4f996f6917', NEW_VER = false;
+var BUILD_ID = '1b4e5d66d34b', NEW_VER = false;
 function verBusy_() {
   if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
   return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
@@ -1751,13 +1751,22 @@ function lookPanel_() {
   setTimeout(function () { lookPaint_(); var q = $('#lookQ'); if (q && document.activeElement !== q) { q.focus(); q.selectionStart = q.selectionEnd = q.value.length; } }, 0);
   return '<div class="card"><div class="hd"><h3>S/N 조회</h3><span class="muted small">바코드를 찍거나 여러 개를 붙여넣으면 바로 매장 · 상태 · 판정이 나와요 (조회만 해요)</span><span style="flex:1"></span>' +
     '<button class="btn sm" data-act="lookClear">지우기</button></div><div class="bd">' +
-    '<textarea class="inp mono" id="lookQ" rows="4" style="width:100%" placeholder="S/N을 찍거나 붙여넣으세요 — 한 줄에 하나, 띄어쓰기·쉼표로 나눠도 돼요">' + esc(S.lookQ || '') + '</textarea>' +
+    '<textarea class="inp mono" id="lookQ" rows="4" style="width:100%" placeholder="S/N을 찍거나 붙여넣으세요 — 끝자리 숫자 5~6자리만 쳐도 돼요 · 한 줄에 하나, 띄어쓰기·쉼표로 나눠도 돼요">' + esc(S.lookQ || '') + '</textarea>' +
     '<div id="lookRes" style="margin-top:10px"></div></div></div>';
 }
 var LK_TRIED = {};
+function lookExpand_(toks) {
+  var all = null;
+  return [].concat.apply([], toks.map(function (x) {
+    if (!/^\d{5,8}$/.test(x)) return [x];
+    if (!all) { all = {}; S.data.units.forEach(function (u) { [u.recvSn, u.origSn, u.outSn].forEach(function (v) { if (v) all[v] = 1; }); }); (S.data.orphans || []).forEach(function (o) { if (o.sn) all[o.sn] = 1; }); (LT.perAll || []).forEach(function (t) { if (t.sn) all[t.sn] = 1; }); }
+    var hit = Object.keys(all).filter(function (v) { return v.length > x.length && v.slice(-x.length) === x; }).sort();
+    return hit.length ? hit : [x];
+  }));
+}
 function lookPaint_() {
   var box = $('#lookRes'); if (!box) return;
-  var sns = inspScanSns_(S.lookQ).filter(function (x, i, a) { return a.indexOf(x) === i; });
+  var sns = lookExpand_(inspScanSns_(S.lookQ)).filter(function (x, i, a) { return a.indexOf(x) === i; });
   if (!sns.length) { box.innerHTML = '<div class="empty">찍은 S/N이 없어요.</div>'; return; }
   var need = sns.filter(function (x) { return !(x in LT.hist) && !LK_TRIED[x]; });
   if (need.length) { need.forEach(function (x) { LK_TRIED[x] = 1; }); var pt = []; for (var i = 0; i < need.length; i += 250) pt.push(ltLoadHist(need.slice(i, i + 250))); Promise.all(pt).then(lookPaint_); }
