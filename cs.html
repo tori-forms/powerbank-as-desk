@@ -571,7 +571,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
   } catch (e) { }
 })();
 var DEMO_MODE = false;
-var BUILD_ID = '75e948eda272', NEW_VER = false;
+var BUILD_ID = '466ecaa5a146', NEW_VER = false;
 function verBusy_() {
   if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
   return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
@@ -945,10 +945,10 @@ function counts() {
 }
 
 var VIEWS = [
-  ['home', '▦', '대시보드'], ['inbox', '✉', '인입함'], ['ship', '⇢', '출고 현황'], ['ret', '⇠', '회수 현황'], ['inspect', '⚗', 'AS 회수분 검사판정'], ['results', '✔', 'AS 회수분 검사 결과'], ['yang', '♻', '양품화'], ['shipqc', '✓', '수입검사/HQC 불량 등록'], ['shipdoc', '📄', '출하 성적서'], ['loadtest', '⚡', '용량 테스트'], ['ltres', '📊', '용량 테스트 결과'],
+  ['home', '▦', '대시보드'], ['lookup', '🔍', 'S/N 조회'], ['inbox', '✉', '인입함'], ['ship', '⇢', '출고 현황'], ['ret', '⇠', '회수 현황'], ['inspect', '⚗', 'AS 회수분 검사판정'], ['results', '✔', 'AS 회수분 검사 결과'], ['yang', '♻', '양품화'], ['shipqc', '✓', '수입검사/HQC 불량 등록'], ['shipdoc', '📄', '출하 성적서'], ['loadtest', '⚡', '용량 테스트'], ['ltres', '📊', '용량 테스트 결과'],
   ['stock', '▣', '재고'], ['analysis', '▤', '불량 분석'], ['loss', '₩', '손실'], ['settings', '⚙', '설정·동기화']
 ];
-var CS_HIDE = { yang: 1, loss: 1, inbox: 1, inspect: 1, stock: 1, settings: 1, guide: 1, loadtest: 1, ltres: 1, shipqc: 1, shipdoc: 1 };
+var CS_HIDE = { lookup: 1, yang: 1, loss: 1, inbox: 1, inspect: 1, stock: 1, settings: 1, guide: 1, loadtest: 1, ltres: 1, shipqc: 1, shipdoc: 1 };
 var CS_ACT = { guideP: 1, allCases: 1, resF: 1, resCsv: 1, resOpen: 1, go: 1, 'case': 1, closeDrawer: 1, closeModal: 1, inboxFilter: 1, inboxSel: 1, toggleOld: 1, toTop: 1, slkBig: 1, ship: 1, ret: 1, anModel: 1, searchStore: 1, reload: 1 };
 var CS_IN = { q: 1, modelF: 1, anMonths: 1, anFrom: 1, anTo: 1, resP: 1 };
 function csScrub_() {
@@ -981,9 +981,9 @@ function render() {
   var t = VIEWS.filter(function (v) { return v[0] === S.view; })[0];
   document.body.classList.toggle('cs', CS());
   $('#title').textContent = t[2];
-  var sub = { home: '', inbox: 'Slack #ext-볼타레스-티오더 접수 양식 자동 수집', cases: '교환 출고 → 반품 신청 → 회수 입고', inspect: '바코드 스캔으로 회수 매칭 → 판정 · 원인 · 처분', results: 'AS 회수품 · 수입검사 · 고객사 HQC에서 확인된 불량의 검사 결과 — 판정별로 전산 처리할 때 보세요', loss: '성능저하 · 증상 없음으로 교환해 준 손실 (교체품 · 택배 · 인건비 − 양품화 회수) — 사내 전용', yang: 'AS 회수분 중 용량이 양산 차수 평균 80% 이상이면 양품화 대상 · 미만이거나 다른 불량이면 양품화 불가 — 사내 전용', shipqc: '교체 재고 수입검사 · 납품 출하검사 불량을 한 곳에서 — 사내 전용', shipdoc: '파렛트별 출하 성적서 (샘플 = 파렛트 안에서 용량 테스트한 S/N) — 사내 전용', guide: '제품 구성 · 사양 · 사용 방법 · 매뉴얼', analysis: '모델별 불량 데이터', stock: '폼즈 지하1층 창고 · 3PL 창고에 있는 재고를 파렛트 단위로 — 입고·출고 기록과 양산 차수는 오른쪽 탭', settings: '연동 상태와 티오더 시트 동기화', ltres: '저장된 용량 시험 전체 — 기간·구분·조건으로 거르거나 S/N으로 찾아요' }[S.view] || '';
+  var sub = { home: '', inbox: 'Slack #ext-볼타레스-티오더 접수 양식 자동 수집', cases: '교환 출고 → 반품 신청 → 회수 입고', inspect: '바코드 스캔으로 회수 매칭 → 판정 · 원인 · 처분', results: 'AS 회수품 · 수입검사 · 고객사 HQC에서 확인된 불량의 검사 결과 — 판정별로 전산 처리할 때 보세요', loss: '성능저하 · 증상 없음으로 교환해 준 손실 (교체품 · 택배 · 인건비 − 양품화 회수) — 사내 전용', yang: 'AS 회수분 중 용량이 양산 차수 평균 80% 이상이면 양품화 대상 · 미만이거나 다른 불량이면 양품화 불가 — 사내 전용', shipqc: '교체 재고 수입검사 · 납품 출하검사 불량을 한 곳에서 — 사내 전용', shipdoc: '파렛트별 출하 성적서 (샘플 = 파렛트 안에서 용량 테스트한 S/N) — 사내 전용', guide: '제품 구성 · 사양 · 사용 방법 · 매뉴얼', analysis: '모델별 불량 데이터', stock: '폼즈 지하1층 창고 · 3PL 창고에 있는 재고를 파렛트 단위로 — 입고·출고 기록과 양산 차수는 오른쪽 탭', settings: '연동 상태와 티오더 시트 동기화', ltres: '저장된 용량 시험 전체 — 기간·구분·조건으로 거르거나 S/N으로 찾아요', lookup: '바코드를 찍거나 S/N 여러 개를 붙여넣으면 매장 · 상태 · 판정 · 용량이 바로 나와요' }[S.view] || '';
   $('#subtitle').textContent = sub; $('#subtitle').style.display = sub ? '' : 'none';
-  var fn = { home: vHome, inbox: vInbox, ship: vShip, ret: vReturn, inspect: vInspect, results: vResults, yang: vYang, loss: vLoss, shipqc: vShipQc, shipdoc: vShipDoc, guide: vGuide, stock: vStock, analysis: vAnalysis, settings: vSettings, loadtest: vLoadtest, ltres: vLtRes }[S.view];
+  var fn = { home: vHome, lookup: lookPanel_, inbox: vInbox, ship: vShip, ret: vReturn, inspect: vInspect, results: vResults, yang: vYang, loss: vLoss, shipqc: vShipQc, shipdoc: vShipDoc, guide: vGuide, stock: vStock, analysis: vAnalysis, settings: vSettings, loadtest: vLoadtest, ltres: vLtRes }[S.view];
   if (S.view === 'loadtest') ltBeforeRender();
   var rvKeep = $('#rvScan') ? $('#rvScan').value : '';
   var ofKeep = document.activeElement && document.activeElement.id === 'ofScan';
@@ -1650,13 +1650,12 @@ function vInspect() {
   var q = inspectQueue();
   var qAll = S.data.units.filter(function (u) { var c = IDX.caseById[u.caseId]; return c && c.closed !== 'Y' && !u.verdict && !u.disposition && u.recvSn; });
   var rw = byBucket('recv_wait'), nShort = byBucket('ret_short').length + orphOpen_().length;
+  if (S.insp === 'look') S.insp = '';
   var sub = S.insp === 'scan' ? 'recv' : S.insp || (rw.length || !q.length ? 'recv' : 'judge');
   var tabs = '<div class="tabs">' +
     '<button class="' + (sub === 'recv' ? 'on' : '') + '" data-act="inspTab" data-v="recv">① 회수 예정 · 회수 처리<span class="n">' + rw.length + '</span></button>' +
     '<button class="' + (sub === 'judge' ? 'on' : '') + '" data-act="inspTab" data-v="judge">② 검사중<span class="n">' + q.length + '</span></button>' +
-    '<button class="' + (sub === 'short' ? 'on' : '') + '" data-act="inspTab" data-v="short">③ 확인 필요<span class="n"' + (nShort ? ' style="background:var(--red);color:#fff"' : '') + '>' + nShort + '</span></button>' +
-    '<button class="' + (sub === 'look' ? 'on' : '') + '" data-act="inspTab" data-v="look">④ S/N 조회</button></div>';
-  if (sub === 'look') return tabs + lookPanel_();
+    '<button class="' + (sub === 'short' ? 'on' : '') + '" data-act="inspTab" data-v="short">③ 확인 필요<span class="n"' + (nShort ? ' style="background:var(--red);color:#fff"' : '') + '>' + nShort + '</span></button></div>';
   return tabs + scopeBar(qAll.length - q.length).replace('건 숨김', '개 숨김 · 이전 건도 바코드를 찍으면 다시 여기에 떠요') + (sub === 'recv' ? scanPanel_(rw) : sub === 'short' ? shortPanel_() : judgePanel_(q));
 }
 function lookOf_(sn) {
@@ -1682,7 +1681,7 @@ function lookState_(x) {
   return ['회수 전 · ' + b[0], b[1], '회수 전'];
 }
 function lookPanel_() {
-  setTimeout(lookPaint_, 0);
+  setTimeout(function () { lookPaint_(); var q = $('#lookQ'); if (q && document.activeElement !== q) { q.focus(); q.selectionStart = q.selectionEnd = q.value.length; } }, 0);
   return '<div class="card"><div class="hd"><h3>S/N 조회</h3><span class="muted small">바코드를 찍거나 여러 개를 붙여넣으면 바로 매장 · 상태 · 판정이 나와요 (조회만 해요)</span><span style="flex:1"></span>' +
     '<button class="btn sm" data-act="lookClear">지우기</button></div><div class="bd">' +
     '<textarea class="inp mono" id="lookQ" rows="4" style="width:100%" placeholder="S/N을 찍거나 붙여넣으세요 — 한 줄에 하나, 띄어쓰기·쉼표로 나눠도 돼요">' + esc(S.lookQ || '') + '</textarea>' +
