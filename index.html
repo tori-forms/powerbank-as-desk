@@ -599,7 +599,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
 
 var DEMO_MODE = false;
 
-var BUILD_ID = '78ce62328295', NEW_VER = false;
+var BUILD_ID = '99810bc8b78e', NEW_VER = false;
 function verBusy_() {
   if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
   return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
@@ -1826,7 +1826,7 @@ function lookState_(x) {
   var u = x.u, c = x.c;
   if (x.role === 'out') return ['교환품으로 매장에 출고됨', 'p-blue', '교환 출고'];
   if (x.role === 'orig' && u.recvSn && u.recvSn !== u.origSn) return ['접수 S/N — 실제로는 ' + u.recvSn + '(으)로 회수', 'p-partial', '다른 S/N으로 회수'];
-  var yh = x.role === 'recv' && u.disposition === '양품화' ? yangHaveOf_(u.recvSn) : null;
+  var yh = x.role === 'recv' && /양품화/.test(u.disposition || '') ? yangHaveOf_(u.recvSn) : null;
   if (yh) return ['양품화 기록 있음 · ' + (yh.date ? ymd(yh.date) : '날짜 없음') + ' (' + yh.src + ')' + (u.verdict && u.verdict !== '정상' ? ' · 판정은 ' + u.verdict : ''), 'p-green', '양품화'];
   if (u.verdict) return [(u.verdict === '외력/사용자 과실' ? '외력' : u.verdict) + ' 판정 · ' + (u.disposition || '처분 대기'), u.verdict === '불량' ? 'p-red' : u.verdict === '정상' ? 'p-green' : 'p-partial', '판정 완료'];
   if (u.disposition) return [u.disposition, 'p-gray', '처분'];
@@ -1858,7 +1858,7 @@ function lookNewOld_(sn, t) {
   if (t.purpose === '입고 QC') return '신품';
   if (t.purpose === '회수분 검사') return '회수품';
   var at = ymd(t.startAt || t.createdAt);
-  return S.data.units.some(function (u) { return u.recvSn === sn && !u._ph && (!u.recvDate || ymd(u.recvDate) <= at); }) || (S.data.orphans || []).some(function (o) { return o.sn === sn; }) ? '회수품' : '신품';
+  return S.data.units.some(function (u) { var rd = u.recvAt || (IDX.caseById[u.caseId] || {}).recvDate; return u.recvSn === sn && !u._ph && (!rd || ymd(rd) <= at); }) || (S.data.orphans || []).some(function (o) { return o.sn === sn; }) ? '회수품' : '신품';
 }
 
 function lookLtCell_(sn, t, j, n) {
@@ -1900,6 +1900,7 @@ function lookSheetLoad_(sns) {
 }
 
 function lookGoodOf_(sn) {
+  if (yangRegOf_(sn)) return ['양품', 'p-green'];
   var hits = lookOf_(sn);
   if (hits.length) return lookVerdictOf_(hits);
   var sr = LK_SHEET[sn];
@@ -2742,7 +2743,7 @@ function yangRegOf_(sn) {
 function yangOf_(u) {
   var cap = String(u.capPct || '').trim(), sn = u.recvSn || u.origSn;
   var yr = yangRegOf_(u.recvSn);
-  if (yr || u.disposition === '양품화') return ['ok', '양품화 처리됨 · ' + ymd(yr ? yr.date : u.testDate) + (yr ? (yr.src === 'sheet' ? ' (시트에서 가져옴)' : ' (직접 등록)') : ' (검사일 기준)')];
+  if (yr || /양품화/.test(u.disposition || '')) return ['ok', '양품화 처리됨 · ' + ymd(yr ? yr.date : u.testDate) + (yr ? (yr.src === 'sheet' ? ' (시트에서 가져옴)' : ' (직접 등록)') : ' (검사일 기준)')];
   if (u.verdict === '외력/사용자 과실') return ['no', '외력/사용자 과실'];
   if (u.cause === '분석 중') return ['chk', '원인 분석 중'];
   if (u.verdict === '불량' && !/용량/.test(u.cause || '') && u.testSymptom !== '성능 저하') return ['no', cz(u.cause) || u.testSymptom || '불량'];
@@ -2776,7 +2777,7 @@ function yangTabs_(n, all) { return [['ok', '양품화 대상', n.ok], ['no', '�
 function yangRegRows_() {
   var out = (S.data.yangreg || []).filter(function (r) { return r.status !== 'del'; }).map(function (r) { return { sn: r.sn, date: r.date, store: r.store, src: r.src === 'sheet' ? '티오더 시트' : '직접 등록', note: r.note, id: r.id, linked: !!r.unitId }; });
   S.data.units.forEach(function (u) {
-    if (u.disposition !== '양품화' || !u.recvSn || yangRegOf_(u.recvSn)) return;
+    if (!/양품화/.test(u.disposition || '') || !u.recvSn || yangRegOf_(u.recvSn)) return;
     var c = IDX.caseById[u.caseId] || {};
     out.push({ sn: u.recvSn, date: d10(u.testDate), store: c.store || u.store || '', src: 'AS Desk 처분', note: '', id: '', caseId: c.id, linked: true });
   });
@@ -2787,11 +2788,12 @@ function yangParse_(text, def) {
   var out = [], seen = {};
   String(text || '').split(/\n/).forEach(function (line) {
     var d = '', m = line.match(/(20\d{2}|\d{2})[.\-\/](\d{1,2})[.\-\/](\d{1,2})/);
-    if (m) { d = (m[1].length === 2 ? '20' + m[1] : m[1]) + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2); line = line.replace(m[0], ' '); }
+    if (m) { d = (m[1].length === 2 ? '20' + m[1] : m[1]) + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2); line = line.replace(m[0], ' '); if (!yangRealDate_(d)) d = 'X' + d; }
     inspScanSns_(line).forEach(function (sn) { if (!/^P20/.test(sn) || seen[sn]) return; seen[sn] = 1; out.push({ sn: sn, date: d || def }); });
   });
   return out;
 }
+function yangRealDate_(d) { var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(d || '')); if (!m) return false; var t = new Date(+m[1], +m[2] - 1, +m[3]); return t.getFullYear() === +m[1] && t.getMonth() === +m[2] - 1 && t.getDate() === +m[3]; }
 function yangRegCard_() {
   var cf = S.yangConf, sc = S.yangScan;
   return '<div class="card" style="margin-bottom:14px"><div class="hd"><h3>양품화 등록</h3><span class="muted small">S/N을 찍거나 붙여넣고 양품화한 날짜를 고르세요 — AS Desk·티오더 시트에 없는 S/N도 등록돼요</span></div><div class="bd">' +
@@ -2834,7 +2836,7 @@ function yangKeep_() { var q = $('#yangQ'), d = $('#yangD'), n = $('#yangN'); if
 
 function yangHaveOf_(sn) {
   var r = yangRegOf_(sn); if (r) return { sn: sn, date: r.date, src: r.src === 'sheet' ? '티오더 시트' : '직접 등록', store: r.store, note: r.note };
-  var u = S.data.units.filter(function (x) { return x.recvSn === sn && x.disposition === '양품화'; })[0];
+  var u = S.data.units.filter(function (x) { return x.recvSn === sn && /양품화/.test(x.disposition || ''); })[0];
   return u ? { sn: sn, date: d10(u.testDate), src: 'AS Desk 처분', store: (IDX.caseById[u.caseId] || {}).store || '' } : null;
 }
 function yangBadOf_(sn) {
@@ -2844,18 +2846,19 @@ function yangBadOf_(sn) {
 function yangSend_(items, src, force, b) {
   if (S.busy) return Promise.resolve();
   S.busy = true; busyUI_(true);
-  var tot = { count: 0, linked: 0, skip: 0, conf: [] }, i = 0, note = S.yangN || '';
+  var tot = { count: 0, linked: 0, skip: 0, conf: [], left: [] }, i = 0, note = S.yangN || '';
   var step = function () {
     if (i >= items.length) return Promise.resolve();
     var part = items.slice(i, i + 25); i += 25;
     return call('yangReg', { items: part, note: note, src: src, force: !!force }).then(function (r) {
-      tot.count += r.count || 0; tot.linked += r.linked || 0; tot.skip += (r.skip || []).length; tot.conf = tot.conf.concat(r.conflicts && !r.count ? r.conflicts : []);
+      tot.count += r.count || 0; tot.linked += r.linked || 0; tot.skip += (r.skip || []).length;
+      if (r.conflicts && r.conflicts.length && !r.count) { tot.conf = tot.conf.concat(r.conflicts); tot.left = tot.left.concat(part); }
       return step();
     });
   };
   return step().then(function () {
-    toast('양품화 ' + tot.count + '개 등록했어요' + (tot.linked ? ' (AS Desk 처분도 양품화로 ' + tot.linked + '개)' : '') + (tot.skip ? ' · 이미 양품화 ' + tot.skip + '개는 건너뜀' : '') + (tot.conf.length ? ' · 불량 판정이라 못 넣은 ' + tot.conf.length + '개' : ''));
-    S.yangConf = null; S.yangScan = null; if (src === 'manual') S.yangQ = '';
+    toast('양품화 ' + tot.count + '개 등록했어요' + (tot.linked ? ' (AS Desk 처분도 양품화로 ' + tot.linked + '개)' : '') + (tot.skip ? ' · 이미 양품화 ' + tot.skip + '개는 건너뜀' : '') + (tot.left.length ? ' · 불량 판정 S/N 때문에 ' + tot.left.length + '개는 확인 대기' : ''));
+    S.yangConf = tot.left.length ? { items: tot.left, src: src, conflicts: tot.conf } : null; S.yangScan = null; if (src === 'manual' && !tot.left.length) S.yangQ = '';
   }, function (e) { toast((e.message || String(e)) + ' — 그때까지 ' + tot.count + '개 등록됐어요', true); })
     .then(function () { return load(true); }).finally(function () { S.busy = false; busyUI_(false); render(); });
 }
@@ -4487,6 +4490,8 @@ var ACT = {
   yangGo: function (d, b) {
     yangKeep_(); var items = yangParse_(S.yangQ, S.yangD || today());
     if (!items.length) return toast('양품화할 S/N(P20…)을 찍거나 붙여넣어 주세요.', true);
+    var badD = items.filter(function (x) { return !yangRealDate_(x.date); });
+    if (badD.length) return toast('날짜가 틀린 줄이 있어요: ' + badD.slice(0, 3).map(function (x) { return x.sn + ' ' + x.date.replace(/^X/, ''); }).join(', '), true);
     S.yangHave = items.map(function (x) { return yangHaveOf_(x.sn); }).filter(Boolean);
     items = items.filter(function (x) { return !yangHaveOf_(x.sn); });
     S.yangConf = null;
@@ -4504,7 +4509,10 @@ var ACT = {
   },
   yangSheetGo: function (d, b) {
     yangKeep_(); var sc = S.yangScan; if (!sc || !sc.items) return;
-    yangSend_(sc.items.map(function (x) { return { sn: x.sn, date: x.date || S.yangD || today(), store: x.store }; }), 'sheet', false, b);
+    var items = sc.items.map(function (x) { return { sn: x.sn, date: x.date || S.yangD || today(), store: x.store }; });
+    var bad = items.map(function (x) { return yangBadOf_(x.sn); }).filter(Boolean);
+    if (bad.length) { S.yangConf = { items: items, src: 'sheet', conflicts: bad }; S.yangScan = null; render(); return; }
+    yangSend_(items, 'sheet', false, b);
   },
   yangUndo: function (d, b) {
     var r = (S.data.yangreg || []).filter(function (x) { return x.id === d.id; })[0]; if (!r) return;
