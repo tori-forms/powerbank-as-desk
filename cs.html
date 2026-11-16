@@ -571,7 +571,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
   } catch (e) { }
 })();
 var DEMO_MODE = false;
-var BUILD_ID = 'c17be6d3284c', NEW_VER = false;
+var BUILD_ID = '9034353c1b54', NEW_VER = false;
 function verBusy_() {
   if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
   return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
@@ -1764,6 +1764,19 @@ function lookExpand_(toks) {
     return hit.length ? hit : [x];
   }));
 }
+function lookNewOld_(sn, t) {
+  if (t.purpose === '입고 QC') return '신품';
+  if (t.purpose === '회수분 검사') return '회수품';
+  var at = ymd(t.startAt || t.createdAt);
+  return S.data.units.some(function (u) { return u.recvSn === sn && !u._ph && (!u.recvDate || ymd(u.recvDate) <= at); }) || (S.data.orphans || []).some(function (o) { return o.sn === sn; }) ? '회수품' : '신품';
+}
+function lookLtCell_(sn, t, j, n) {
+  var pf = !j ? ['판정 없음', 'p-gray'] : j.cls === 'ok' ? ['합격', 'p-green'] : j.cls === 'bad' ? ['불합격', 'p-red'] : [j.txt, 'p-partial'];
+  var no = lookNewOld_(sn, t);
+  return '<span class="pill ' + pf[1] + '" style="font-weight:700">' + esc(pf[0]) + '</span> <span class="pill ' + (no === '신품' ? 'p-blue' : 'p-violet') + '">' + no + '</span>' +
+    '<div class="nowrap" style="margin-top:2px">' + Math.round(+t.mah).toLocaleString() + 'mAh' + (j && j.txt !== pf[0] ? ' · ' + esc(j.txt) : '') + '</div>' +
+    '<div class="muted">' + esc(ltCondTxt_(t)) + ' · ' + ymd(t.startAt) + ' ' + esc(LT_PUR_LABEL[t.purpose] || t.purpose || '') + (n > 1 ? ' · ' + n + '번 중 마지막' : '') + '</div>';
+}
 function lookGood_(verdict, disp) {
   disp = String(disp || ''); verdict = String(verdict || '');
   if (/폐기/.test(disp) || /불량|외력/.test(verdict)) return ['폐기', 'p-red'];
@@ -1853,7 +1866,7 @@ function lookPaint_() {
   var gKey = function (g) { return g ? g[0] : '기록 없음'; };
   sns.forEach(function (sn) {
     var hits = lookOf_(sn), h = LT.hist[sn], t = h && h.length ? h[h.length - 1] : null, j = t && ltJudge(t);
-    var lt = h === null || h === undefined ? '<span class="muted">불러오는 중…</span>' : t ? ymd(t.startAt) + ' ' + esc(LT_PUR_LABEL[t.purpose] || t.purpose) + ' · ' + Math.round(+t.mah).toLocaleString() + 'mAh' + (j ? ' · <b>' + esc(j.txt) + '</b>' : '') : '<span class="muted">없음</span>';
+    var lt = h === null || h === undefined ? '<span class="muted">불러오는 중…</span>' : t ? lookLtCell_(sn, t, j, h.length) : '<span class="muted">없음</span>';
     if (!hits.length) {
       var sr = LK_SHEET[sn];
       if (sr === null || sr === undefined) { gc['찾는 중']++; rows.push('<tr><td class="mono">' + esc(sn) + '</td><td><span class="muted small">찾는 중…</span></td><td colspan="5"><span class="small muted">AS Desk에 없어서 티오더 시트에서 찾고 있어요</span></td><td class="small">' + lt + '</td></tr>'); return; }
@@ -1886,7 +1899,7 @@ function lookPaint_() {
   var big = function (k, col) { return gc[k] ? '<span style="font-size:15px;margin-right:14px"><b style="color:' + col + '">' + esc(k) + ' ' + gc[k] + '</b></span>' : ''; };
   box.innerHTML = '<div style="margin-bottom:4px"><span style="font-size:15px;margin-right:14px"><b>' + sns.length + '개 조회</b></span>' + big('양품', 'var(--green)') + big('폐기', 'var(--red)') + big('기록 없음', '#888') + big('찾는 중', '#888') + '</div>' +
     '<div class="small muted" style="margin-bottom:6px">' + Object.keys(cnt).map(function (k) { return esc(k) + ' ' + cnt[k]; }).join(' · ') + '</div>' +
-    '<div class="tw"><table class="t"><thead><tr><th>S/N</th><th>양품/폐기</th><th>매장 · AS 건</th><th>상태</th><th>증상 · 원인</th><th>용량</th><th>검사일</th><th>마지막 용량 시험</th></tr></thead><tbody>' + rows.join('') + '</tbody></table></div>' +
+    '<div class="tw"><table class="t"><thead><tr><th>S/N</th><th>양품/폐기</th><th>매장 · AS 건</th><th>상태</th><th>증상 · 원인</th><th>용량</th><th>검사일</th><th>마지막 용량 시험 (합격·신품/회수품·부하 조건)</th></tr></thead><tbody>' + rows.join('') + '</tbody></table></div>' +
     '<div class="small muted" style="margin-top:6px">양품/폐기: 불량·외력 판정이나 폐기 처분 → 폐기, 정상 판정이나 양품화 처분 → 양품, 판정 기록이 없으면 기록 없음. AS Desk에 없는 S/N은 티오더 시트에서 찾아 보여줘요. 바코드로 찍으면 "양품화" · "폐기" · "기록 없음" 소리로 알려줘요. 줄을 누르면 그 AS 건이 열려요.</div>';
 }
 function recvCard_(c) {
