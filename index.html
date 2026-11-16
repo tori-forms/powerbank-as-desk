@@ -437,7 +437,7 @@ var OPINION_TPL = [
   ['세그먼트 불량 확인됨', '불량', '표시 불량', '표시부 불량'],
   ['OUT Port 연결부 이탈/용접 불량 확인', '불량', '포트 불량', '포트 용접 불량']
 ];
-var DEFAULT_DISP = { '불량': '폐기', '정상': '양품화/샘플', '외력/사용자 과실': '폐기' };
+var DEFAULT_DISP = { '불량': '폐기', '정상': '양품화', '외력/사용자 과실': '폐기' };
 
 function $(s, r) { return (r || document).querySelector(s); }
 
@@ -599,7 +599,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
 
 var DEMO_MODE = false;
 
-var BUILD_ID = '99810bc8b78e', NEW_VER = false;
+var BUILD_ID = '1d9e4053634c', NEW_VER = false;
 function verBusy_() {
   if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
   return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
@@ -666,7 +666,7 @@ for(let i=0;i<48;i++){
   for(let k=0;k<qty;k++){
     const orig=va?snV():snB(), outSn=va?snV():snB(); const tested=recv && R()<0.85;
     const v= tested ? (R()<0.62?'불량':(R()<0.8?'정상':'외력/사용자 과실')) : '';
-    units.push({id:id+'-'+(k+1),caseId:id,store,origSn:orig,outSn,recvSn:recv?orig:'',model:c.model,lot:'',testDate:tested?recv:'',verdict:v,testSymptom:v==='불량'?pick(SYM):'',cause:v==='불량'?pick(CAUSE):'',opinion:'',capPct:v?String(Math.floor(55+R()*45)):'',disposition:v==='불량'?pick(['폐기','폐기','제조사 반송']):v==='정상'?'양품화/샘플':'',actor:'',updatedAt:outDate,torderTestRow:'',flags:''});
+    units.push({id:id+'-'+(k+1),caseId:id,store,origSn:orig,outSn,recvSn:recv?orig:'',model:c.model,lot:'',testDate:tested?recv:'',verdict:v,testSymptom:v==='불량'?pick(SYM):'',cause:v==='불량'?pick(CAUSE):'',opinion:'',capPct:v?String(Math.floor(55+R()*45)):'',disposition:v==='불량'?pick(['폐기','폐기','제조사 반송']):v==='정상'?'양품화':'',actor:'',updatedAt:outDate,torderTestRow:'',flags:''});
   }
 }
 const iso=d=>new Date(today-d*86400000).toISOString().slice(0,19);
@@ -675,7 +675,7 @@ const inbox=inb.map((x,i)=>({id:'DEMO-IN'+(i+1),ts:'',postedAt:iso(x[4]),inquiry
 const stock=[{id:'DEMO-ST1',model:'P20BOTA25',color:'',prefix:'P20BOTA',fromNo:'250030001',toNo:'250031000',digits:'9',qty:'1000',receivedAt:'2026-05-28',whAt:'2026-05-28',note:'데모 입고',qcStatus:'생략',log:'[]',onHand:'',countedAt:''},{id:'DEMO-ST2',model:'P20VA',color:'블랙',prefix:'P20VABK',fromNo:'260405001',toNo:'260405250',digits:'9',qty:'250',receivedAt:'2026-09-29',whAt:'',note:'',qcStatus:'검사중',log:'[]',onHand:'',countedAt:''},{id:'DEMO-ST3',model:'P20VA',color:'화이트',prefix:'P20VAWH',fromNo:'260405001',toNo:'260405250',digits:'9',qty:'250',receivedAt:'2026-09-29',whAt:'',note:'',qcStatus:'검사중',log:'[]',onHand:'',countedAt:''}];
 const lots=[{id:'DEMO-L1',model:'P20BOTA25',name:'1차',prefix:'P20BOTA',digits:'9',fromNo:'250000001',toNo:'250020000',qty:'20000',madeAt:'2025-06-01',note:'',color:''},{id:'DEMO-L2',model:'P20BOTA25',name:'2차',prefix:'P20BOTA',digits:'9',fromNo:'250020001',toNo:'250050000',qty:'30000',madeAt:'2025-11-15',note:'',color:''}];
 const products=[{id:'P20BOTA25',label:'기존 P20BOTA25',short:'기존',kind:'본체',snMode:'sn',prefix:'P20BOTA25',snLen:16,numDigits:7,torder:true,active:true,order:0},{id:'P20VA',label:'신형 P20VA',short:'신형',kind:'본체',snMode:'sn',prefix:'P20VA',snLen:0,numDigits:0,torder:false,active:true,colors:['블랙','화이트'],order:1}];
-  var meta = Object.assign({"lists": {"REASONS": ["충전", "빠른 소모", "LED", "스웰링", "포트", "안전 (연기/불꽃)", "비정상적인 소음", "기타"], "VERDICTS": ["불량", "정상", "외력/사용자 과실"], "TEST_SYMPTOMS": ["충전 불량", "성능 저하", "출력 불량", "표시 불량", "포트 불량", "스웰링", "발연·발화(안전)", "기타"], "CAUSES": ["IC 소손(과전압·서지)", "셀 용량 저하(80% 미만)", "포트 용접 불량", "포트 이탈(외력)", "부품 탈락(충격)", "스웰링(과충전·고온)", "표시부 불량", "외부 요인(케이블 등)", "NTF(재현 안 됨)", "분석 중"], "DISPOSITIONS": ["폐기", "양품화/샘플", "제조사 반송", "손망실(회수 포기)", "미회수", "회수불가", "분실", "고객 폐기", "오배송 반송"], "DEFENSE_REASONS": ["사용 안내로 해결", "증상 미확인(정상)", "보증 기간 외", "고객 과실", "중복 접수", "기타"]}, "holidays": ["2026-01-01", "2026-02-16", "2026-02-17", "2026-02-18", "2026-03-02", "2026-05-05", "2026-05-25", "2026-06-08", "2026-08-17", "2026-09-24", "2026-09-25", "2026-09-26", "2026-10-05", "2026-10-09", "2026-12-25", "2027-01-01", "2027-02-05", "2027-02-06", "2027-02-07", "2027-03-01", "2027-05-05", "2027-05-13", "2027-06-07", "2027-08-16", "2027-09-14", "2027-09-15", "2027-09-16", "2027-10-04", "2027-10-11", "2027-12-25"], "returnDelayDays": 14, "returnFailBizDays": 2, "aiModel": "claude-sonnet-5-5"}, { version: 'demo', today: day(0), shipTotals: { P20BOTA25: 50000, P20VA: 5000 }, botReady: false, aiReady: false, reportOn: false, slackReady: true, lastSlack: iso(0.01), lastCj: iso(0.02), lastImport: '', lastPush: '', lastReport: '', botEvt: '', lastDigest: '', notifyUser: '', dbUrl: '', torderUrl: '', admin: false, appKey: '', webAppUrl: '', demo: true, cachedAt: '' });
+  var meta = Object.assign({"lists": {"REASONS": ["충전", "빠른 소모", "LED", "스웰링", "포트", "안전 (연기/불꽃)", "비정상적인 소음", "기타"], "VERDICTS": ["불량", "정상", "외력/사용자 과실"], "TEST_SYMPTOMS": ["충전 불량", "성능 저하", "출력 불량", "표시 불량", "포트 불량", "스웰링", "발연·발화(안전)", "기타"], "CAUSES": ["IC 소손(과전압·서지)", "셀 용량 저하(80% 미만)", "포트 용접 불량", "포트 이탈(외력)", "부품 탈락(충격)", "스웰링(과충전·고온)", "표시부 불량", "외부 요인(케이블 등)", "NTF(재현 안 됨)", "분석 중"], "DISPOSITIONS": ["폐기", "양품화", "제조사 반송", "손망실(회수 포기)", "미회수", "회수불가", "분실", "고객 폐기", "오배송 반송"], "DEFENSE_REASONS": ["사용 안내로 해결", "증상 미확인(정상)", "보증 기간 외", "고객 과실", "중복 접수", "기타"]}, "holidays": ["2026-01-01", "2026-02-16", "2026-02-17", "2026-02-18", "2026-03-02", "2026-05-05", "2026-05-25", "2026-06-08", "2026-08-17", "2026-09-24", "2026-09-25", "2026-09-26", "2026-10-05", "2026-10-09", "2026-12-25", "2027-01-01", "2027-02-05", "2027-02-06", "2027-02-07", "2027-03-01", "2027-05-05", "2027-05-13", "2027-06-07", "2027-08-16", "2027-09-14", "2027-09-15", "2027-09-16", "2027-10-04", "2027-10-11", "2027-12-25"], "returnDelayDays": 14, "returnFailBizDays": 2, "aiModel": "claude-sonnet-5-5"}, { version: 'demo', today: day(0), shipTotals: { P20BOTA25: 50000, P20VA: 5000 }, botReady: false, aiReady: false, reportOn: false, slackReady: true, lastSlack: iso(0.01), lastCj: iso(0.02), lastImport: '', lastPush: '', lastReport: '', botEvt: '', lastDigest: '', notifyUser: '', dbUrl: '', torderUrl: '', admin: false, appKey: '', webAppUrl: '', demo: true, cachedAt: '' });
   return { cases: cases, units: units, inbox: inbox, ships: ships, requests: [], stock: stock, stockout: [], lots: lots, todos: [], products: products, meta: meta };
 }
 function demoCall_(action, payload) {
@@ -2886,7 +2886,7 @@ function lossRows_() {
     var d = String(c.outDate || c.createdAt || '').slice(0, 10); if (!d) return;
     var kind = lossKind_(u, c), q = Math.max(+c.qty || 0, 1);
     var cost = k.unit + (kind === 'lost' ? 0 : k.labor) + k.shipOut / q + (u.recvSn ? k.shipRet / q : 0);
-    var back = u.disposition === '양품화/샘플' || (u.verdict && yangOf_(u)[0] === 'ok') ? k.resale : 0;
+    var back = /양품화/.test(u.disposition || '') || (u.verdict && yangOf_(u)[0] === 'ok') ? k.resale : 0;
     out.push({ u: u, c: c, kind: kind, d: d, wk: lossWeek_(d), mo: d.slice(0, 7), cost: cost, back: back });
   });
   return out;
