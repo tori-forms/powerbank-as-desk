@@ -571,7 +571,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
   } catch (e) { }
 })();
 var DEMO_MODE = false;
-var BUILD_ID = '1b4e5d66d34b', NEW_VER = false;
+var BUILD_ID = '2286d4d3db16', NEW_VER = false;
 function verBusy_() {
   if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
   return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
@@ -1764,30 +1764,107 @@ function lookExpand_(toks) {
     return hit.length ? hit : [x];
   }));
 }
+function lookGood_(verdict, disp) {
+  disp = String(disp || ''); verdict = String(verdict || '');
+  if (/폐기/.test(disp)) return ['폐기', 'p-red'];
+  if (/양품/.test(disp)) return ['양품', 'p-green'];
+  if (disp === '제조사 반송') return ['제조사 반송', 'p-partial'];
+  if (/^정상/.test(verdict)) return ['양품', 'p-green'];
+  if (/불량|외력/.test(verdict)) return ['폐기', 'p-red'];
+  return null;
+}
+function lookVerdictOf_(hits) {
+  var best = null;
+  hits.forEach(function (x) { if (!x.u || x.role !== 'recv') return; var g = lookGood_(x.u.verdict, x.u.disposition); if (g && (!best || String(x.u.testDate || '') >= best.d)) best = { g: g, d: String(x.u.testDate || '') }; });
+  return best ? best.g : null;
+}
+function lookSheetVerdict_(rs) {
+  var t = rs.filter(function (r) { return r.tab === 'TEST' && lookGood_(r.verdict); }).sort(function (a, b) { return String(a.testDate || '').localeCompare(String(b.testDate || '')); }).pop();
+  if (t) return lookGood_(t.verdict);
+  var a = rs.filter(function (r) { return r.tab === 'AS' && r.role === 'recv' && lookGood_(r.verdict, r.disposition); })[0];
+  return a ? lookGood_(a.verdict, a.disposition) : null;
+}
+var LK_SHEET = {};
+function lookSheetLoad_(sns) {
+  sns = sns.filter(function (x) { return !(x in LK_SHEET); });
+  if (!sns.length) return;
+  sns.forEach(function (x) { LK_SHEET[x] = null; });
+  for (var i = 0; i < sns.length; i += 300) (function (part) {
+    call('lookSheet', { sns: part }).then(function (r) { part.forEach(function (x) { LK_SHEET[x] = ((r && r.bySn) || {})[x] || []; }); },
+      function () { part.forEach(function (x) { LK_SHEET[x] = 'err'; }); }).then(lookPaint_);
+  })(sns.slice(i, i + 300));
+}
+function lookGoodOf_(sn) {
+  var hits = lookOf_(sn);
+  if (hits.length) return lookVerdictOf_(hits);
+  var sr = LK_SHEET[sn];
+  if (sr === null || sr === undefined) return undefined;
+  return sr === 'err' || !sr.length ? null : lookSheetVerdict_(sr);
+}
+var LK_SAY = { key: '', n: 0, done: '' };
+function lookSay_(q) {
+  var toks = inspScanSns_(q), last = toks[toks.length - 1] || '';
+  var key = toks.length + '#' + last;
+  if (key !== LK_SAY.key) {
+    var single = toks.length === LK_SAY.n + 1;
+    LK_SAY = { key: key, n: toks.length, done: single ? '' : key };
+    try { window.speechSynthesis && speechSynthesis.cancel(); } catch (e) { }
+  }
+  if (!last || LK_SAY.done === key || !/\s$/.test(q || '')) return;
+  var g = lookGoodOf_(lookExpand_([last])[0]);
+  if (g === undefined) return;
+  LK_SAY.done = key;
+  if (!g || g[0] !== '양품') return;
+  try { var m = new SpeechSynthesisUtterance('양품화'); m.lang = 'ko-KR'; m.rate = 1.4; speechSynthesis.speak(m); } catch (e) { }
+}
 function lookPaint_() {
   var box = $('#lookRes'); if (!box) return;
   var sns = lookExpand_(inspScanSns_(S.lookQ)).filter(function (x, i, a) { return a.indexOf(x) === i; });
-  if (!sns.length) { box.innerHTML = '<div class="empty">찍은 S/N이 없어요.</div>'; return; }
+  if (!sns.length) { box.innerHTML = '<div class="empty">찍은 S/N이 없어요.</div>'; lookSay_(S.lookQ); return; }
   var need = sns.filter(function (x) { return !(x in LT.hist) && !LK_TRIED[x]; });
   if (need.length) { need.forEach(function (x) { LK_TRIED[x] = 1; }); var pt = []; for (var i = 0; i < need.length; i += 250) pt.push(ltLoadHist(need.slice(i, i + 250))); Promise.all(pt).then(lookPaint_); }
-  var cnt = {}, rows = [];
+  lookSheetLoad_(sns.filter(function (x) { return !lookOf_(x).length; }));
+  var cnt = {}, gc = { '양품': 0, '폐기': 0, '판정 전': 0, '기타': 0, '기록 없음': 0, '찾는 중': 0 }, rows = [];
+  var gPill = function (g) { return g ? '<span class="pill ' + g[1] + '" style="font-weight:700">' + esc(g[0]) + '</span>' : '<span class="muted small">판정 전</span>'; };
+  var gKey = function (g) { return g ? (g[0] === '양품' || g[0] === '폐기' ? g[0] : '기타') : '판정 전'; };
   sns.forEach(function (sn) {
     var hits = lookOf_(sn), h = LT.hist[sn], t = h && h.length ? h[h.length - 1] : null, j = t && ltJudge(t);
     var lt = h === null || h === undefined ? '<span class="muted">불러오는 중…</span>' : t ? ymd(t.startAt) + ' ' + esc(LT_PUR_LABEL[t.purpose] || t.purpose) + ' · ' + Math.round(+t.mah).toLocaleString() + 'mAh' + (j ? ' · <b>' + esc(j.txt) + '</b>' : '') : '<span class="muted">없음</span>';
-    if (!hits.length) { cnt['전산에 없음'] = (cnt['전산에 없음'] || 0) + 1; rows.push('<tr><td class="mono">' + esc(sn) + '</td><td colspan="5"><span class="pill p-gray">전산에 없는 S/N</span> <span class="small muted">AS 건 · 회수 기록 · 출처 확인 불가 목록 어디에도 없어요</span></td><td class="small">' + lt + '</td></tr>'); return; }
+    if (!hits.length) {
+      var sr = LK_SHEET[sn];
+      if (sr === null || sr === undefined) { gc['찾는 중']++; rows.push('<tr><td class="mono">' + esc(sn) + '</td><td><span class="muted small">찾는 중…</span></td><td colspan="5"><span class="small muted">AS Desk에 없어서 티오더 시트에서 찾고 있어요</span></td><td class="small">' + lt + '</td></tr>'); return; }
+      if (sr === 'err' || !sr.length) {
+        gc['기록 없음']++; cnt['어디에도 없음'] = (cnt['어디에도 없음'] || 0) + 1;
+        rows.push('<tr><td class="mono">' + esc(sn) + '</td><td><span class="pill p-gray">기록 없음</span></td><td colspan="5"><span class="small muted">' + (sr === 'err' ? 'AS Desk에 없음 · 티오더 시트는 연결 오류로 못 찾았어요 (지우기 후 다시 찍어 주세요)' : 'AS Desk · 티오더 시트(A/S현황 · 회수분 테스트 결과) 어디에도 없어요') + '</span></td><td class="small">' + lt + '</td></tr>');
+        return;
+      }
+      var sg = lookSheetVerdict_(sr); gc[gKey(sg)]++; cnt['시트에만 있음'] = (cnt['시트에만 있음'] || 0) + 1;
+      sr.forEach(function (r, i) {
+        var what = r.tab === 'TEST' ? '회수분 테스트 결과 ' + r.row + '행 · ' + (r.verdict || '판정 없음')
+          : 'A/S현황 ' + r.row + '행 · ' + (r.role === 'out' ? '교환품으로 출고' + (r.outDate ? ' ' + r.outDate : '') : '회수 S/N' + (r.recvDate ? ' · 회수 ' + r.recvDate : '') + (r.disposition ? ' · ' + r.disposition : ''));
+        rows.push('<tr><td class="mono">' + (i ? '' : esc(sn)) + '</td><td>' + (i ? '' : gPill(sg)) + '</td><td><b>' + esc(r.store || '-') + '</b></td>' +
+          '<td><span class="pill p-violet">시트에만 있음</span> <span class="small">' + esc(what) + '</span></td>' +
+          '<td class="small">' + esc([r.testSymptom, r.cause].filter(Boolean).join(' · ') || (r.tab === 'AS' ? String(r.note || '').split('\n')[0] : '') || '-') + '</td><td>-</td><td class="nowrap">' + esc(r.testDate || '-') + '</td><td class="small">' + (i ? '' : lt) + '</td></tr>');
+      });
+      return;
+    }
+    var vg = lookVerdictOf_(hits); gc[gKey(vg)]++;
     hits.forEach(function (x, i) {
       var st = lookState_(x), k = st[2]; cnt[k] = (cnt[k] || 0) + 1;
       var u = x.u || {}, c = x.c || {};
-      rows.push('<tr' + (c.id ? ' class="click" data-act="case" data-id="' + esc(c.id) + '"' : '') + '><td class="mono">' + (i ? '' : esc(sn)) + '</td>' +
+      rows.push('<tr' + (c.id ? ' class="click" data-act="case" data-id="' + esc(c.id) + '"' : '') + '><td class="mono">' + (i ? '' : esc(sn)) + '</td><td>' + (i ? '' : gPill(vg)) + '</td>' +
         '<td>' + (x.o ? esc(x.o.store || '-') : '<b>' + esc(c.store || '') + '</b> <span class="muted mono small">' + esc(cid(c)) + '</span>') + '</td>' +
         '<td><span class="pill ' + st[1] + '">' + esc(st[0]) + '</span></td>' +
         '<td class="small">' + esc([u.testSymptom, cz(u.cause)].filter(Boolean).join(' · ') || '-') + '</td>' +
         '<td class="nowrap">' + (u.capPct ? esc(u.capPct) + '%' : '-') + '</td><td class="nowrap">' + esc(u.testDate || '-') + '</td><td class="small">' + lt + '</td></tr>');
     });
   });
-  box.innerHTML = '<div class="small" style="margin-bottom:6px"><b>' + sns.length + '개 조회</b> · ' + Object.keys(cnt).map(function (k) { return esc(k) + ' ' + cnt[k]; }).join(' · ') + '</div>' +
-    '<div class="tw"><table class="t"><thead><tr><th>S/N</th><th>매장 · AS 건</th><th>상태</th><th>증상 · 원인</th><th>용량</th><th>검사일</th><th>마지막 용량 시험</th></tr></thead><tbody>' + rows.join('') + '</tbody></table></div>' +
-    '<div class="small muted" style="margin-top:6px">줄을 누르면 그 AS 건이 열려요.</div>';
+  var big = function (k, col) { return gc[k] ? '<span style="font-size:15px;margin-right:14px"><b style="color:' + col + '">' + esc(k) + ' ' + gc[k] + '</b></span>' : ''; };
+  box.innerHTML = '<div style="margin-bottom:4px"><span style="font-size:15px;margin-right:14px"><b>' + sns.length + '개 조회</b></span>' + big('양품', 'var(--green)') + big('폐기', 'var(--red)') + big('판정 전', 'var(--amber)') + big('기타', 'var(--violet)') + big('기록 없음', '#888') + big('찾는 중', '#888') + '</div>' +
+    '<div class="small muted" style="margin-bottom:6px">' + Object.keys(cnt).map(function (k) { return esc(k) + ' ' + cnt[k]; }).join(' · ') + '</div>' +
+    '<div class="tw"><table class="t"><thead><tr><th>S/N</th><th>양품/폐기</th><th>매장 · AS 건</th><th>상태</th><th>증상 · 원인</th><th>용량</th><th>검사일</th><th>마지막 용량 시험</th></tr></thead><tbody>' + rows.join('') + '</tbody></table></div>' +
+    '<div class="small muted" style="margin-top:6px">양품/폐기 = 처분 기준 (처분이 없으면 판정: 정상→양품, 불량·외력→폐기). AS Desk에 없는 S/N은 티오더 시트에서 찾아 보여줘요. 바코드로 찍은 제품이 양품이면 "양품화" 소리가 나요. 줄을 누르면 그 AS 건이 열려요.</div>';
+  lookSay_(S.lookQ);
 }
 function recvCard_(c) {
   var st = IDX.st[c.id], us = st.open, on = S.recvOpen === c.id;
@@ -4218,7 +4295,7 @@ var ACT = {
     run('inspectUndo', { unitId: u.id }, function (r) { return '판정을 되돌렸어요 — 검사중' + (r.sheet === 'cleared' || r.sheet === 'removed' ? ' · 시트 판정 칸 비움' : r.sheet === 'row shifted' ? ' · 시트 행이 밀려 시트는 직접 확인해 주세요' : ''); }, b)
       .then(function () { S.inspPick = [u.id]; S.inspScan = []; render(); });
   },
-  lookClear: function () { S.lookQ = ''; var q = $('#lookQ'); if (q) { q.value = ''; q.focus(); } lookPaint_(); },
+  lookClear: function () { S.lookQ = ''; LK_SHEET = {}; LK_SAY = { key: '', n: 0, done: '' }; var q = $('#lookQ'); if (q) { q.value = ''; q.focus(); } lookPaint_(); },
   inspAutoBad: function (d, b) {
     var us = inspList_().filter(ltRecallBad_);
     if (!us.length) return toast('용량 시험에서 80% 미만으로 나온 회수분이 없어요.', true);
