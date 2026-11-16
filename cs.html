@@ -599,7 +599,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
 
 var DEMO_MODE = false;
 
-var BUILD_ID = '1432bf3fc934', NEW_VER = false;
+var BUILD_ID = '78ce62328295', NEW_VER = false;
 function verBusy_() {
   if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
   return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
@@ -1821,11 +1821,13 @@ function lookOf_(sn) {
 }
 
 function lookState_(x) {
-  if (x.y) return ['양품화 등록 ' + ymd(x.y.date) + (x.y.src === 'sheet' ? ' (티오더 시트에서 가져옴)' : ' (직접 등록)'), 'p-green', '양품화 등록'];
+  if (x.y) return ['양품화 기록 있음 · ' + ymd(x.y.date) + (x.y.src === 'sheet' ? ' (티오더 시트)' : ' (직접 등록 · AS Desk에 없는 S/N)'), 'p-green', '양품화'];
   if (x.o) return x.o.status === 'open' ? ['매장 출처 확인 불가 (AS 회수분 등록 › 확인 필요)', 'p-red', '확인 필요'] : ['출처 확인 불가 목록 — 정리됨', 'p-gray', '기타'];
   var u = x.u, c = x.c;
   if (x.role === 'out') return ['교환품으로 매장에 출고됨', 'p-blue', '교환 출고'];
   if (x.role === 'orig' && u.recvSn && u.recvSn !== u.origSn) return ['접수 S/N — 실제로는 ' + u.recvSn + '(으)로 회수', 'p-partial', '다른 S/N으로 회수'];
+  var yh = x.role === 'recv' && u.disposition === '양품화' ? yangHaveOf_(u.recvSn) : null;
+  if (yh) return ['양품화 기록 있음 · ' + (yh.date ? ymd(yh.date) : '날짜 없음') + ' (' + yh.src + ')' + (u.verdict && u.verdict !== '정상' ? ' · 판정은 ' + u.verdict : ''), 'p-green', '양품화'];
   if (u.verdict) return [(u.verdict === '외력/사용자 과실' ? '외력' : u.verdict) + ' 판정 · ' + (u.disposition || '처분 대기'), u.verdict === '불량' ? 'p-red' : u.verdict === '정상' ? 'p-green' : 'p-partial', '판정 완료'];
   if (u.disposition) return [u.disposition, 'p-gray', '처분'];
   if (c.closed === 'Y') return ['종결', 'p-closed', '종결'];
@@ -2797,6 +2799,10 @@ function yangRegCard_() {
     '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center"><label class="small">양품화 날짜 <input type="date" class="inp" id="yangD" value="' + esc(S.yangD || today()) + '"></label>' +
     '<input class="inp" id="yangN" style="flex:1;min-width:160px" placeholder="메모 (선택) — 예: AS Desk 이전 양품화분" value="' + esc(S.yangN || '') + '">' +
     '<button class="btn primary" data-act="yangGo">양품화 등록</button><button class="btn" data-act="yangSheet">티오더 시트에서 가져오기</button></div>' +
+    (S.yangHave && S.yangHave.length ? '<div class="note" style="margin-top:10px"><b>이미 양품화 기록이 있는 S/N ' + S.yangHave.length + '개</b> — 다시 등록하지 않았어요.' +
+      '<div class="tw" style="max-height:200px;overflow:auto;margin:6px 0"><table class="t"><thead><tr><th>S/N</th><th>양품화 날짜</th><th>어디서</th><th>매장</th><th>메모</th></tr></thead><tbody>' +
+      S.yangHave.map(function (h) { return '<tr><td class="mono">' + esc(h.sn) + '</td><td>' + esc(h.date ? ymd(h.date) : '-') + '</td><td>' + esc(h.src) + '</td><td>' + esc(h.store || '-') + '</td><td class="small">' + esc(h.note || '') + '</td></tr>'; }).join('') +
+      '</tbody></table></div><button class="btn sm" data-act="yangHaveX">닫기</button></div>' : '') +
     (cf ? '<div class="note" style="margin-top:10px;border-color:var(--amber)"><b>이미 불량·외력 판정이 난 S/N이 ' + cf.conflicts.length + '개 있어요.</b> 그래도 양품화로 등록하면 처분이 양품화로 바뀌고 S/N 조회에서 양품으로 나와요.<div class="mono small" style="margin:6px 0">' +
       cf.conflicts.map(function (x) { return esc(x.sn) + ' — ' + esc(x.verdict) + (x.disposition ? ' · ' + esc(x.disposition) : ''); }).join('<br>') + '</div>' +
       '<button class="btn sm" style="color:var(--red)" data-act="yangForce">그래도 ' + cf.items.length + '개 모두 양품화 등록</button> <button class="btn sm" data-act="yangCancel">취소</button></div>' : '') +
@@ -2825,15 +2831,33 @@ function yangRegList_(n, all) {
     '<div class="small muted" style="margin-top:6px">AS Desk 처분 = 판정 화면에서 처분을 양품화로 고른 것 (날짜는 검사일). 등록 취소하면 AS Desk 칸 처분도 등록 전으로 돌아가요.</div></div></div>';
 }
 function yangKeep_() { var q = $('#yangQ'), d = $('#yangD'), n = $('#yangN'); if (q) S.yangQ = q.value; if (d) S.yangD = d.value; if (n) S.yangN = n.value; }
+
+function yangHaveOf_(sn) {
+  var r = yangRegOf_(sn); if (r) return { sn: sn, date: r.date, src: r.src === 'sheet' ? '티오더 시트' : '직접 등록', store: r.store, note: r.note };
+  var u = S.data.units.filter(function (x) { return x.recvSn === sn && x.disposition === '양품화'; })[0];
+  return u ? { sn: sn, date: d10(u.testDate), src: 'AS Desk 처분', store: (IDX.caseById[u.caseId] || {}).store || '' } : null;
+}
+function yangBadOf_(sn) {
+  var u = S.data.units.filter(function (x) { return x.recvSn === sn; }).sort(function (a, b) { return String(a.testDate || '').localeCompare(String(b.testDate || '')); }).pop();
+  return u && /불량|외력/.test(u.verdict || '') ? { sn: sn, verdict: u.verdict, disposition: u.disposition || '' } : null;
+}
 function yangSend_(items, src, force, b) {
-  return run('yangReg', { items: items, note: S.yangN || '', src: src, force: !!force }, function (r) {
-    if (r.conflicts && r.conflicts.length && !r.count) return '불량·외력 판정 S/N이 있어 확인이 필요해요';
-    return '양품화 ' + r.count + '개 등록했어요' + (r.linked ? ' (AS Desk 처분도 양품화로 ' + r.linked + '개)' : '') + (r.skip && r.skip.length ? ' · 이미 양품화 ' + r.skip.length + '개는 건너뜀' : '');
-  }, b).then(function (r) {
-    if (r && r.conflicts && r.conflicts.length && !r.count) S.yangConf = { items: items, src: src, conflicts: r.conflicts };
-    else if (r) { S.yangConf = null; S.yangScan = null; if (src === 'manual') S.yangQ = ''; }
-    render();
-  });
+  if (S.busy) return Promise.resolve();
+  S.busy = true; busyUI_(true);
+  var tot = { count: 0, linked: 0, skip: 0, conf: [] }, i = 0, note = S.yangN || '';
+  var step = function () {
+    if (i >= items.length) return Promise.resolve();
+    var part = items.slice(i, i + 25); i += 25;
+    return call('yangReg', { items: part, note: note, src: src, force: !!force }).then(function (r) {
+      tot.count += r.count || 0; tot.linked += r.linked || 0; tot.skip += (r.skip || []).length; tot.conf = tot.conf.concat(r.conflicts && !r.count ? r.conflicts : []);
+      return step();
+    });
+  };
+  return step().then(function () {
+    toast('양품화 ' + tot.count + '개 등록했어요' + (tot.linked ? ' (AS Desk 처분도 양품화로 ' + tot.linked + '개)' : '') + (tot.skip ? ' · 이미 양품화 ' + tot.skip + '개는 건너뜀' : '') + (tot.conf.length ? ' · 불량 판정이라 못 넣은 ' + tot.conf.length + '개' : ''));
+    S.yangConf = null; S.yangScan = null; if (src === 'manual') S.yangQ = '';
+  }, function (e) { toast((e.message || String(e)) + ' — 그때까지 ' + tot.count + '개 등록됐어요', true); })
+    .then(function () { return load(true); }).finally(function () { S.busy = false; busyUI_(false); render(); });
 }
 
 var LOSS_KEYS = [['price', '납품 판매가', '개당'], ['sold', '납품 수량', '누적', '개'], ['unit', '교체품 원가', '개당'], ['labor', '검사·처리 인건비', '개당'], ['shipOut', '출고 택배비', '건당'], ['shipRet', '회수 택배비', '건당'], ['resale', '양품화 판매가', '개당'], ['store', '창고 보관료', '월'], ['lead', '보충 리드타임', '발주→입고', '일', 60], ['cover', '입고 후 버틸 기간', '목표', '일', 60]];
@@ -4463,10 +4487,17 @@ var ACT = {
   yangGo: function (d, b) {
     yangKeep_(); var items = yangParse_(S.yangQ, S.yangD || today());
     if (!items.length) return toast('양품화할 S/N(P20…)을 찍거나 붙여넣어 주세요.', true);
-    S.yangConf = null; yangSend_(items, 'manual', false, b);
+    S.yangHave = items.map(function (x) { return yangHaveOf_(x.sn); }).filter(Boolean);
+    items = items.filter(function (x) { return !yangHaveOf_(x.sn); });
+    S.yangConf = null;
+    if (!items.length) { render(); return toast('모두 이미 양품화 기록이 있어요.', true); }
+    var bad = items.map(function (x) { return yangBadOf_(x.sn); }).filter(Boolean);
+    if (bad.length) { S.yangConf = { items: items, src: 'manual', conflicts: bad }; render(); return; }
+    yangSend_(items, 'manual', false, b);
   },
+  yangHaveX: function () { yangKeep_(); S.yangHave = null; render(); },
   yangForce: function (d, b) { var cf = S.yangConf; if (cf) yangSend_(cf.items, cf.src, true, b); },
-  yangCancel: function () { yangKeep_(); S.yangConf = null; S.yangScan = null; render(); },
+  yangCancel: function () { yangKeep_(); S.yangConf = null; S.yangScan = null; S.yangHave = null; render(); },
   yangSheet: function () {
     yangKeep_(); S.yangScan = { loading: true }; render();
     call('yangSheetScan', {}).then(function (r) { S.yangScan = { items: (r && r.items) || [] }; render(); }, function (e) { S.yangScan = null; toast(e.message || String(e), true); render(); });
