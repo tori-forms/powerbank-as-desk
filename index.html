@@ -571,7 +571,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
   } catch (e) { }
 })();
 var DEMO_MODE = false;
-var BUILD_ID = '6c35712c0491', NEW_VER = false;
+var BUILD_ID = 'c17be6d3284c', NEW_VER = false;
 function verBusy_() {
   if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
   return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
@@ -1805,7 +1805,7 @@ function lookSndInit_() {
   try {
     if (LK_SND.ctx) { if (LK_SND.ctx.state === 'suspended') LK_SND.ctx.resume(); return; }
     var C = window.AudioContext || window.webkitAudioContext; if (!C) return;
-    LK_SND.ctx = new C();
+    LK_SND.ctx = new C({ latencyHint: 'interactive' });
     Object.keys(LK_WAV).forEach(function (k) {
       var bin = atob(LK_WAV[k]), u = new Uint8Array(bin.length);
       for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
@@ -1822,6 +1822,7 @@ function lookSndPlay_(k) {
 function lookSay_(q) {
   if (!/\s$/.test(q || '') && Date.now() - LK_KEY_AT < 120) return;
   var toks = inspScanSns_(q), last = toks[toks.length - 1] || '', p = LK_SAY.prev;
+  if (!/\s$/.test(q || '') && !/^P20[A-Z0-9]{11,}$/.test(last)) return;
   var same = toks.length === p.length && toks.every(function (x, i) { return x === p[i]; });
   if (!same) {
     var one = toks.length === p.length + 1 && p.every(function (x, i) { return x === toks[i]; });
@@ -1846,6 +1847,7 @@ function lookPaint_() {
   var need = sns.filter(function (x) { return !(x in LT.hist) && !LK_TRIED[x]; });
   if (need.length) { need.forEach(function (x) { LK_TRIED[x] = 1; }); var pt = []; for (var i = 0; i < need.length; i += 250) pt.push(ltLoadHist(need.slice(i, i + 250))); Promise.all(pt).then(lookPaint_); }
   lookSheetLoad_(sns.filter(function (x) { return !lookOf_(x).length; }));
+  lookSay_(S.lookQ);
   var cnt = {}, gc = { '양품': 0, '폐기': 0, '기록 없음': 0, '찾는 중': 0 }, rows = [];
   var gPill = function (g) { return g ? '<span class="pill ' + g[1] + '" style="font-weight:700">' + esc(g[0]) + '</span>' : '<span class="pill p-gray" style="font-weight:700">기록 없음</span>'; };
   var gKey = function (g) { return g ? g[0] : '기록 없음'; };
@@ -1886,7 +1888,6 @@ function lookPaint_() {
     '<div class="small muted" style="margin-bottom:6px">' + Object.keys(cnt).map(function (k) { return esc(k) + ' ' + cnt[k]; }).join(' · ') + '</div>' +
     '<div class="tw"><table class="t"><thead><tr><th>S/N</th><th>양품/폐기</th><th>매장 · AS 건</th><th>상태</th><th>증상 · 원인</th><th>용량</th><th>검사일</th><th>마지막 용량 시험</th></tr></thead><tbody>' + rows.join('') + '</tbody></table></div>' +
     '<div class="small muted" style="margin-top:6px">양품/폐기: 불량·외력 판정이나 폐기 처분 → 폐기, 정상 판정이나 양품화 처분 → 양품, 판정 기록이 없으면 기록 없음. AS Desk에 없는 S/N은 티오더 시트에서 찾아 보여줘요. 바코드로 찍으면 "양품화" · "폐기" · "기록 없음" 소리로 알려줘요. 줄을 누르면 그 AS 건이 열려요.</div>';
-  lookSay_(S.lookQ);
 }
 function recvCard_(c) {
   var st = IDX.st[c.id], us = st.open, on = S.recvOpen === c.id;
@@ -4408,7 +4409,7 @@ document.addEventListener('input', function (e) { if (e.target.id !== 'qdSn') re
 window.addEventListener('unhandledrejection', function (e) { e.preventDefault(); });
 var qTimer, lkTimer;
 ['pointerdown', 'keydown'].forEach(function (ev) { document.addEventListener(ev, function () { if (S.view === 'lookup') lookSndInit_(); }, true); });
-document.addEventListener('input', function (e) { if (e.target.id !== 'lookQ') return; S.lookQ = e.target.value; LK_KEY_AT = Date.now(); lookSndInit_(); clearTimeout(lkTimer); if (/\n$/.test(S.lookQ)) { LK_KEY_AT = 0; lookPaint_(); } else lkTimer = setTimeout(lookSettle_, 150); });
+document.addEventListener('input', function (e) { if (e.target.id !== 'lookQ') return; S.lookQ = e.target.value; LK_KEY_AT = Date.now(); lookSndInit_(); clearTimeout(lkTimer); if (/\n$/.test(S.lookQ)) { LK_KEY_AT = 0; lookPaint_(); } else { var lt = inspScanSns_(S.lookQ).pop(); if (lt && /^P20[A-Z0-9]{11,}$/.test(lt) && lookOf_(lt).length) lookSettle_(); else lkTimer = setTimeout(lookSettle_, 60); } });
 document.addEventListener('input', function (e) {
   if (e.target.id !== 'rvScan') return;
   var v = e.target.value, done = /\s$/.test(v) ? v : v.replace(/\S*$/, ''), toks = done.toUpperCase().match(/[A-Z0-9]{8,}/g) || [];
