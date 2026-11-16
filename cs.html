@@ -571,7 +571,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
   } catch (e) { }
 })();
 var DEMO_MODE = false;
-var BUILD_ID = '47d14312a7a0', NEW_VER = false;
+var BUILD_ID = '0aa1c256819e', NEW_VER = false;
 function verBusy_() {
   if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
   return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
@@ -5548,7 +5548,7 @@ function ltXlsx() {
     ltXlsxBuild_(t, 'Forms_LoadTest_' + today().replace(/-/g, '') + '.xlsx', '');
   }).catch(function (e) { toast(e.message, true); });
 }
-var LT_MAKER = { P20BOTA25: 'FXN' };
+var LT_MAKER = { P20BOTA25: 'FXN', P20VA: 'FXN' };
 function ltVTxt_(v) { var s = String(Math.round((+v || 0) * 1000) / 1000); return (s.indexOf('.') < 0 ? s + '.0' : s) + 'V'; }
 function ltHmsKo_(s) { s = Math.max(0, Math.round(+s || 0)); var h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), c = s % 60; return [h ? h + '시간' : '', m ? m + '분' : '', c ? c + '초' : ''].filter(String).join(' ') || '0초'; }
 function ltXlsxJudgeCols_(x) {
