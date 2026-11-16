@@ -571,7 +571,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
   } catch (e) { }
 })();
 var DEMO_MODE = false;
-var BUILD_ID = '2fad3ecbc5b0', NEW_VER = false;
+var BUILD_ID = '675c5184ddf0', NEW_VER = false;
 function verBusy_() {
   if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
   return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
@@ -948,11 +948,11 @@ function counts() {
 }
 
 var VIEWS = [
-  ['home', '▦', '대시보드'], ['lookup', '🔍', 'S/N 조회'], ['inbox', '✉', '인입함'], ['ship', '⇢', '출고 현황'], ['ret', '⇠', '회수 현황'], ['recv', '📥', 'AS 회수분 등록'], ['inspect', '⚗', 'AS 회수분 검사 판정'], ['results', '✔', 'AS 회수분 검사 결과'], ['yang', '♻', '양품화'], ['shipqc', '✓', '수입검사/HQC 불량 등록'], ['shipdoc', '📄', '출하 성적서'], ['loadtest', '⚡', '용량 테스트'], ['ltres', '📊', '용량 테스트 결과'],
+  ['home', '▦', '대시보드'], ['lookup', '🔍', 'S/N 조회'], ['inbox', '✉', '인입함'], ['ship', '⇢', '출고 현황'], ['ret', '⇠', '회수 현황'], ['recv', '📥', 'AS 회수분 등록'], ['inspect', '⚗', 'AS 회수분 검사 판정'], ['results', '✔', 'AS 회수분 검사 결과'], ['yang', '♻', '양품화'], ['shipqc', '✓', '수입검사/HQC 불량 등록'], ['shipdoc', '📄', '출하 성적서'], ['delivlog', '🚚', '출고 관리'], ['loadtest', '⚡', '용량 테스트'], ['ltres', '📊', '용량 테스트 결과'],
   ['export', '⬇', '자료 추출'], ['stock', '▣', '재고'], ['analysis', '▤', '불량 분석'], ['loss', '₩', '손실'], ['settings', '⚙', '설정·동기화']
 ];
 var IN_HIDE = { inbox: 1, ship: 1, ret: 1 };
-var CS_HIDE = { lookup: 1, yang: 1, loss: 1, inbox: 1, recv: 1, inspect: 1, export: 1, stock: 1, settings: 1, guide: 1, loadtest: 1, ltres: 1, shipqc: 1, shipdoc: 1 };
+var CS_HIDE = { lookup: 1, yang: 1, loss: 1, inbox: 1, recv: 1, inspect: 1, export: 1, stock: 1, settings: 1, guide: 1, loadtest: 1, ltres: 1, shipqc: 1, shipdoc: 1, delivlog: 1 };
 var CS_ACT = { guideP: 1, allCases: 1, resF: 1, resCsv: 1, resOpen: 1, go: 1, 'case': 1, closeDrawer: 1, closeModal: 1, inboxFilter: 1, inboxSel: 1, toggleOld: 1, toTop: 1, slkBig: 1, ship: 1, ret: 1, anModel: 1, searchStore: 1, reload: 1 };
 var CS_IN = { q: 1, modelF: 1, anMonths: 1, anFrom: 1, anTo: 1, resP: 1 };
 function csScrub_() {
@@ -985,9 +985,9 @@ function render() {
   var t = VIEWS.filter(function (v) { return v[0] === S.view; })[0];
   document.body.classList.toggle('cs', CS());
   $('#title').textContent = t[2];
-  var sub = { home: '', inbox: 'Slack #ext-볼타레스-티오더 접수 양식 자동 수집', cases: '교환 출고 → 반품 신청 → 회수 입고', export: '필요한 자료를 골라 엑셀 한 파일로 — 자료마다 시트 하나', recv: '도착한 회수품 바코드를 찍어 AS 건에 등록 · 수량 부족 · 출처 모르는 S/N 확인', inspect: '등록된 회수품의 판정 · 원인 · 처분', results: 'AS 회수품 · 수입검사 · 고객사 HQC에서 확인된 불량의 검사 결과 — 판정별로 전산 처리할 때 보세요', loss: '성능저하 · 증상 없음으로 교환해 준 손실 (교체품 · 택배 · 인건비 − 양품화 회수) — 사내 전용', yang: 'AS 회수분 중 용량이 양산 차수 평균 80% 이상이면 양품화 대상 · 미만이거나 다른 불량이면 양품화 불가 — 사내 전용', shipqc: '교체 재고 수입검사 · 납품 출하검사 불량을 한 곳에서 — 사내 전용', shipdoc: '파렛트별 출하 성적서 (샘플 = 파렛트 안에서 용량 테스트한 S/N) — 사내 전용', guide: '제품 구성 · 사양 · 사용 방법 · 매뉴얼', analysis: '모델별 불량 데이터', stock: '폼즈 지하1층 창고 · 3PL 창고에 있는 재고를 파렛트 단위로 — 입고·출고 기록과 양산 차수는 오른쪽 탭', settings: '연동 상태와 티오더 시트 동기화', ltres: '저장된 용량 시험 전체 — 기간·구분·조건으로 거르거나 S/N으로 찾아요', lookup: '바코드를 찍거나 S/N 여러 개를 붙여넣으면 매장 · 상태 · 판정 · 용량이 바로 나와요' }[S.view] || '';
+  var sub = { home: '', inbox: 'Slack #ext-볼타레스-티오더 접수 양식 자동 수집', cases: '교환 출고 → 반품 신청 → 회수 입고', export: '필요한 자료를 골라 엑셀 한 파일로 — 자료마다 시트 하나', recv: '도착한 회수품 바코드를 찍어 AS 건에 등록 · 수량 부족 · 출처 모르는 S/N 확인', inspect: '등록된 회수품의 판정 · 원인 · 처분', results: 'AS 회수품 · 수입검사 · 고객사 HQC에서 확인된 불량의 검사 결과 — 판정별로 전산 처리할 때 보세요', loss: '성능저하 · 증상 없음으로 교환해 준 손실 (교체품 · 택배 · 인건비 − 양품화 회수) — 사내 전용', yang: 'AS 회수분 중 용량이 양산 차수 평균 80% 이상이면 양품화 대상 · 미만이거나 다른 불량이면 양품화 불가 — 사내 전용', shipqc: '교체 재고 수입검사 · 납품 출하검사 불량을 한 곳에서 — 사내 전용', shipdoc: '파렛트별 출하 성적서 (샘플 = 파렛트 안에서 용량 테스트한 S/N) — 사내 전용', delivlog: '고객사로 나간 신품 출고 기록 — 언제 무엇이 몇 개 나갔는지 (AS 교환과 따로) · 사내 전용', guide: '제품 구성 · 사양 · 사용 방법 · 매뉴얼', analysis: '모델별 불량 데이터', stock: '폼즈 지하1층 창고 · 3PL 창고에 있는 재고를 파렛트 단위로 — 입고·출고 기록과 양산 차수는 오른쪽 탭', settings: '연동 상태와 티오더 시트 동기화', ltres: '저장된 용량 시험 전체 — 기간·구분·조건으로 거르거나 S/N으로 찾아요', lookup: '바코드를 찍거나 S/N 여러 개를 붙여넣으면 매장 · 상태 · 판정 · 용량이 바로 나와요' }[S.view] || '';
   $('#subtitle').textContent = sub; $('#subtitle').style.display = sub ? '' : 'none';
-  var fn = { home: vHome, lookup: lookPanel_, inbox: vInbox, ship: vShip, ret: vReturn, recv: vRecv, inspect: vInspect, export: vExport, results: vResults, yang: vYang, loss: vLoss, shipqc: vShipQc, shipdoc: vShipDoc, guide: vGuide, stock: vStock, analysis: vAnalysis, settings: vSettings, loadtest: vLoadtest, ltres: vLtRes }[S.view];
+  var fn = { home: vHome, lookup: lookPanel_, inbox: vInbox, ship: vShip, ret: vReturn, recv: vRecv, inspect: vInspect, export: vExport, results: vResults, yang: vYang, loss: vLoss, shipqc: vShipQc, shipdoc: vShipDoc, delivlog: vDelivLog, guide: vGuide, stock: vStock, analysis: vAnalysis, settings: vSettings, loadtest: vLoadtest, ltres: vLtRes }[S.view];
   if (S.view === 'loadtest') ltBeforeRender();
   var rvKeep = $('#rvScan') ? $('#rvScan').value : '';
   var ofKeep = document.activeElement && document.activeElement.id === 'ofScan';
@@ -5734,6 +5734,103 @@ ACT.ltPerRep = function () {
   if (sns.length > 150) return toast('S/N이 ' + sns.length + '개예요. 성적서는 한 번에 150개까지 — 기간을 나눠 주세요.', true);
   ltReport(sns, 'ids', ids);
 };
+var DELIV_TABS = [
+  ['all', '전체', function () { return true; }, null],
+  ['bota', '기존 P20BOTA25', function (r) { return r.model === 'P20BOTA25'; }, function (l) { return l.model === 'P20BOTA25'; }],
+  ['vabk', 'P20VA 블랙', function (r) { return r.model === 'P20VA' && r.color === '블랙'; }, function (l) { return l.model === 'P20VA' && /^P20VABK/.test(l.prefix); }],
+  ['vawh', 'P20VA 화이트', function (r) { return r.model === 'P20VA' && r.color === '화이트'; }, function (l) { return l.model === 'P20VA' && /^P20VAWH/.test(l.prefix); }],
+  ['s06', '충전스테이션 S06VA', function (r) { return r.model === 'S06VA'; }, function (l) { return l.model === 'S06VA'; }]];
+var DELIV_MODELS = [['P20VA', 'P20VA'], ['S06VA', '충전스테이션 S06VA'], ['P20BOTA25', '기존 P20BOTA25']];
+var DELIV_ROUTES = ['선입고(직납)', '3PL 출고', '사무실 직접', '파셜'];
+function delivName_(r) { return r.model === 'S06VA' ? '충전스테이션 S06VA' : r.model === 'P20BOTA25' ? '기존 P20BOTA25' : r.model + (r.color ? ' ' + r.color : ''); }
+function delivTab_() { return DELIV_TABS.filter(function (t) { return t[0] === S.delivTab; })[0] || DELIV_TABS[0]; }
+function delivRows_(tab, asc) {
+  return (S.data.delivlog || []).filter(function (r) { return r.status !== 'del'; }).filter(tab[2]).sort(function (a, b) {
+    return (asc ? 1 : -1) * (String(a.at).localeCompare(String(b.at)) || String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
+  });
+}
+function delivSnCount(text, model) {
+  var n = 0, bad = false;
+  var sp = function (x) { x = String(x || '').replace(/\s/g, ''); return /^\d+$/.test(x) ? { prefix: '', num: +x, digits: x.length } : snSplit(x, model); };
+  String(text || '').split(/[,\n;]+/).forEach(function (tok) {
+    tok = tok.trim(); if (!tok || bad) return;
+    var ps = tok.split(/\s*[~～]\s*/), a = sp(ps[0]), b = sp(ps[1] || ps[0]);
+    if (!a || !b || a.prefix !== b.prefix || a.digits !== b.digits) bad = true; else n += Math.abs(b.num - a.num) + 1;
+  });
+  return bad ? -1 : n;
+}
+function delivSnHint_() {
+  var el = $('#dvSnCnt'); if (!el) return;
+  var t = $('#dvSns').value.trim(), n = t ? delivSnCount(t, $('#dvModel').value) : 0, q = $('#dvQty').value.replace(/[,\s]/g, '');
+  var diff = t && n >= 0 && q !== '' && +q !== n;
+  el.textContent = !t ? '' : n < 0 ? 'S/N 구간을 읽지 못했어요 (개수 확인은 안 해요)' : 'S/N 구간 ' + n.toLocaleString() + '개' + (diff ? ' — 수량 ' + (+q).toLocaleString() + '개와 달라요' : '');
+  el.style.color = diff ? 'var(--red)' : '';
+}
+function delivSum_() {
+  return DELIV_TABS.slice(1).map(function (t) {
+    var rs = delivRows_(t), tot = rs.reduce(function (s, r) { return s + (+r.qty || 0); }, 0);
+    var ls = (S.data.lots || []).filter(t[3]), lq = ls.reduce(function (s, l) { return s + (+l.qty || 0); }, 0);
+    if (!rs.length && !ls.length) return '';
+    return '<div class="card" style="padding:10px 14px;min-width:170px"><div class="muted small">' + esc(t[1]) + '</div><div style="font-size:18px"><b>' + tot.toLocaleString() + '</b>개 출고 <span class="muted small">(' + rs.length + '건)</span></div>' +
+      (ls.length ? '<div class="small" style="color:' + (lq - tot < 0 ? 'var(--red)' : 'var(--blue)') + '">차수 수량 ' + lq.toLocaleString() + '개 대비 ' + (lq - tot).toLocaleString() + '개 남음</div>' : '<div class="small muted">등록된 차수 없음</div>') + '</div>';
+  }).join('');
+}
+function delivForm_() {
+  var e = S.delivEdit ? (S.data.delivlog || []).filter(function (r) { return r.id === S.delivEdit; })[0] || {} : {};
+  var f = function (id, ph, v, w) { return '<input class="inp" id="' + id + '" placeholder="' + esc(ph) + '" value="' + esc(v == null ? '' : v) + '" style="' + (w || 'flex:1;min-width:150px') + '">'; };
+  var m = e.model || 'P20VA';
+  return '<div class="card" style="margin-top:10px;padding:14px"><h3 style="margin:0 0 10px">' + (S.delivEdit ? '출고 기록 고치기' : '출고 기록 추가') + '</h3>' +
+    '<div class="row" style="gap:6px;flex-wrap:wrap">' +
+    '<label class="small">출고일 <input class="inp" type="date" id="dvAt" value="' + esc(e.at || today()) + '"></label>' +
+    '<select class="inp" id="dvModel" style="width:auto">' + DELIV_MODELS.map(function (x) { return '<option value="' + x[0] + '"' + (x[0] === m ? ' selected' : '') + '>' + esc(x[1]) + '</option>'; }).join('') + '</select>' +
+    '<select class="inp" id="dvColor" style="width:auto">' + [['', '색상 (P20VA는 S/N 보고 자동)'], ['블랙', '블랙'], ['화이트', '화이트']].map(function (x) { return '<option value="' + x[0] + '"' + (x[0] === (e.color || '') ? ' selected' : '') + '>' + x[1] + '</option>'; }).join('') + '</select>' +
+    f('dvQty', '수량', e.qty, 'width:100px') + f('dvLot', '차수 (예: 1차)', e.lot, 'width:120px') + '</div>' +
+    '<textarea class="inp mono" id="dvSns" rows="2" style="width:100%;margin-top:6px" placeholder="S/N 구간 (예: P20VAWH260404671~P20VAWH260404770, 여러 개는 쉼표·줄바꿈) · 없으면 비움">' + esc(e.sns || '') + '</textarea>' +
+    '<div class="small" id="dvSnCnt" style="min-height:16px"></div>' +
+    '<div class="row" style="gap:6px;flex-wrap:wrap;margin-top:4px">' + f('dvDest', '받는 곳 (예: 티오더 405호)', e.dest) +
+    '<input class="inp" id="dvRoute" list="dvRouteL" placeholder="경로 (선입고(직납) · 3PL 출고 …)" value="' + esc(e.route || '') + '" style="flex:1;min-width:150px"><datalist id="dvRouteL">' + DELIV_ROUTES.map(function (x) { return '<option value="' + esc(x) + '">'; }).join('') + '</datalist>' +
+    f('dvSrc', '근거 (예: Slack 9/7 DM · 입출고명세서 메일)', e.src) + f('dvNote', '메모', e.note) + '</div>' +
+    '<div class="row" style="gap:6px;margin-top:10px"><button class="btn pri" data-act="delivSave">저장</button><button class="btn" data-act="delivNew">닫기</button></div></div>';
+}
+function vDelivLog() {
+  var tab = delivTab_(), rs = delivRows_(tab, S.delivAsc);
+  var tabs = '<div class="row" style="gap:6px;flex-wrap:wrap">' + DELIV_TABS.map(function (t) {
+    return '<button class="btn sm' + (t === tab ? ' pri' : '') + '" data-act="delivTab" data-v="' + t[0] + '">' + esc(t[1]) + ' <span class="muted">' + delivRows_(t).length + '</span></button>';
+  }).join('') + '</div>';
+  var tot = rs.reduce(function (s, r) { return s + (+r.qty || 0); }, 0);
+  return '<div class="row" style="gap:6px;flex-wrap:wrap;align-items:center"><button class="btn' + (S.delivForm ? '' : ' pri') + '" data-act="delivNew">' + (S.delivForm ? '추가 닫기' : '+ 출고 기록 추가') + '</button>' +
+    '<button class="btn" data-act="delivXlsx"' + (rs.length ? '' : ' disabled') + '>⬇ 엑셀 (보이는 줄)</button></div>' +
+    (S.delivForm ? delivForm_() : '') +
+    '<div class="row" style="gap:8px;flex-wrap:wrap;margin-top:12px">' + delivSum_() + '</div>' +
+    '<div class="card" style="margin-top:12px"><div class="hd">' + tabs + '<span class="muted small">' + rs.length + '건 · ' + tot.toLocaleString() + '개</span></div>' +
+    (rs.length ? '<div class="tw"><table class="t"><thead><tr><th><a href="#" data-act="delivSort">출고일 ' + (S.delivAsc ? '▲' : '▼') + '</a></th><th>기종</th><th>수량</th><th>S/N</th><th>받는 곳</th><th>경로</th><th>차수</th><th>근거</th><th>메모</th><th></th></tr></thead><tbody>' + rs.map(function (r) {
+      return '<tr><td class="nowrap">' + esc(r.at) + '</td><td class="nowrap">' + esc(delivName_(r)) + '</td><td>' + (+r.qty || 0).toLocaleString() + '</td><td class="mono small" style="white-space:pre-line">' + esc(r.sns || '') + '</td>' +
+        '<td class="small">' + esc(r.dest || '') + '</td><td class="small">' + esc(r.route || '') + '</td><td class="small">' + esc(r.lot || '') + '</td><td class="small">' + esc(r.src || '') + '</td><td class="small">' + esc(r.note || '') + '</td>' +
+        '<td class="nowrap"><button class="btn sm" data-act="delivEditOpen" data-id="' + esc(r.id) + '">수정</button> <button class="btn sm" data-act="delivDel" data-id="' + esc(r.id) + '">삭제</button></td></tr>';
+    }).join('') + '</tbody></table></div>' : '<div class="empty">' + ((S.data.delivlog || []).length ? '이 기종은 아직 출고 기록이 없어요.' : '아직 출고 기록이 없어요. 위 \'+ 출고 기록 추가\'로 넣어 주세요.') + '</div>') + '</div>';
+}
+ACT.delivTab = function (d) { S.delivTab = d.v; render(); };
+ACT.delivSort = function () { S.delivAsc = !S.delivAsc; render(); };
+ACT.delivNew = function () { S.delivForm = !S.delivForm; S.delivEdit = null; render(); };
+ACT.delivEditOpen = function (d) { S.delivForm = true; S.delivEdit = d.id; render(); window.scrollTo(0, 0); delivSnHint_(); };
+ACT.delivSave = function (d, b) {
+  var v = function (id) { return $('#' + id).value; };
+  run('delivSave', { id: S.delivEdit || '', at: v('dvAt'), model: v('dvModel'), color: v('dvColor'), qty: v('dvQty'), sns: v('dvSns'), dest: v('dvDest'), route: v('dvRoute'), lot: v('dvLot'), src: v('dvSrc'), note: v('dvNote') }, null, b).then(function (r) {
+    if (!r) return;
+    toast(r.warn || '출고 기록을 저장했어요.', !!r.warn); S.delivForm = false; S.delivEdit = null; render();
+  }).catch(function () { });
+};
+ACT.delivDel = function (d, b) {
+  if (!b.dataset.sure) { b.dataset.sure = '1'; b.textContent = '한 번 더 누르면 삭제'; b.classList.add('red'); return; }
+  run('delivSave', { id: d.id, del: 1 }, '출고 기록을 지웠어요.', b).catch(function () { });
+};
+ACT.delivXlsx = function () {
+  var tab = delivTab_(), rs = delivRows_(tab, S.delivAsc);
+  if (!rs.length) return toast('내려받을 출고 기록이 없어요.', true);
+  var rows = [['출고일', '기종', '수량', 'S/N', '받는 곳', '경로', '차수', '근거', '메모']].concat(rs.map(function (r) { return [r.at, delivName_(r), +r.qty || 0, r.sns || '', r.dest || '', r.route || '', r.lot || '', r.src || '', r.note || '']; }));
+  saveBlob_(xlsxBook_([{ name: '출고 기록', widths: [12, 20, 9, 40, 20, 14, 8, 28, 24], rows: rows }]), '출고기록_' + tab[1].replace(/\s/g, '') + '_' + today().replace(/-/g, '') + '.xlsx');
+};
+document.addEventListener('input', function (e) { if (/^dv(Sns|Qty|Model)$/.test(e.target.id)) delivSnHint_(); });
 function xlsxBook_(sheets) {
   var X = function (v) { return String(v == null ? '' : v).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
   var col = function (i) { var n = ''; i++; while (i) { var m = (i - 1) % 26; n = String.fromCharCode(65 + m) + n; i = Math.floor((i - 1) / 26); } return n; };
