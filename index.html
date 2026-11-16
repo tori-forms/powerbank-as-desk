@@ -571,7 +571,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
   } catch (e) { }
 })();
 var DEMO_MODE = false;
-var BUILD_ID = '0aa1c256819e', NEW_VER = false;
+var BUILD_ID = '2fad3ecbc5b0', NEW_VER = false;
 function verBusy_() {
   if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
   return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
@@ -3096,7 +3096,9 @@ function shipCands() {
   return Object.keys(last).map(function (sn) { var t = last[sn].t, j = ltJudge(t); return j && j.cls === 'bad' && !shipRejOf(sn) ? { t: t, j: j } : null; }).filter(Boolean)
     .sort(function (a, b) { return String(b.t.startAt).localeCompare(String(a.t.startAt)); });
 }
-function plName_(p) { return (p.lot ? p.lot + ' ' : '') + p.no + '번 파렛트'; }
+function plColor_(p) { return p.model !== 'P20VA' ? '' : /^P20VABK/.test(p.prefix) ? '블랙' : /^P20VAWH/.test(p.prefix) ? '화이트' : ''; }
+function plNo_(p) { return plColor_(p) ? String(p.no).replace(/-(BK|WH)$/i, '') : String(p.no); }
+function plName_(p) { var c = plColor_(p); return (p.lot ? p.lot + ' ' : '') + (c ? 'P20VA ' + c + ' ' : '') + plNo_(p) + '번 파렛트'; }
 function ltLastOf_(sn, pur) { var b = null; (S.shipLt || []).forEach(function (t) { if (t.sn === sn && t.purpose === pur && (!b || String(t.startAt || t.createdAt) > String(b.startAt || b.createdAt))) b = t; }); return b; }
 function sqState_(sn) { var t = ltLastOf_(sn, '입고 QC'), j = t && ltJudge(t); return { t: t, j: j, k: !t || !j ? 'none' : j.cls === 'bad' ? 'bad' : j.cls === 'retest' ? 're' : 'ok' }; }
 var SQ_K = { ok: ['합격', 'var(--green)'], re: ['재시험 필요', 'var(--amber)'], bad: ['불합격', 'var(--red)'], none: ['시험 전', 'var(--muted,#8b95a1)'] };
@@ -3117,15 +3119,25 @@ function plStat_(p) {
   o.rejOpen = o.rej.filter(function (r) { return !r.repSn; });
   return o;
 }
+var SHIP_PL_TABS = [
+  ['all', '전체', function () { return true; }],
+  ['bota', '기존 P20BOTA25', function (p) { return p.model === 'P20BOTA25'; }],
+  ['vabk', 'P20VA 블랙', function (p) { return p.model === 'P20VA' && /^P20VABK/.test(p.prefix); }],
+  ['vawh', 'P20VA 화이트', function (p) { return p.model === 'P20VA' && /^P20VAWH/.test(p.prefix); }]];
 function shipPlCard_() {
-  var ps = (S.data.pallets || []).filter(function (p) { return p.kind === 'deliv'; }).sort(function (a, b) { return String(a.model).localeCompare(String(b.model)) || String(a.lot).localeCompare(String(b.lot)) || (+a.no - +b.no); });
-  var h = '<div class="card" style="margin-top:14px"><div class="hd"><h3>파렛트별 출하 성적서</h3><span class="muted small">샘플 = 파렛트 S/N 구간 안에서 용량 테스트(납품 검사)한 S/N + 출하 불합격 · 성적서는 파렛트당 1장</span></div>';
-  if (!ps.length) return h + '<div class="empty">아직 등록된 납품 파렛트가 없어요. 재고 › 창고 탭에서 파렛트를 등록하면 여기에 떠요.</div></div>';
+  var all = (S.data.pallets || []).filter(function (p) { return p.kind === 'deliv'; }).sort(function (a, b) { return String(a.model).localeCompare(String(b.model)) || String(a.lot).localeCompare(String(b.lot)) || (parseFloat(a.no) - parseFloat(b.no)) || String(a.no).localeCompare(String(b.no)); });
+  var tab = SHIP_PL_TABS.filter(function (t) { return t[0] === S.shipPlTab; })[0] || SHIP_PL_TABS[0];
+  var ps = all.filter(tab[2]);
+  var tabs = '<div class="row" style="gap:6px;flex-wrap:wrap;padding:10px 14px 0">' + SHIP_PL_TABS.map(function (t) {
+    return '<button class="btn sm' + (t === tab ? ' pri' : '') + '" data-act="shipPlTab" data-v="' + t[0] + '">' + esc(t[1]) + ' <span class="muted">' + all.filter(t[2]).length + '</span></button>';
+  }).join('') + '</div>';
+  var h = '<div class="card" style="margin-top:14px"><div class="hd"><h3>파렛트별 출하 성적서</h3><span class="muted small">샘플 = 파렛트 S/N 구간 안에서 용량 테스트(납품 검사)한 S/N + 출하 불합격 · 성적서는 파렛트당 1장</span></div>' + (all.length ? tabs : '');
+  if (!ps.length) return h + '<div class="empty">' + (all.length ? '이 기종은 아직 등록된 납품 파렛트가 없어요.' : '아직 등록된 납품 파렛트가 없어요.') + ' 재고 › 창고 탭에서 파렛트를 등록하면 여기에 떠요.</div></div>';
   if (!S.shipLt) return h + '<div class="empty">용량 시험 기록 불러오는 중…</div></div>';
   return h + '<div class="tw"><table class="t"><thead><tr><th>파렛트</th><th>모델</th><th>S/N 구간</th><th>수량</th><th>위치</th><th>샘플</th><th>결과</th><th></th></tr></thead><tbody>' + ps.map(function (p) {
     var o = plStat_(p), n = o.sns.length;
     var res = !n ? '<span class="muted small">샘플 없음</span>' : ['ok', 're', 'bad', 'none'].filter(function (k) { return o[k]; }).map(function (k) { return '<span style="color:' + SQ_K[k][1] + '">' + SQ_K[k][0] + ' ' + o[k] + '</span>'; }).join(' · ') + (o.rejOpen.length ? ' · <b style="color:var(--red)">출하 불합격 ' + o.rejOpen.length + '</b>' : '');
-    return '<tr><td><b>' + esc(plName_(p)) + '</b></td><td>' + mtag(p.model) + '</td><td class="mono small">' + esc(stockSn(p, p.fromNo)) + ' ~ ' + esc(String(stockSn(p, p.toNo)).slice(-6)) + '</td><td>' + (+p.qty || 0).toLocaleString() + '</td>' +
+    return '<tr><td><b>' + esc(plName_(p)) + '</b></td><td>' + mtag(p.model) + (plColor_(p) ? ' ' + plColor_(p) : '') + '</td><td class="mono small">' + esc(stockSn(p, p.fromNo)) + ' ~ ' + esc(String(stockSn(p, p.toNo)).slice(-6)) + '</td><td>' + (+p.qty || 0).toLocaleString() + '</td>' +
       '<td class="small">' + esc((PL_LOC[p.loc] || {}).s || p.loc || '') + '</td><td>' + n + '개</td><td class="small">' + res + (n ? (o.pass || o.ship ? ' <b style="color:var(--green)">→ 출하 가능</b>' + (o.repDone ? ' <span class="muted">(교환재고로 교체 ' + o.repDone + ')</span>' : '') : ' <b style="color:var(--amber)">→ 보류</b> <span class="muted">(' + [o.repNeed.length ? '교체 필요 ' + o.repNeed.length + ' — 출하 불합격 등록에서 교체 재고 S/N 입력' : '', o.re ? '재시험 ' + o.re : '', o.none ? '시험 전 ' + o.none : ''].filter(String).join(' · ') + ')</span>') : '') + '</td>' +
       '<td class="nowrap"><button class="btn sm pri" data-act="plRep" data-id="' + esc(p.id) + '"' + (n ? '' : ' disabled') + '>📄 출하 성적서</button> <button class="btn sm" data-act="plXlsx" data-id="' + esc(p.id) + '"' + (n ? '' : ' disabled') + '>엑셀</button></td></tr>';
   }).join('') + '</tbody></table></div></div>';
@@ -5682,12 +5694,13 @@ function ltPracLine_() {
   var prac = (LT.perAll || []).filter(function (t) { return !ltRealSn(t.sn); });
   return prac.length ? '<div class="card" style="margin-top:14px"><div class="bd row small muted" style="gap:8px;align-items:center">연습 기록 ' + prac.length + '건 (' + prac.map(function (t) { return esc(t.sn || '빈 칸'); }).join(', ') + ') — 결과·엑셀에는 안 나와요.<button class="btn sm" data-act="ltPracDel">서버에서 지우기</button></div></div>' : '';
 }
+ACT.shipPlTab = function (d) { S.shipPlTab = d.v; render(); };
 ACT.plRep = function (d) {
   var p = plById_(d.id); if (!p) return;
   var o = plStat_(p), ids = {}, tested = [], none = [];
   o.sns.forEach(function (sn) { var t = ltLastOf_(sn, '입고 QC'); if (t) { ids[t.id] = 1; tested.push(sn); } else none.push(sn); });
   var verdict = o.pass || o.ship ? '<b style="color:#1fb86c">출하 합격</b>' : '<b style="color:#e08a00">보류</b> — ' + [o.re ? '재시험 필요 ' + o.re + '개' : '', o.bad ? '용량 불합격 ' + o.bad + '개' : '', o.none ? '용량 시험 전 ' + o.none + '개' : '', o.rejOpen.length ? '출하 불합격 ' + o.rejOpen.length + '개' : ''].filter(String).join(' · ');
-  var info = '<div class="box"><b>대상</b> — ' + esc(plName_(p)) + ' · ' + esc(prodLabel(p.model) || p.model) + ' · S/N ' + esc(stockSn(p, p.fromNo)) + ' ~ ' + esc(stockSn(p, p.toNo)) + ' · 수량 ' + (+p.qty || 0).toLocaleString() + '개<br>' +
+  var info = '<div class="box"><b>대상</b> — ' + esc(plName_(p)) + ' · ' + esc((prodLabel(p.model) || p.model) + (plColor_(p) ? ' ' + plColor_(p) : '')) + ' · S/N ' + esc(stockSn(p, p.fromNo)) + ' ~ ' + esc(stockSn(p, p.toNo)) + ' · 수량 ' + (+p.qty || 0).toLocaleString() + '개<br>' +
     '<b>샘플</b> — ' + o.sns.length + '개 (용량 시험 ' + tested.length + '개)' + (o.rejOpen.length ? '<br><b>출하 불합격</b> — ' + o.rejOpen.map(function (r) { return esc(r.sn + ' ' + (r.why || '')); }).join(', ') : '') + '<br>' +
     '<b>판정</b> — ' + verdict + '</div>';
   var opt = { title: '출하 검사 성적서', info: info, none: none, noneLabel: '용량 시험 전' };
@@ -5698,7 +5711,7 @@ ACT.plXlsx = function (d) {
   var p = plById_(d.id); if (!p) return;
   var rows = plSamples_(p).map(function (sn) { return ltLastOf_(sn, '입고 QC'); }).filter(Boolean);
   if (!rows.length) return toast('이 파렛트는 아직 용량 시험한 샘플이 없어요.', true);
-  ltXlsxBuild_(rows, 'Forms_ShipQC_' + plName_(p).replace(/\s+/g, '') + '_' + today().replace(/-/g, '') + '.xlsx', plName_(p), '', p.no + '번 Pallet 보조배터리 시험 Data');
+  ltXlsxBuild_(rows, 'Forms_ShipQC_' + plName_(p).replace(/\s+/g, '') + '_' + today().replace(/-/g, '') + '.xlsx', plName_(p), '', (plColor_(p) ? 'P20VA ' + plColor_(p) + ' ' : '') + plNo_(p) + '번 Pallet 보조배터리 시험 Data');
 };
 ACT.ltPerK = function (d) { var P = ltPer_(); P.k = d.v; if (d.v === 'custom' && !P.from) { P.from = P.to = today(); } ltRefreshPerCard(); };
 ACT.ltPerReload = function () { ltPerLoad_(true); toast('기록을 새로 불러와요.'); };
