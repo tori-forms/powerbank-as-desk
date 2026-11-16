@@ -571,7 +571,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
   } catch (e) { }
 })();
 var DEMO_MODE = false;
-var BUILD_ID = '2dc5a5a7a095', NEW_VER = false;
+var BUILD_ID = '8d57c3c20bbf', NEW_VER = false;
 function verBusy_() {
   if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
   return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
@@ -5769,10 +5769,17 @@ function delivSnHint_() {
 function delivSum_() {
   return DELIV_TABS.slice(1).map(function (t) {
     var rs = delivRows_(t), tot = rs.reduce(function (s, r) { return s + (+r.qty || 0); }, 0);
-    var ls = (S.data.lots || []).filter(t[3]), lq = ls.reduce(function (s, l) { return s + (+l.qty || 0); }, 0);
+    var ls = (S.data.lots || []).filter(t[3]).sort(function (a, b) { return parseFloat(a.name) - parseFloat(b.name) || String(a.name).localeCompare(String(b.name)); });
     if (!rs.length && !ls.length) return '';
-    return '<div class="card" style="padding:10px 14px;min-width:170px"><div class="muted small">' + esc(t[1]) + '</div><div style="font-size:18px"><b>' + tot.toLocaleString() + '</b>개 출고 <span class="muted small">(' + rs.length + '건)</span></div>' +
-      (ls.length ? '<div class="small" style="color:' + (lq - tot < 0 ? 'var(--red)' : 'var(--blue)') + '">차수 수량 ' + lq.toLocaleString() + '개 대비 ' + (lq - tot).toLocaleString() + '개 남음</div>' : '<div class="small muted">등록된 차수 없음</div>') + '</div>';
+    var of_ = function (l) { return rs.filter(function (r) { return String(r.lot || '') === String(l.name || '') || (!r.lot && ls.length === 1); }); }, done = [], parts = [];
+    ls.forEach(function (l) {
+      var q = +l.qty || 0, lr = of_(l), n = lr.reduce(function (s, r) { return s + (+r.qty || 0); }, 0);
+      if (!l.shipStatus && !lr.length) { done.push(l.name); tot += q; return; }
+      parts.push('<div class="small" style="color:' + (q - n < 0 ? 'var(--red)' : 'var(--blue)') + '">' + esc(l.name) + ' ' + n.toLocaleString() + ' / ' + q.toLocaleString() + '개 · ' + (q - n).toLocaleString() + '개 남음' + (l.shipStatus === 'pending' ? ' (출하 전)' : '') + '</div>');
+    });
+    return '<div class="card" style="padding:10px 14px;min-width:170px"><div class="muted small">' + esc(t[1]) + '</div><div style="font-size:18px"><b>' + tot.toLocaleString() + '</b>개 출고 <span class="muted small">(' + rs.length + '건' + (done.length ? ' + 완료 차수' : '') + ')</span></div>' +
+      (done.length ? '<div class="small" style="color:var(--green)">' + esc(done.join('·')) + ' 출하 완료</div>' : '') + parts.join('') +
+      (ls.length ? '' : '<div class="small muted">등록된 차수 없음</div>') + '</div>';
   }).join('');
 }
 function delivForm_() {
