@@ -599,7 +599,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
 
 var DEMO_MODE = false;
 
-var BUILD_ID = '1d9e4053634c', NEW_VER = false;
+var BUILD_ID = '8a9b9255d221', NEW_VER = false;
 function verBusy_() {
   if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
   return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
@@ -2402,6 +2402,7 @@ function inspectForm(u, many) {
     '<label class="fld"><span>측정 용량 (양산 차수 평균 대비 %)</span><input class="inp" id="in_cap" type="number" min="0" max="120" step="1" value="' + esc(u.capPct || '') + '" style="width:110px" placeholder="예: 76"></label>' +
     '<label class="fld"><span>검사일</span><input class="inp" type="date" id="in_date" value="' + esc(u.testDate || today()) + '"></label></div>' +
     ltInspSlot(many ? many.map(function (x) { return x.recvSn || x.origSn; }) : [u.recvSn || u.origSn]) +
+    (many ? '' : dmgSlot_(u)) +
     '<div class="fld"><span>불량 증상 (검사 기준) <span class="muted small">· 여러 개 선택 가능</span></span>' + chipsTxt('testSymptom', L.TEST_SYMPTOMS, u.testSymptom) + '</div>' +
     '<div class="fld" style="margin-top:12px"><span>원인 <span class="muted small">· 여러 개 선택 가능</span></span>' + chipsTxt('cause', L.CAUSES, u.cause) + '</div>' +
     '<div class="fld" style="margin-top:12px"><span>검사 의견 — 표준 문구를 누르면 판정·증상·원인이 함께 채워집니다</span><div class="chips" style="margin-bottom:6px">' +
@@ -4487,6 +4488,13 @@ var ACT = {
   allCases: function () { if (S.view === 'inspect') S.inspAll = !inspAll_(); else S.allCases = !S.allCases; render(); },
   resF: function (d) { S.resF = d.v; render(); },
   yangF: function (d) { yangKeep_(); S.yangF = d.v; render(); },
+  dmgPick: function (d) {
+    var u = IDX.unitById[d.u]; if (!u) return;
+    S.dmgPick = { u: u.id, t: d.t || '' };
+    var t = d.t ? (LT.perAll || []).filter(function (x) { return x.id === d.t; })[0] : null;
+    if (t) dmgApply_(u, t);
+    dmgFill_();
+  },
   yangGo: function (d, b) {
     yangKeep_(); var items = yangParse_(S.yangQ, S.yangD || today());
     if (!items.length) return toast('양품화할 S/N(P20…)을 찍거나 붙여넣어 주세요.', true);
@@ -4629,7 +4637,7 @@ var ACT = {
     var body = { verdict: verdict, testSymptom: chipVal('testSymptom'), cause: cause, opinion: $('#in_op').value, lot: $('#in_lot').value, capPct: cap, testDate: $('#in_date').value, disposition: chipVal('disposition') };
     if (ids.length > 1 && cap === '') { try { body.caps = JSON.parse(card.getAttribute('data-caps') || '{}'); } catch (e) { } }
     var after = function () {
-      S.inspPick = []; S.inspScan = [];
+      S.inspPick = []; S.inspScan = []; S.dmgPick = null;
       if (S.view === 'inspect') { var left = inspectQueue().filter(function (u) { return u.caseId === S.inspStore; }); if (left.length === 1) S.inspPick = [left[0].id]; }
       else { var next = inspectQueue().filter(function (u) { return ids.indexOf(u.id) < 0; })[0]; S.inspSel = next ? next.id : null; }
       render();
@@ -4640,6 +4648,7 @@ var ACT = {
       return run('inspectBatch', body, function (r) { return r.count + '개 판정 저장' + (r.failed && r.failed.length ? ' · 실패 ' + r.failed.length + '개' : '') + sheetMsg_(r); }, b).then(after);
     }
     body.unitId = ids[0];
+    if (S.dmgPick && S.dmgPick.u === ids[0] && S.dmgPick.t) body.dmgLt = S.dmgPick.t;
     run('inspect', body, function (r) { return '검사 결과를 저장했습니다' + sheetMsg_(r); }, b).then(after);
   },
   inspStore: function (d) { S.inspStore = d.id; S.inspPick = []; S.inspScan = []; render(); },
@@ -4868,6 +4877,7 @@ var LT_PUR_LABEL = { '입고 QC': '납품 검사', '회수분 검사': 'AS 회�
 
 function ltAutoPurpose(sn) {
   sn = ltNorm(sn); if (!sn || !S.data) return null;
+  if (ltDmgNo_(sn) != null) return '회수분 검사';
   if ((S.data.units || []).some(function (u) { return u.recvSn === sn; }) || (S.data.orphans || []).some(function (o) { return o.sn === sn; })) return '회수분 검사';
   return null;
 }
@@ -5704,7 +5714,74 @@ function inspAutoPaint_() {
   el.innerHTML = n ? '<button class="btn sm pri" data-act="inspAutoBad" title="회수 뒤 용량 시험에서 80% 미만으로 나온 회수분을 [불량 · 성능 저하 · 셀 용량 저하 · 폐기]로 저장">⚡ 용량 80% 미만 ' + n + '개 한 번에 불량</button>' : '';
 }
 
-function ltRealSn(sn) { return !!modelOfSn(sn) && !!snSplit(sn); }
+function ltRealSn(sn) { return (!!modelOfSn(sn) && !!snSplit(sn)) || ltDmgNo_(sn) != null; }
+
+function ltDmgNo_(sn) { return /^\d{1,4}$/.test(String(sn || '')) ? +sn : null; }
+
+function dmgOpenTests_(keepId) {
+  var used = {}; S.data.units.forEach(function (u) { if (u.dmgLt && u.dmgLt !== keepId) used[u.dmgLt] = 1; });
+  return (LT.perAll || []).filter(function (t) { return ltDmgNo_(t.sn) != null && !used[t.id] && +t.wh >= LT_LOW_WH; })
+    .sort(function (a, b) { return String(b.startAt || b.createdAt).localeCompare(String(a.startAt || a.createdAt)); });
+}
+
+function dmgLotOf_(u) {
+  var c = IDX.caseById[u.caseId] || {}, inbox = c.inboxId ? IDX.inboxById[c.inboxId] : null;
+  var tiers = [
+    ['접수 S/N', [u.origSn]],
+    ['Slack 접수 S/N', String((inbox && inbox.sns) || '').toUpperCase().match(/P20[A-Z0-9]+/g) || []],
+    ['같은 건 다른 S/N', [].concat.apply([], unitsOf(c).filter(function (x) { return x.id !== u.id; }).map(function (x) { return [x.recvSn, x.origSn]; }))]
+  ];
+  for (var i = 0; i < tiers.length; i++) {
+    var hit = tiers[i][1].filter(function (s) { return s && lotOf(s); });
+    if (!hit.length) continue;
+    var keys = hit.map(function (s) { var l = lotOf(s); return l.model + ' ' + l.name; }).filter(function (x, k, a) { return a.indexOf(x) === k; });
+    if (keys.length === 1) return { sn: hit[0], lot: lotOf(hit[0]), from: tiers[i][0] };
+    return { sn: '', lot: null, from: tiers[i][0] + '의 차수가 섞여 있음(' + keys.join(' · ') + ')' };
+  }
+  return { sn: '', lot: null, from: '차수를 알 수 있는 S/N이 없음' };
+}
+
+function dmgJudge_(u, t) {
+  var lo = dmgLotOf_(u), tt = Object.assign({}, t, { sn: lo.sn, purpose: '회수분 검사' });
+  var j = +t.wh >= LT_LOW_WH ? ltRecallJudge_(tt) : null, la = lo.sn ? ltLotAvg_(lo.sn) : null;
+  return { lo: lo, j: j, pct: la && la.fixed ? String(Math.floor(+t.mah / la.avg * 100)) : '' };
+}
+function dmgSlot_(u) {
+  if (u.recvSn !== 'S/N 미식별') return '';
+  setTimeout(dmgFill_, 0);
+  return '<div id="dmgBox" class="note small" data-u="' + esc(u.id) + '" style="margin:-2px 0 12px"></div>';
+}
+function dmgFill_() {
+  var box = $('#dmgBox'); if (!box) return;
+  var u = IDX.unitById[box.getAttribute('data-u')]; if (!u) return;
+  if (!LT.perAll) { box.innerHTML = '🏷️ 바코드 훼손품 용량 시험 불러오는 중…'; ltPerLoad_(); return setTimeout(dmgFill_, 800); }
+  var pickId = S.dmgPick && S.dmgPick.u === u.id ? S.dmgPick.t : u.dmgLt, t = pickId ? (LT.perAll || []).filter(function (x) { return x.id === pickId; })[0] : null;
+  var one = function (x) { return '#' + esc(x.sn) + ' · ' + ymd(x.startAt) + ' · ' + Math.round(+x.mah).toLocaleString() + 'mAh · ' + esc(ltCondTxt_(x)); };
+  if (t) {
+    var r = dmgJudge_(u, t);
+    box.innerHTML = '🏷️ <b>바코드 훼손품 용량 시험 연결</b> · ' + one(t) + (u.dmgLt === t.id ? ' <span class="muted">(저장됨)</span>' : ' <span style="color:var(--amber)">(저장을 눌러야 연결돼요)</span>') +
+      '<br>차수 추정: ' + (r.lo.lot ? '<b>' + esc(r.lo.lot.model + ' ' + r.lo.lot.name) + '</b> (' + esc(r.lo.from) + ' ' + esc(r.lo.sn) + ' 기준)' : '<span style="color:var(--amber)">모름 — ' + esc(r.lo.from) + ' → 신품 평균 기준</span>') +
+      (r.j ? '<br>판정: <b>' + esc(r.j.txt) + '</b> · <span class="muted">' + esc(r.j.why) + '</span>' : '<br><span class="muted">15Wh 미만이라 판정 안 함</span>') +
+      (u.dmgLt === t.id ? '' : ' <button class="btn sm" data-act="dmgPick" data-u="' + esc(u.id) + '" data-t="">다른 번호 고르기</button>');
+    return;
+  }
+  var open = dmgOpenTests_(u.dmgLt);
+  box.innerHTML = '🏷️ <b>바코드 훼손품</b> — 용량 테스트 S/N 칸에 번호(예: 12)로 잰 시험을 골라 이 칸에 연결하세요' +
+    (open.length ? '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">' + open.slice(0, 40).map(function (x) { return '<button class="btn sm" data-act="dmgPick" data-u="' + esc(u.id) + '" data-t="' + esc(x.id) + '">' + one(x) + '</button>'; }).join('') + '</div>'
+      : '<div class="muted" style="margin-top:4px">연결할 번호 시험이 없어요. 용량 테스트에서 S/N 칸에 번호(예: 12)를 넣고 시험해 주세요.</div>');
+}
+
+function dmgApply_(u, t) {
+  var r = dmgJudge_(u, t);
+  var cap = $('#in_cap'); if (cap && r.pct) cap.value = r.pct;
+  var lot = $('#in_lot');
+  if (lot && r.lo.lot && !lot.value) { if (![].some.call(lot.options, function (o) { return o.value === r.lo.lot.name; })) { var o = document.createElement('option'); o.value = o.textContent = r.lo.lot.name; lot.appendChild(o); } lot.value = r.lo.lot.name; }
+  if (r.j && r.j.cls === 'bad' && !chipVal('verdict')) {
+    setChip('verdict', LT_BAD_TPL[1]); setChip('testSymptom', LT_BAD_TPL[2]); setChip('cause', LT_BAD_TPL[3]);
+    if (!chipVal('disposition')) setChip('disposition', DEFAULT_DISP[LT_BAD_TPL[1]]);
+    var op = $('#in_op'); if (op && !op.value) op.value = LT_BAD_TPL[0];
+  }
+}
 
 function ltXlsx() {
   toast('엑셀 만드는 중…');
