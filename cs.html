@@ -571,7 +571,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
   } catch (e) { }
 })();
 var DEMO_MODE = false;
-var BUILD_ID = '675c5184ddf0', NEW_VER = false;
+var BUILD_ID = '2dc5a5a7a095', NEW_VER = false;
 function verBusy_() {
   if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
   return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
@@ -5789,7 +5789,7 @@ function delivForm_() {
     '<div class="small" id="dvSnCnt" style="min-height:16px"></div>' +
     '<div class="row" style="gap:6px;flex-wrap:wrap;margin-top:4px">' + f('dvDest', '받는 곳 (예: 티오더 405호)', e.dest) +
     '<input class="inp" id="dvRoute" list="dvRouteL" placeholder="경로 (선입고(직납) · 3PL 출고 …)" value="' + esc(e.route || '') + '" style="flex:1;min-width:150px"><datalist id="dvRouteL">' + DELIV_ROUTES.map(function (x) { return '<option value="' + esc(x) + '">'; }).join('') + '</datalist>' +
-    f('dvSrc', '근거 (예: Slack 9/7 DM · 입출고명세서 메일)', e.src) + f('dvNote', '메모', e.note) + '</div>' +
+    '</div>' +
     '<div class="row" style="gap:6px;margin-top:10px"><button class="btn pri" data-act="delivSave">저장</button><button class="btn" data-act="delivNew">닫기</button></div></div>';
 }
 function vDelivLog() {
@@ -5803,9 +5803,9 @@ function vDelivLog() {
     (S.delivForm ? delivForm_() : '') +
     '<div class="row" style="gap:8px;flex-wrap:wrap;margin-top:12px">' + delivSum_() + '</div>' +
     '<div class="card" style="margin-top:12px"><div class="hd">' + tabs + '<span class="muted small">' + rs.length + '건 · ' + tot.toLocaleString() + '개</span></div>' +
-    (rs.length ? '<div class="tw"><table class="t"><thead><tr><th><a href="#" data-act="delivSort">출고일 ' + (S.delivAsc ? '▲' : '▼') + '</a></th><th>기종</th><th>수량</th><th>S/N</th><th>받는 곳</th><th>경로</th><th>차수</th><th>근거</th><th>메모</th><th></th></tr></thead><tbody>' + rs.map(function (r) {
+    (rs.length ? '<div class="tw"><table class="t"><thead><tr><th><a href="#" data-act="delivSort">출고일 ' + (S.delivAsc ? '▲' : '▼') + '</a></th><th>기종</th><th>수량</th><th>S/N</th><th>받는 곳</th><th>경로</th><th>차수</th><th></th></tr></thead><tbody>' + rs.map(function (r) {
       return '<tr><td class="nowrap">' + esc(r.at) + '</td><td class="nowrap">' + esc(delivName_(r)) + '</td><td>' + (+r.qty || 0).toLocaleString() + '</td><td class="mono small" style="white-space:pre-line">' + esc(r.sns || '') + '</td>' +
-        '<td class="small">' + esc(r.dest || '') + '</td><td class="small">' + esc(r.route || '') + '</td><td class="small">' + esc(r.lot || '') + '</td><td class="small">' + esc(r.src || '') + '</td><td class="small">' + esc(r.note || '') + '</td>' +
+        '<td class="small">' + esc(r.dest || '') + '</td><td class="small">' + esc(r.route || '') + '</td><td class="small">' + esc(r.lot || '') + '</td>' +
         '<td class="nowrap"><button class="btn sm" data-act="delivEditOpen" data-id="' + esc(r.id) + '">수정</button> <button class="btn sm" data-act="delivDel" data-id="' + esc(r.id) + '">삭제</button></td></tr>';
     }).join('') + '</tbody></table></div>' : '<div class="empty">' + ((S.data.delivlog || []).length ? '이 기종은 아직 출고 기록이 없어요.' : '아직 출고 기록이 없어요. 위 \'+ 출고 기록 추가\'로 넣어 주세요.') + '</div>') + '</div>';
 }
@@ -5815,7 +5815,7 @@ ACT.delivNew = function () { S.delivForm = !S.delivForm; S.delivEdit = null; ren
 ACT.delivEditOpen = function (d) { S.delivForm = true; S.delivEdit = d.id; render(); window.scrollTo(0, 0); delivSnHint_(); };
 ACT.delivSave = function (d, b) {
   var v = function (id) { return $('#' + id).value; };
-  run('delivSave', { id: S.delivEdit || '', at: v('dvAt'), model: v('dvModel'), color: v('dvColor'), qty: v('dvQty'), sns: v('dvSns'), dest: v('dvDest'), route: v('dvRoute'), lot: v('dvLot'), src: v('dvSrc'), note: v('dvNote') }, null, b).then(function (r) {
+  run('delivSave', { id: S.delivEdit || '', at: v('dvAt'), model: v('dvModel'), color: v('dvColor'), qty: v('dvQty'), sns: v('dvSns'), dest: v('dvDest'), route: v('dvRoute'), lot: v('dvLot') }, null, b).then(function (r) {
     if (!r) return;
     toast(r.warn || '출고 기록을 저장했어요.', !!r.warn); S.delivForm = false; S.delivEdit = null; render();
   }).catch(function () { });
@@ -5827,7 +5827,7 @@ ACT.delivDel = function (d, b) {
 ACT.delivXlsx = function () {
   var tab = delivTab_(), rs = delivRows_(tab, S.delivAsc);
   if (!rs.length) return toast('내려받을 출고 기록이 없어요.', true);
-  var rows = [['출고일', '기종', '수량', 'S/N', '받는 곳', '경로', '차수', '근거', '메모']].concat(rs.map(function (r) { return [r.at, delivName_(r), +r.qty || 0, r.sns || '', r.dest || '', r.route || '', r.lot || '', r.src || '', r.note || '']; }));
+  var rows = [['출고일', '기종', '수량', 'S/N', '받는 곳', '경로', '차수']].concat(rs.map(function (r) { return [r.at, delivName_(r), +r.qty || 0, r.sns || '', r.dest || '', r.route || '', r.lot || '']; }));
   saveBlob_(xlsxBook_([{ name: '출고 기록', widths: [12, 20, 9, 40, 20, 14, 8, 28, 24], rows: rows }]), '출고기록_' + tab[1].replace(/\s/g, '') + '_' + today().replace(/-/g, '') + '.xlsx');
 };
 document.addEventListener('input', function (e) { if (/^dv(Sns|Qty|Model)$/.test(e.target.id)) delivSnHint_(); });
