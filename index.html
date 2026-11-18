@@ -571,7 +571,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
   } catch (e) { }
 })();
 var DEMO_MODE = false;
-var BUILD_ID = '138f27cd6dd6', NEW_VER = false;
+var BUILD_ID = '1eb65c0c698c', NEW_VER = false;
 function verBusy_() {
   if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
   return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
@@ -5199,19 +5199,13 @@ function ltCard(D) {
   ltDraw(D);
 }
 var LT_MANUAL_MIN = 3;
-function ltParseHms_(s) {
-  var p = String(s || '').trim().split(/[:：]/).map(function (x) { return x.trim(); });
-  if (!p[0] || p.some(function (x) { return !/^\d+$/.test(x); }) || p.length > 3) return NaN;
-  p = p.map(Number);
-  return p.length === 3 ? p[0] * 3600 + p[1] * 60 + p[2] : p.length === 2 ? p[0] * 3600 + p[1] * 60 : p[0] * 60;
-}
 function ltManualAsk_(D) {
   var sn = (D.cond && D.cond.sn) || D.sn || '';
   var id = 'ltm' + Date.now(), bg = document.createElement('div'); bg.className = 'modal-bg'; bg.id = id; bg.style.zIndex = '2000';
   var row = function (k, lab, ph) { return '<label style="display:block;margin-top:10px"><b>' + lab + '</b><input class="inp" id="' + id + k + '" style="width:100%;margin-top:4px" inputmode="decimal" placeholder="' + ph + '"></label>'; };
   bg.innerHTML = '<div class="modal" style="max-width:440px"><div class="mh"><b style="flex:1">' + D.no + '번 칸 · DL24 화면 값 입력</b></div><div class="mb">' +
     '<div style="line-height:1.6">' + esc(sn) + '<br>USB가 끊겨서 용량 기록이 없어요. DL24 화면에 나온 <b>시험 끝 결과</b>를 그대로 넣어 주세요.</div>' +
-    row('m', '용량 (mAh)', '예: 12078') + row('w', '에너지 (Wh)', '예: 59.31') + row('t', '시험 시간 (시:분:초)', '예: 6:02:19') +
+    row('m', '용량 (mAh)', '예: 12078') + row('w', '에너지 (Wh)', '예: 59.31') + '<div class="small muted" style="margin-top:8px">시험 시간은 넣지 않아도 돼요 — 정전류라 용량으로 계산해요.</div>' +
     '<div id="' + id + 'e" class="small" style="color:var(--red);margin-top:8px"></div></div>' +
     '<div class="mf"><button class="btn" id="' + id + 'n">취소</button><button class="btn pri" id="' + id + 'y">저장</button></div></div>';
   document.body.appendChild(bg);
@@ -5219,11 +5213,11 @@ function ltManualAsk_(D) {
   g('m').focus();
   g('n').onclick = close;
   g('y').onclick = function () {
-    var mah = +String(g('m').value).replace(/[,\s]/g, ''), wh = +String(g('w').value).replace(/[,\s]/g, ''), sec = ltParseHms_(g('t').value);
-    var err = !(mah > 0 && mah <= 60000) ? '용량(mAh)을 확인해 주세요.' : !(wh > 0 && wh <= 300) ? '에너지(Wh)를 확인해 주세요.' : !(sec > 0 && sec <= 48 * 3600) ? '시험 시간을 6:02:19처럼 넣어 주세요.' : '';
+    var mah = +String(g('m').value).replace(/[,\s]/g, ''), wh = +String(g('w').value).replace(/[,\s]/g, '');
+    var err = mah > 0 && mah < 100 ? '용량은 mAh로 넣어 주세요 (화면이 12.078Ah면 12078).' : !(mah >= 100 && mah <= 60000) ? '용량(mAh)을 확인해 주세요.' : !(wh >= 0.5 && wh <= 300) ? '에너지(Wh)를 확인해 주세요.' : '';
     if (err) { g('e').textContent = err; return; }
     g('y').disabled = true;
-    ltAgentCmd(D, 'manual', { mah: mah, wh: wh, sec: sec }).then(function (r) {
+    ltAgentCmd(D, 'manual', { mah: mah, wh: wh }).then(function (r) {
       if (r) { close(); toast(sn + ' DL24 화면 값으로 저장 · ' + Math.round(mah).toLocaleString() + 'mAh'); ltAgentPoll(); } else g('y').disabled = false;
     });
   };
@@ -5270,7 +5264,7 @@ function ltDraw(D) {
   if (D.err) msg += '<div class="ltbox bad">' + esc(D.err) + '</div>';
   if (D.msg) msg += '<div class="ltbox ' + D.msg[0] + '">' + esc(D.msg[1]) + '</div>';
   var lostMin = D.lost && L && L.t ? (Date.now() - L.t) / 60000 : 0;
-  if (LT.agent && (D.state === 'run' || D.state === 'paused') && lostMin >= LT_MANUAL_MIN) msg += '<div class="ltbox warn"><b>USB가 ' + Math.round(lostMin) + '분째 끊겨 있어요. 이대로 시험이 끝나면 용량 기록이 남지 않아요.</b> 다시 연결되면 자동으로 이어서 기록되니 기다려 주세요. 끝내 연결되지 않으면, DL24 화면에 시험 끝 결과가 나왔을 때 그 화면의 mAh · Wh · 시간을 입력해서 저장해 주세요. <b>입력하기 전에는 DL24 전원을 끄지 마세요</b> (화면 값이 지워져요).' +
+  if (LT.agent && D.state === 'run' && lostMin >= LT_MANUAL_MIN) msg += '<div class="ltbox warn"><b>USB가 ' + Math.round(lostMin) + '분째 끊겨 있어요. 이대로 시험이 끝나면 용량 기록이 남지 않아요.</b> 다시 연결되면 자동으로 이어서 기록되니 기다려 주세요. 끝내 연결되지 않으면, DL24 화면에 시험 끝 결과가 나왔을 때 그 화면의 mAh · Wh를 입력해서 저장해 주세요. <b>입력하기 전에는 DL24 전원을 끄지 마세요</b> (화면 값이 지워져요).' +
     '<div style="margin-top:6px"><button class="btn pri sm" data-lt="manual">DL24 화면 값 입력해서 저장</button></div></div>';
   if (LT.agent && D.lost) msg += '<div class="row" style="margin-top:6px"><button class="btn sm" data-lt="discard">이 칸 지우기 (장비 없음)</button></div>';
   if (D.state === 'paused') msg += '<div class="row" style="margin-top:6px;gap:6px"><button class="btn pri sm" data-lt="resume">▶ 이어서 시험</button><button class="btn sm" data-lt="stop">■ 여기서 종료 (지금까지 값으로 저장)</button></div>';

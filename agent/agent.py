@@ -19,7 +19,7 @@ import sys, os, json, time, threading, struct, random, traceback, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-VERSION = '1.3.24'
+VERSION = '1.3.25'
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE_FILE = os.path.join(HERE, 'state.json')
 CONFIG_FILE = os.path.join(HERE, 'config.json')
@@ -38,6 +38,7 @@ LOG_EVERY_MS = 5000   # 전압 기록 간격 (메모리 절약: 20대 × 8시간
 PLOG_EVERY_MS = 30000 # 파일 저장용 기록 간격
 PURPOSES = ['입고 QC', '회수분 검사', '클레임 자료', '기타']
 ARM_MIN_V = 4.6       # 출력 대기: 이 전압(그리고 차단+0.3V) 이상이 2번 연속 보여야 출력 켜짐으로 봄 (대기 중 잔류 전압 오인 방지)
+MANUAL_OFF_MS = 48 * 3600000   # 화면 값으로 끝낸 칸: 다시 연결될 때까지 부하 끔 감시
 OFF_GUARD_MS = 120000  # 시작 점검 실패 뒤 이 시간 동안은 부하가 다시 켜져 보이면 끔 (USB 끊김으로 끄기 명령이 빠진 경우)
 FIRE_RETRY = 2       # 부하 ON 후 전류가 안 흐르면 자동으로 다시 시도하는 횟수 (장비 알람 해제·보조배터리 깨우기)
 DEAD_MS = 20000   # 장비 부하는 켜져 있는데 보조배터리 출력이 0V 근처(차단 전압 미만)·전류 0으로 이만큼 이어지면 방전 끝으로 봄 (DL24가 차단을 못 하고 계속 도는 경우)
@@ -237,7 +238,7 @@ def on_report(D, u):
     assign_check(D)
     if D.restore is not None:
         apply_restore(D)
-    if L['on'] and (D.state == 'arm' and ms() >= D.arm.get('wait', 0) or D.state == 'idle' and ms() < D.off_until):
+    if L['on'] and (D.state == 'arm' and ms() >= D.arm.get('wait', 0) or D.state in ('idle', 'done') and ms() < D.off_until):
         # 시작 전인데 부하가 켜져 있음 = 점검 실패 때 보낸 '부하 끄기'가 USB 끊김으로 안 들어감 → 다시 끔 (안 끄면 기록 없이 끝까지 방전됨)
         if D.state == 'arm' and not D.arm.get('offlog'):
             D.arm['offlog'] = 1; log('장비 %s 시작 전인데 부하가 켜져 있음(%.3fA) → 부하 끔' % (D.no, L['a']))
@@ -531,30 +532,39 @@ def stop(D):
 
 
 def manual_end(D, p):
-    """USB가 끊긴 채 시험이 끝나 기록이 없는 칸: DL24 화면의 mAh·Wh·시간을 사람이 넣어 결과로 저장 (11/18 6번 칸, DL24 USB가 멈춰 전원을 껐다 켜야만 살아남)"""
-    if D.state not in ('run', 'paused') or not (D.lost or D.gaps):
-        raise Exception('USB가 끊겼던 시험 중 칸에서만 DL24 화면 값을 넣을 수 있어요.')
+    """USB가 끊긴 채 시험이 끝나 기록이 없는 칸: DL24 화면의 mAh·Wh를 사람이 넣어 결과로 저장 (11/18 6번 칸, DL24 USB가 멈춰 전원을 껐다 켜야만 살아남)
+    화면 값 = 장비 누적값 → 이 시험 값 = 화면 값 - base (DL24 재시작 뒤 이어서 잰 시험은 base가 음수라 앞 구간이 더해짐). 정전류라 시간 = mAh ÷ 전류"""
+    if D.state != 'run' or not D.lost:
+        raise Exception('USB가 끊긴 채 시험 중인 칸에서만 DL24 화면 값을 넣을 수 있어요.')
     x = D.restore or {}   # 프로그램이 다시 켜진 뒤 끊긴 채로 복구된 칸은 시험 정보가 state.json 기록에만 있음
-    D.cid = D.cid or x.get('cid') or ''; D.check = D.check or x.get('check')
+    D.cid = D.cid or x.get('cid') or ''; D.check = D.check or x.get('check'); D.base = D.base or x.get('base')
     D.start_at = D.start_at or x.get('startAt') or 0; D.pause_ms = D.pause_ms or x.get('pauseMs') or 0
     D.pauses = D.pauses or x.get('pauses') or 0; D.gaps = D.gaps or x.get('gaps') or 0; D.gap_ms = D.gap_ms or x.get('gapMs') or 0
     if not D.cid or not D.cond:
         raise Exception('이 칸의 시험 정보가 없어서 저장할 수 없어요.')
     try:
-        mah = float(p.get('mah')); wh = float(p.get('wh')); sec = float(p.get('sec'))
+        sm = float(p.get('mah')); sw = float(p.get('wh'))
     except (TypeError, ValueError):
-        raise Exception('mAh · Wh · 시간을 숫자로 넣어 주세요.')
-    if not (0 < mah <= 60000 and 0 < wh <= 300 and 0 < sec <= 48 * 3600):
-        raise Exception('값이 범위를 벗어났어요. DL24 화면 값을 다시 확인해 주세요.')
+        raise Exception('mAh · Wh를 숫자로 넣어 주세요.')
+    if not (100 <= sm <= 60000 and 0.5 <= sw <= 300):
+        raise Exception('값이 범위를 벗어났어요. DL24 화면 값을 다시 확인해 주세요 (용량은 mAh — 12.078Ah면 12078).')
+    b = D.base or {}
+    mah = round(sm - (b.get('mah') or 0), 2); wh = round(sw - (b.get('wh') or 0), 4)
+    if mah <= 0 or wh <= 0:
+        raise Exception('넣은 값이 이 시험 시작 때 장비 값보다 작아요. DL24 화면 값을 다시 확인해 주세요.')
+    cur = float(D.cond.get('cur') or 0) or 1.0
+    sec = mah / (cur * 1000.0) * 3600
     if not D.start_at:
         D.start_at = ms() - int(sec * 1000)
-    if D.saved:   # 중간 멈춤 때 저장된 앞부분 기록 → 같은 기록을 화면 값으로 고쳐 씀
+    if D.saved or x.get('saved') or D.resave or x.get('resave'):   # 이어서 시험 중이던 기록 → 같은 기록(cid)을 고쳐 씀 (resume 없이 보내면 서버가 옛 기록을 그대로 돌려줌)
         D.saved = ''; D.resave = True
+    send(D, 0x25, [0, 0, 0, 0])
     D.state = 'done'; D.end_at = D.start_at + int(sec * 1000) + (D.pause_ms or 0); D.dead_at = 0
+    D.off_until = ms() + MANUAL_OFF_MS   # 다시 연결됐을 때 부하가 켜져 있으면 끔 (다음 배터리를 꽂으면 기록 없이 방전되는 것 방지)
     D.result = {'wh': wh, 'mah': mah, 'sec': sec, 'vStart': (D.check or {}).get('vload') or 0, 'avgV': wh * 1000.0 / mah, 'vMinMid': 0, 'maxT': 0}
     D.why = 'USB 끊김 — DL24 화면 값 직접 입력'
     D.restore = None; D.msg = None; D.away_end = False
-    log('장비 %s 화면 값 직접 입력 %s %.2fWh %dmAh %ds' % (D.no, D.cond.get('sn') or D.sn, wh, mah, sec))
+    log('장비 %s 화면 값 직접 입력 %s 화면 %.2fWh %dmAh → %.2fWh %dmAh %ds' % (D.no, D.cond.get('sn') or D.sn, sw, sm, wh, mah, sec))
     save(D)
     persist(True)
 
@@ -1288,6 +1298,8 @@ class Handler(BaseHTTPRequestHandler):
                 elif a == 'manual':
                     manual_end(D, p)
                 elif a == 'sn':
+                    if not norm_sn(p.get('sn')) and D.state in ('run', 'arm', 'check', 'paused'):   # 늦게 도착한 'S/N 모두 지우기'가 막 시작한 시험의 S/N을 지우지 않게
+                        return self._send(200, {'ok': True, 'dev': D.to_json()})
                     D.sn = norm_sn(p.get('sn'))
                     if D.state == 'run' and D.cond is not None and not D.cond.get('sn'):
                         D.cond['sn'] = D.sn
