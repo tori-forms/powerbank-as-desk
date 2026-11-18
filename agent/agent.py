@@ -19,7 +19,7 @@ import sys, os, json, time, threading, struct, random, traceback, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-VERSION = '1.3.25'
+VERSION = '1.3.26'
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE_FILE = os.path.join(HERE, 'state.json')
 CONFIG_FILE = os.path.join(HERE, 'config.json')
@@ -355,6 +355,7 @@ def restore_lost():
         if any(D.no == x['no'] for D in DEVS.values()):
             continue
         D = Dev(path); D.no = x['no']; D.sn = x.get('sn') or ''; D.state = st; D.cond = x.get('cond'); D.result = x.get('result')
+        D.cid = x.get('cid') or ''; D.start_at = x.get('startAt') or 0; D.check = x.get('check'); D.base = x.get('base'); D.pause_ms = x.get('pauseMs') or 0   # 화면이 끊긴 동안에도 경과 시간·추정값을 보이게 (다시 연결되면 apply_restore가 다시 채움)
         D.restore = x   # lost_at 안 세움: 프로그램 재시작(업데이트)은 USB 끊김으로 안 셈
         on = st == 'run'
         D.live = {'t': x.get('lastAt') or ms(), 'v': 0, 'a': float((x.get('cond') or {}).get('cur') or 0) if on else 0,
@@ -399,7 +400,7 @@ def apply_restore(D):
         if L['wh'] < (x.get('lastWh') or 0) - 0.002:
             D.msg = ['bad', '장비 누적값이 초기화돼서 진행 중이던 시험을 이어갈 수 없어요. 다시 시작해 주세요.']
             log('장비 %s 복구 실패: 누적값 감소' % D.no)
-            D.state = 'idle'; D.cond = None   # 그대로 두면 바뀐 누적값을 새 시작점으로 잡고 반쪽 결과를 저장함
+            D.state = 'idle'; D.cond = None; D.base = None; D.cid = ''; D.start_at = 0   # 그대로 두면 바뀐 누적값을 새 시작점으로 잡고 반쪽 결과를 저장함
             return
         D.cid = x.get('cid') or ''; D.cond = x.get('cond'); D.check = x.get('check'); D.base = x['base']; D.start_at = x.get('startAt') or 0
         D.plog = x.get('plog') or []; D.log = list(D.plog); D.off_cnt = 0

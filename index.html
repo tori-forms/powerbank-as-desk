@@ -571,7 +571,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
   } catch (e) { }
 })();
 var DEMO_MODE = false;
-var BUILD_ID = '2880a99bbb06', NEW_VER = false;
+var BUILD_ID = '55b0fd34dce5', NEW_VER = false;
 function verBusy_() {
   if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
   return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
@@ -5202,7 +5202,7 @@ var LT_MANUAL_MIN = 3;
 function ltLostEst_(D) {
   var L = D.live, cur = +((D.cond || {}).cur) || 0; if (!L || !L.t) return null;
   var h = L.on === false ? 0 : Math.max(0, Date.now() - L.t) / 3600000, v = L.mah > 100 ? L.wh * 1000 / L.mah : (L.v || 0);
-  return { mah: L.mah + cur * 1000 * h, wh: L.wh + cur * h * v };
+  return { mah: L.mah + cur * 1000 * h, wh: L.wh + cur * h * v, v: v, a: L.on === false ? 0 : cur };
 }
 function ltManualAsk_(D) {
   var sn = (D.cond && D.cond.sn) || D.sn || '';
@@ -5256,7 +5256,8 @@ function ltDraw(D) {
   if (ps) { ps.style.fontWeight = '700'; ps.style.color = curPur === '회수분 검사' ? '#c2410c' : curPur === '입고 QC' ? '#1d4ed8' : ''; }
   k('purwhy').innerHTML = ltPurPicked(D) ? '<span class="muted">직접 선택</span> <a href="javascript:void 0" data-lt="purauto" class="small">자동으로</a>' : !D.sn ? '<span class="muted">S/N 넣고 구분 확인</span>' : snNow && ltAutoPurpose(snNow) ? '<span style="color:#c2410c">AS Desk 회수 기록 있음 → 자동</span>' : snNow ? '<span class="muted">회수 기록 없음 → 납품 검사</span>' : '';
   if (L) {
-    k('v').textContent = L.v.toFixed(3) + 'V'; k('a').textContent = L.a.toFixed(3) + 'A'; k('w').textContent = (L.v * L.a).toFixed(2) + 'W';
+    var e0 = D.state === 'run' && D.lost && LT.agent ? ltLostEst_(D) : null;
+    k('v').textContent = e0 ? '≈' + e0.v.toFixed(2) + 'V' : L.v.toFixed(3) + 'V'; k('a').textContent = e0 ? '≈' + e0.a.toFixed(1) + 'A' : L.a.toFixed(3) + 'A'; k('w').textContent = e0 ? '≈' + (e0.v * e0.a).toFixed(2) + 'W' : (L.v * L.a).toFixed(2) + 'W';
     var b = D.base || { wh: L.wh, mah: L.mah }, live = D.state === 'run';
     var pt = D.partial;
     var est = live && D.lost && LT.agent ? ltLostEst_(D) : null, b0 = D.base || { wh: 0, mah: 0 };
