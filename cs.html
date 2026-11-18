@@ -571,7 +571,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
   } catch (e) { }
 })();
 var DEMO_MODE = false;
-var BUILD_ID = '1eb65c0c698c', NEW_VER = false;
+var BUILD_ID = '2880a99bbb06', NEW_VER = false;
 function verBusy_() {
   if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
   return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
@@ -5199,18 +5199,24 @@ function ltCard(D) {
   ltDraw(D);
 }
 var LT_MANUAL_MIN = 3;
+function ltLostEst_(D) {
+  var L = D.live, cur = +((D.cond || {}).cur) || 0; if (!L || !L.t) return null;
+  var h = L.on === false ? 0 : Math.max(0, Date.now() - L.t) / 3600000, v = L.mah > 100 ? L.wh * 1000 / L.mah : (L.v || 0);
+  return { mah: L.mah + cur * 1000 * h, wh: L.wh + cur * h * v };
+}
 function ltManualAsk_(D) {
   var sn = (D.cond && D.cond.sn) || D.sn || '';
   var id = 'ltm' + Date.now(), bg = document.createElement('div'); bg.className = 'modal-bg'; bg.id = id; bg.style.zIndex = '2000';
   var row = function (k, lab, ph) { return '<label style="display:block;margin-top:10px"><b>' + lab + '</b><input class="inp" id="' + id + k + '" style="width:100%;margin-top:4px" inputmode="decimal" placeholder="' + ph + '"></label>'; };
   bg.innerHTML = '<div class="modal" style="max-width:440px"><div class="mh"><b style="flex:1">' + D.no + '번 칸 · DL24 화면 값 입력</b></div><div class="mb">' +
-    '<div style="line-height:1.6">' + esc(sn) + '<br>USB가 끊겨서 용량 기록이 없어요. DL24 화면에 나온 <b>시험 끝 결과</b>를 그대로 넣어 주세요.</div>' +
+    '<div style="line-height:1.6">' + esc(sn) + '<br>USB가 끊긴 동안 시작 조건으로 계산한 <b>추정값</b>을 넣어 뒀어요. DL24 화면의 <b>시험 끝 결과</b>와 다르면 화면 값으로 고쳐 주세요.</div>' +
     row('m', '용량 (mAh)', '예: 12078') + row('w', '에너지 (Wh)', '예: 59.31') + '<div class="small muted" style="margin-top:8px">시험 시간은 넣지 않아도 돼요 — 정전류라 용량으로 계산해요.</div>' +
     '<div id="' + id + 'e" class="small" style="color:var(--red);margin-top:8px"></div></div>' +
     '<div class="mf"><button class="btn" id="' + id + 'n">취소</button><button class="btn pri" id="' + id + 'y">저장</button></div></div>';
   document.body.appendChild(bg);
-  var g = function (k) { return document.getElementById(id + k); }, close = function () { bg.remove(); };
-  g('m').focus();
+  var g = function (k) { return document.getElementById(id + k); }, close = function () { bg.remove(); }, est = ltLostEst_(D);
+  if (est) { g('m').value = Math.round(est.mah); g('w').value = est.wh.toFixed(2); }
+  g('m').focus(); g('m').select();
   g('n').onclick = close;
   g('y').onclick = function () {
     var mah = +String(g('m').value).replace(/[,\s]/g, ''), wh = +String(g('w').value).replace(/[,\s]/g, '');
@@ -5253,8 +5259,9 @@ function ltDraw(D) {
     k('v').textContent = L.v.toFixed(3) + 'V'; k('a').textContent = L.a.toFixed(3) + 'A'; k('w').textContent = (L.v * L.a).toFixed(2) + 'W';
     var b = D.base || { wh: L.wh, mah: L.mah }, live = D.state === 'run';
     var pt = D.partial;
-    k('wh').textContent = R && D.state === 'done' ? R.wh.toFixed(2) : live ? (L.wh - b.wh).toFixed(2) : pt ? pt.wh.toFixed(2) : '-';
-    k('mah').textContent = R && D.state === 'done' ? Math.round(R.mah).toLocaleString() : live ? Math.round(L.mah - b.mah).toLocaleString() : pt ? Math.round(pt.mah).toLocaleString() : '-';
+    var est = live && D.lost && LT.agent ? ltLostEst_(D) : null, b0 = D.base || { wh: 0, mah: 0 };
+    k('wh').textContent = R && D.state === 'done' ? R.wh.toFixed(2) : est ? '≈' + (est.wh - b0.wh).toFixed(2) : live ? (L.wh - b.wh).toFixed(2) : pt ? pt.wh.toFixed(2) : '-';
+    k('mah').textContent = R && D.state === 'done' ? Math.round(R.mah).toLocaleString() : est ? '≈' + Math.round(est.mah - b0.mah).toLocaleString() : live ? Math.round(L.mah - b.mah).toLocaleString() : pt ? Math.round(pt.mah).toLocaleString() : '-';
   }
   var tEnd = D.state === 'done' ? D.endAt : D.state === 'paused' ? (D.partial ? D.partial.t : D.pausedAt) : Date.now();
   k('tm').textContent = D.startAt && (D.state === 'run' || D.state === 'done' || D.state === 'paused') ? (D.state === 'done' && R ? ltHms(R.sec) : ltHms((tEnd - D.startAt - (D.pauseMs || 0)) / 1000)) : '-';
@@ -5264,8 +5271,8 @@ function ltDraw(D) {
   if (D.err) msg += '<div class="ltbox bad">' + esc(D.err) + '</div>';
   if (D.msg) msg += '<div class="ltbox ' + D.msg[0] + '">' + esc(D.msg[1]) + '</div>';
   var lostMin = D.lost && L && L.t ? (Date.now() - L.t) / 60000 : 0;
-  if (LT.agent && D.state === 'run' && lostMin >= LT_MANUAL_MIN) msg += '<div class="ltbox warn"><b>USB가 ' + Math.round(lostMin) + '분째 끊겨 있어요. 이대로 시험이 끝나면 용량 기록이 남지 않아요.</b> 다시 연결되면 자동으로 이어서 기록되니 기다려 주세요. 끝내 연결되지 않으면, DL24 화면에 시험 끝 결과가 나왔을 때 그 화면의 mAh · Wh를 입력해서 저장해 주세요. <b>입력하기 전에는 DL24 전원을 끄지 마세요</b> (화면 값이 지워져요).' +
-    '<div style="margin-top:6px"><button class="btn pri sm" data-lt="manual">DL24 화면 값 입력해서 저장</button></div></div>';
+  if (LT.agent && D.state === 'run' && lostMin >= LT_MANUAL_MIN) msg += '<div class="ltbox warn"><b>USB가 ' + Math.round(lostMin) + '분째 끊겨 있어요.</b> 끊긴 동안 용량은 시작 조건(' + ((D.cond || {}).cur || '?') + 'A 정전류)과 시간으로 계산한 <b>추정값(≈)</b>이에요. 다시 연결되면 자동으로 실제 값으로 이어져요. 끝내 연결되지 않으면, DL24 화면에 시험 끝 결과가 나왔을 때 아래 버튼을 눌러 추정값이 테스터기 화면과 맞는지 확인하고 저장해 주세요 (시험이 끝난 뒤에도 추정값은 계속 늘어나요). <b>입력하기 전에는 DL24 전원을 끄지 마세요</b> (화면 값이 지워져요).' +
+    '<div style="margin-top:6px"><button class="btn pri sm" data-lt="manual">테스터기 값 확인하고 저장</button></div></div>';
   if (LT.agent && D.lost) msg += '<div class="row" style="margin-top:6px"><button class="btn sm" data-lt="discard">이 칸 지우기 (장비 없음)</button></div>';
   if (D.state === 'paused') msg += '<div class="row" style="margin-top:6px;gap:6px"><button class="btn pri sm" data-lt="resume">▶ 이어서 시험</button><button class="btn sm" data-lt="stop">■ 여기서 종료 (지금까지 값으로 저장)</button></div>';
   if (D.state === 'arm' && D.resuming) msg += '<div class="ltbox warn">⏳ <b>이어서 시험 — 출력 대기 중</b> — 보조배터리 출력이 켜지면 바로 이어서 재요. 꺼져 있으면 전원 버튼을 눌러 주세요. 취소하려면 ■ 정지</div>';
