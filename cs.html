@@ -599,7 +599,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
 
 var DEMO_MODE = false;
 
-var BUILD_ID = 'fecacd68e37c', NEW_VER = false;
+var BUILD_ID = '4fbc05fa0f1f', NEW_VER = false;
 function verBusy_() {
   if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
   return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
@@ -5176,7 +5176,7 @@ function ltAgentApply(x) {
   var D = LT.devs.filter(function (d) { return d.no === x.no; })[0];
   if (!D) { D = { no: x.no, agent: true, log: [], sn: '' }; LT.devs.push(D); LT.devs.sort(function (a, b) { return a.no - b.no; }); ltCard(D); }
   var prevSaved = D.saved, prevSn = D.sn, prevState = D.state, prevPur = D.pur;
-  ['state', 'live', 'mode', 'setCur', 'setCut', 'err', 'lost', 'check', 'cond', 'result', 'saved', 'saving', 'saveErr', 'msg', 'startAt', 'endAt', 'why', 'cid', 'base', 'pauseMs', 'pausedAt', 'pauses', 'partial', 'resuming', 'gaps'].forEach(function (k) { D[k] = x[k]; });
+  ['state', 'live', 'mode', 'setCur', 'setCut', 'err', 'lost', 'check', 'cond', 'result', 'saved', 'saving', 'saveErr', 'msg', 'startAt', 'endAt', 'why', 'cid', 'base', 'pauseMs', 'pausedAt', 'pauses', 'partial', 'resuming'].forEach(function (k) { D[k] = x[k]; });
   D.arm = x.armCut != null ? { cut: x.armCut } : null;
   var inp = D.el.querySelector('[data-k=sn]'), fresh = Date.now() - (D.snAt || 0) < 4000;
   if (document.activeElement !== inp && !(fresh && (x.sn || '') !== D.sn)) { D.sn = x.sn || ''; if (inp.value !== D.sn) inp.value = D.sn; }
@@ -5424,6 +5424,7 @@ function ltCard(D) {
   });
   ltDraw(D);
 }
+var LT_MANUAL_MIN = 3;
 
 function ltParseHms_(s) {
   var p = String(s || '').trim().split(/[:：]/).map(function (x) { return x.trim(); });
@@ -5497,7 +5498,8 @@ function ltDraw(D) {
   var msg = '', ck = D.check;
   if (D.err) msg += '<div class="ltbox bad">' + esc(D.err) + '</div>';
   if (D.msg) msg += '<div class="ltbox ' + D.msg[0] + '">' + esc(D.msg[1]) + '</div>';
-  if (LT.agent && (D.state === 'run' || D.state === 'paused') && (D.lost || D.gaps)) msg += '<div class="ltbox warn"><b>USB가 끊겨서 이 시험의 용량 기록이 없을 수 있어요.</b> DL24 화면에 시험 끝 결과가 나오면 그 화면의 mAh · Wh · 시간을 입력해서 저장해 주세요. <b>입력하기 전에는 DL24 전원을 끄지 마세요</b> (화면 값이 지워져요).' +
+  var lostMin = D.lost && L && L.t ? (Date.now() - L.t) / 60000 : 0;
+  if (LT.agent && (D.state === 'run' || D.state === 'paused') && lostMin >= LT_MANUAL_MIN) msg += '<div class="ltbox warn"><b>USB가 ' + Math.round(lostMin) + '분째 끊겨 있어요. 이대로 시험이 끝나면 용량 기록이 남지 않아요.</b> 다시 연결되면 자동으로 이어서 기록되니 기다려 주세요. 끝내 연결되지 않으면, DL24 화면에 시험 끝 결과가 나왔을 때 그 화면의 mAh · Wh · 시간을 입력해서 저장해 주세요. <b>입력하기 전에는 DL24 전원을 끄지 마세요</b> (화면 값이 지워져요).' +
     '<div style="margin-top:6px"><button class="btn pri sm" data-lt="manual">DL24 화면 값 입력해서 저장</button></div></div>';
   if (LT.agent && D.lost) msg += '<div class="row" style="margin-top:6px"><button class="btn sm" data-lt="discard">이 칸 지우기 (장비 없음)</button></div>';
   if (D.state === 'paused') msg += '<div class="row" style="margin-top:6px;gap:6px"><button class="btn pri sm" data-lt="resume">▶ 이어서 시험</button><button class="btn sm" data-lt="stop">■ 여기서 종료 (지금까지 값으로 저장)</button></div>';
