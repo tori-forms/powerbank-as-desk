@@ -599,7 +599,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
 
 var DEMO_MODE = false;
 
-var BUILD_ID = 'a6a5791c3001', NEW_VER = false;
+var BUILD_ID = '5eb402529783', NEW_VER = false;
 function verBusy_() {
   if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
   return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
@@ -5012,6 +5012,13 @@ function ltVal(id, d) { var el = document.getElementById(id); var v = el ? el.va
 var LT_SLOT_CONDS = [['3.0|3.0', 'CC 3A · 차단 3.0V'], ['2.0|3.0', 'CC 2A · 차단 3.0V'], ['2.0|4.0', 'CC 2A · 차단 4.0V']];
 function ltSlotMap_() { try { return JSON.parse(ls('ltSlotCond') || '{}') || {}; } catch (e) { return {}; } }
 function ltCondOf(D) { var v = String(ltSlotMap_()[D.no] || ''), p = v.split('|'); return p.length === 2 && LT_SLOT_CONDS.some(function (c) { return c[0] === v; }) ? { cur: p[0], cut: p[1] } : null; }
+
+var LT_PUR_COND = { '입고 QC': '3.0|3.0', '회수분 검사': '2.0|4.0' };
+function ltAutoCond_(D) {
+  var v = D.sn && S.data && LT_PUR_COND[ltPurOf(D)], m = ltSlotMap_();
+  if (!v || m[D.no] === v) return;
+  m[D.no] = v; ls('ltSlotCond', JSON.stringify(m)); if (D.msg && !D.busy) D.msg = null;
+}
 function ltSend(D, cmd, d4) {
   if (!D.dev || !D.dev.opened) return Promise.resolve();
   return D.dev.sendReport(0, ltFrame(cmd, d4)).catch(function (e) { D.err = String(e && e.message || e); ltDraw(D); });
@@ -5168,12 +5175,13 @@ function ltAgentPrune(list) {
 function ltAgentApply(x) {
   var D = LT.devs.filter(function (d) { return d.no === x.no; })[0];
   if (!D) { D = { no: x.no, agent: true, log: [], sn: '' }; LT.devs.push(D); LT.devs.sort(function (a, b) { return a.no - b.no; }); ltCard(D); }
-  var prevSaved = D.saved, prevSn = D.sn, prevState = D.state;
+  var prevSaved = D.saved, prevSn = D.sn, prevState = D.state, prevPur = D.pur;
   ['state', 'live', 'mode', 'setCur', 'setCut', 'err', 'lost', 'check', 'cond', 'result', 'saved', 'saving', 'saveErr', 'msg', 'startAt', 'endAt', 'why', 'cid', 'base', 'pauseMs', 'pausedAt', 'pauses', 'partial', 'resuming'].forEach(function (k) { D[k] = x[k]; });
   D.arm = x.armCut != null ? { cut: x.armCut } : null;
   var inp = D.el.querySelector('[data-k=sn]'), fresh = Date.now() - (D.snAt || 0) < 4000;
   if (document.activeElement !== inp && !(fresh && (x.sn || '') !== D.sn)) { D.sn = x.sn || ''; if (inp.value !== D.sn) inp.value = D.sn; }
   if ('pur' in x && !fresh) { D.pur = x.pur || ''; D.purSn = x.purSn || ''; D.purManual = !!x.pur; }
+  if (prevState !== undefined && (D.sn !== prevSn || D.pur !== prevPur)) ltAutoCond_(D);
   if (prevState !== D.state && (D.state === 'run' || D.state === 'done')) D.logDone = false;
   if (D.sn && D.sn !== prevSn) ltLoadHist([D.sn]).then(function () { ltDraw(D); });
   if (D.saved && !prevSaved && prevState !== undefined) { var sn = (D.cond && D.cond.sn) || D.sn; delete LT.hist[sn]; ltLoadHist([sn]).then(function () { ltDraw(D); }); ltLoadRecent(); toast(sn + ' 시험 결과 저장됨'); }
@@ -5397,7 +5405,7 @@ function ltCard(D) {
     D.pur = e.target.value; D.purManual = true; D.purSn = sn0; D.snAt = Date.now();
     if ((D.state === 'run' || D.state === 'done') && D.cond && !D.saved) D.cond.purpose = D.pur;
     if (LT.agent) ltAgentCmd(D, 'sn', { sn: sn0, purpose: D.pur, purSel: D.pur, purSn: sn0 });
-    ltPersist(true); ltDraw(D);
+    ltAutoCond_(D); ltPersist(true); ltDraw(D);
   });
   el.querySelector('[data-k=cond]').addEventListener('change', function (e) {
     var m = ltSlotMap_(); if (e.target.value) m[D.no] = e.target.value; else delete m[D.no];
@@ -5408,7 +5416,7 @@ function ltCard(D) {
   el.addEventListener('click', function (e) {
     var b = e.target.closest('[data-lt]'); if (!b) return;
     var a = b.getAttribute('data-lt');
-    if (a === 'purauto') { D.purManual = false; D.pur = ''; D.snAt = Date.now(); if (LT.agent) ltAgentCmd(D, 'sn', { sn: ltNorm(sn.value) || D.sn, purSel: '', purSn: '' }); ltDraw(D); return; }
+    if (a === 'purauto') { D.purManual = false; D.pur = ''; D.snAt = Date.now(); if (LT.agent) ltAgentCmd(D, 'sn', { sn: ltNorm(sn.value) || D.sn, purSel: '', purSn: '' }); ltAutoCond_(D); ltDraw(D); return; }
     if (a === 'resume') { var pv = D.partial || D.result || {}; return ask_((D.cond && D.cond.sn || D.sn) + '\n지금까지 ' + (+pv.wh || 0).toFixed(2) + 'Wh · ' + Math.round(+pv.mah || 0).toLocaleString() + 'mAh\n\n같은 조건(' + (D.cond ? D.cond.cur + 'A · 차단 ' + D.cond.cut + 'V' : '') + ')으로 이어서 잴까요? 보조배터리는 그대로 두세요 (다시 충전하면 안 돼요).', { title: '이어서 시험', yes: '이어서 시험' }).then(function (ok) { if (ok) ltAgentCmd(D, 'resume'); }); }
     if (a === 'discard') return ask_(D.no + '번 칸을 지울까요?\n' + (D.sn ? D.sn + ' ' : '') + '시험 결과는 저장되지 않아요. 실물 장비가 없는 칸만 지워 주세요.', { title: '칸 지우기', yes: '지우기' }).then(function (ok) { if (ok) ltAgentCmd(D, 'discard').then(function (r) { if (r) { toast(D.no + '번 칸을 지웠어요.'); ltAgentPoll(); } }); });
     if (a === 'go') ltStart(D); else if (a === 'stop') ltStop(D); else if (a === 'skip') ltStart(D, true); else if (a === 'save') ltSave(D);
@@ -5424,6 +5432,7 @@ function ltSetSn(D, v) {
   if (adopt) { m.purSel = D.pur; m.purSn = v; }
   if (LT.agent) ltAgentCmd(D, 'sn', m);
   if (run0) { D.cond.sn = v; D.cond.purpose = ltPurOf(D); }
+  ltAutoCond_(D);
   if (v) ltLoadHist([v]).then(function () { ltDraw(D); });
   ltDraw(D);
 }
