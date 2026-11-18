@@ -19,7 +19,7 @@ import sys, os, json, time, threading, struct, random, traceback, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-VERSION = '1.3.26'
+VERSION = '1.3.28'
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE_FILE = os.path.join(HERE, 'state.json')
 CONFIG_FILE = os.path.join(HERE, 'config.json')
@@ -38,6 +38,8 @@ LOG_EVERY_MS = 5000   # 전압 기록 간격 (메모리 절약: 20대 × 8시간
 PLOG_EVERY_MS = 30000 # 파일 저장용 기록 간격
 PURPOSES = ['입고 QC', '회수분 검사', '클레임 자료', '기타']
 ARM_MIN_V = 4.6       # 출력 대기: 이 전압(그리고 차단+0.3V) 이상이 2번 연속 보여야 출력 켜짐으로 봄 (대기 중 잔류 전압 오인 방지)
+BACK_RESET_MS = 15000   # 끊겼다 다시 연결된 뒤 이 안에 누적값이 줄었으면 = 끊긴 채 DL24 전원을 껐다 켬
+NEED_MANUAL_TXT = '이 칸에 USB가 끊긴 채 끝난 시험이 있어요. [시험 끝 값 확인] 또는 [기록 없이 넘기기]를 먼저 해 주세요.'
 MANUAL_OFF_MS = 48 * 3600000   # 화면 값으로 끝낸 칸: 다시 연결될 때까지 부하 끔 감시
 OFF_GUARD_MS = 120000  # 시작 점검 실패 뒤 이 시간 동안은 부하가 다시 켜져 보이면 끔 (USB 끊김으로 끄기 명령이 빠진 경우)
 FIRE_RETRY = 2       # 부하 ON 후 전류가 안 흐르면 자동으로 다시 시도하는 횟수 (장비 알람 해제·보조배터리 깨우기)
@@ -117,6 +119,7 @@ class Dev:
         self.save_err = ''; self.cid = ''; self.msg = None; self.away_end = False; self.restore = None; self.pur = ''; self.pur_sn = ''
         self.last_rx = 0; self.end_probe = 0; self.pause_ms = 0; self.paused_at = 0; self.pauses = 0; self.resave = False; self.silent_n = 0
         self.lost_at = 0; self.gaps = 0; self.gap_ms = 0; self.dead_at = 0; self.fresh = False; self.off_until = 0
+        self.back_at = 0; self.need_manual = False; self.est = None
 
     def to_json(self, with_log=False):
         L = self.live
@@ -127,7 +130,7 @@ class Dev:
              'err': err, 'lost': self.lost, 'check': self.check, 'cond': self.cond, 'result': self.result, 'saved': self.saved,
              'saving': self.saving, 'saveErr': self.save_err, 'msg': self.msg, 'startAt': self.start_at, 'endAt': self.end_at,
              'why': self.why, 'cid': self.cid, 'base': self.base, 'armCut': self.arm['cut'] if self.arm else None, 'pur': self.pur, 'purSn': self.pur_sn,
-             'pauseMs': self.pause_ms, 'pausedAt': self.paused_at, 'pauses': self.pauses, 'partial': partial(self), 'resuming': bool(self.arm and self.arm.get('resume')), 'gaps': self.gaps, 'gapMs': self.gap_ms}
+             'pauseMs': self.pause_ms, 'pausedAt': self.paused_at, 'pauses': self.pauses, 'partial': partial(self), 'resuming': bool(self.arm and self.arm.get('resume')), 'gaps': self.gaps, 'gapMs': self.gap_ms, 'needManual': self.need_manual, 'est': self.est}
         if with_log:
             o['log'] = self.log
         return o
@@ -138,7 +141,7 @@ class Dev:
                 'check': self.check, 'base': self.base, 'startAt': self.start_at, 'endAt': self.end_at, 'why': self.why, 'result': self.result,
                 'saved': self.saved, 'lastWh': self.live['wh'] if self.live else None, 'lastMah': self.live['mah'] if self.live else None,
                 'lastAt': (self.live or {}).get('t') or ms(), 'plog': self.plog[-1500:], 'pur': self.pur, 'purSn': self.pur_sn,
-                'pauseMs': self.pause_ms, 'pausedAt': self.paused_at, 'pauses': self.pauses, 'lastRow': self.last_row, 'resave': self.resave, 'gaps': self.gaps, 'gapMs': self.gap_ms}
+                'pauseMs': self.pause_ms, 'pausedAt': self.paused_at, 'pauses': self.pauses, 'lastRow': self.last_row, 'resave': self.resave, 'gaps': self.gaps, 'gapMs': self.gap_ms, 'needManual': self.need_manual, 'est': self.est}
 
 
 def partial(D):
@@ -259,8 +262,11 @@ def on_report(D, u):
         if D.last_row and L['wh'] - D.base['wh'] < D.last_row[3] - 0.01:
             # 장비 누적값이 줄었음 = DL24가 재시작됨(전원 순간 끊김 등) → 지금까지 잰 값으로 '중간 멈춤' (이어서 시험 가능)
             send(D, 0x25, [0, 0, 0, 0])
+            if D.back_at and ms() - D.back_at < BACK_RESET_MS:   # 끊긴 채 있다가 전원을 껐다 켜서 돌아옴 → 끊긴 동안 잰 값·끝 값은 장비 화면 사진에만 있음
+                hold_manual(D); return
             pause(D, L['v'], '장비(DL24)가 재시작돼서 장비 누적값이 초기화됐어요. 지금까지 잰 %.2fWh · %dmAh는 남아 있어요 — [▶ 이어서 시험]을 누르면 거기에 이어서 잽니다.' % (D.last_row[3], round(D.last_row[4])))
             return
+        D.back_at = 0   # 다시 붙은 뒤 누적값이 정상으로 이어짐 → 그 뒤 재시작은 연결된 채 순간 정전(예전처럼 중간 멈춤)
         if D.last_row and not (L['on'] and L['a'] > 0.05) and L['wh'] - D.base['wh'] > D.last_row[3] + 0.01:
             # 기록을 못 보는 동안(USB 끊김·프로그램 꺼짐) 장비가 계속 방전함 → 장비 누적값으로 마지막 값을 채움 (정전류라 시간 = mAh ÷ 전류)
             cur = (D.cond or {}).get('cur') or 1; dm = (L['mah'] - D.base['mah']) - D.last_row[4]
@@ -332,6 +338,8 @@ def adopt(M, D):
     D.h = None
     if D.no:   # 남의 장비를 물고 있던 칸 → 자기 장비가 다시 잡힐 때까지 끊김으로 둠
         D.lost = True; D.lost_at = D.lost_at or ms(); D.path = 'lost:%d' % id(D); DEVS[D.path] = D
+        if D.restore is not None:   # 재시작 뒤 아직 복구 전인 칸(결과 확인 대기 포함): 옛 경로 기록이 새 장비 기록으로 덮이기 전에 옮겨 둠
+            STATE['devs'][D.path] = D.restore
     if STATE['chans'].get(M.key) != M.no:
         STATE['chans'][M.key] = M.no
 
@@ -342,6 +350,7 @@ def back_online(D):
         if D.state == 'run':
             D.msg = ['ok', 'USB가 %s 끊겼다가 다시 연결됐어요 — 그동안에도 DL24가 계속 재고 있어서 Wh·mAh는 빠짐없이 이어져요 (그 사이 전압 그래프만 비어요).' % ('%d분' % round(gap / 60000.0) if gap >= 60000 else '%d초' % round(gap / 1000.0))]
         log('장비 %s USB 다시 연결 (%d초 끊김)' % (D.no, round(gap / 1000.0)))
+        D.back_at = ms()
     D.lost_at = 0
 
 
@@ -356,6 +365,7 @@ def restore_lost():
             continue
         D = Dev(path); D.no = x['no']; D.sn = x.get('sn') or ''; D.state = st; D.cond = x.get('cond'); D.result = x.get('result')
         D.cid = x.get('cid') or ''; D.start_at = x.get('startAt') or 0; D.check = x.get('check'); D.base = x.get('base'); D.pause_ms = x.get('pauseMs') or 0   # 화면이 끊긴 동안에도 경과 시간·추정값을 보이게 (다시 연결되면 apply_restore가 다시 채움)
+        D.need_manual = bool(x.get('needManual')); D.est = x.get('est')
         D.restore = x   # lost_at 안 세움: 프로그램 재시작(업데이트)은 USB 끊김으로 안 셈
         on = st == 'run'
         D.live = {'t': x.get('lastAt') or ms(), 'v': 0, 'a': float((x.get('cond') or {}).get('cur') or 0) if on else 0,
@@ -398,9 +408,12 @@ def apply_restore(D):
     st = x.get('state')
     if st == 'run' and x.get('base'):
         if L['wh'] < (x.get('lastWh') or 0) - 0.002:
-            D.msg = ['bad', '장비 누적값이 초기화돼서 진행 중이던 시험을 이어갈 수 없어요. 다시 시작해 주세요.']
-            log('장비 %s 복구 실패: 누적값 감소' % D.no)
-            D.state = 'idle'; D.cond = None; D.base = None; D.cid = ''; D.start_at = 0   # 그대로 두면 바뀐 누적값을 새 시작점으로 잡고 반쪽 결과를 저장함
+            # 꺼져 있는(끊긴) 동안 DL24 전원이 껐다 켜짐 → 이어서 잴 수 없음. 그대로 새 시작점으로 잡으면 반쪽 결과가 저장되므로 결과 입력 대기로 잠금
+            D.cid = x.get('cid') or ''; D.cond = x.get('cond'); D.check = x.get('check'); D.base = x['base']; D.start_at = x.get('startAt') or 0
+            D.last_row = x.get('lastRow'); D.pause_ms = x.get('pauseMs') or 0; D.pauses = x.get('pauses') or 0; D.resave = bool(x.get('resave'))
+            D.saved = x.get('saved') or ''; D.gaps = x.get('gaps') or 0; D.gap_ms = x.get('gapMs') or 0
+            log('장비 %s 복구 실패: 누적값 감소 → 결과 입력 대기' % D.no)
+            send(D, 0x25, [0, 0, 0, 0]); hold_manual(D)
             return
         D.cid = x.get('cid') or ''; D.cond = x.get('cond'); D.check = x.get('check'); D.base = x['base']; D.start_at = x.get('startAt') or 0
         D.plog = x.get('plog') or []; D.log = list(D.plog); D.off_cnt = 0
@@ -425,7 +438,7 @@ def apply_restore(D):
     elif st == 'paused' and x.get('lastRow'):
         D.state = 'paused'; D.cid = x.get('cid') or ''; D.cond = x.get('cond'); D.check = x.get('check'); D.base = x.get('base'); D.start_at = x.get('startAt') or 0
         D.plog = x.get('plog') or []; D.log = list(D.plog); D.last_row = x['lastRow']; D.pause_ms = x.get('pauseMs') or 0; D.paused_at = x.get('pausedAt') or ms()
-        D.pauses = x.get('pauses') or 1; D.resave = bool(x.get('resave')); D.saved = x.get('saved') or ''
+        D.pauses = x.get('pauses') or 1; D.resave = bool(x.get('resave')); D.saved = x.get('saved') or ''; D.need_manual = bool(x.get('needManual')); D.est = x.get('est')
         log('장비 %s 중간 멈춤 상태 복구' % D.no)
     elif st == 'done' and x.get('result'):
         D.state = 'done'; D.result = x['result']; D.cid = x.get('cid') or ''; D.cond = x.get('cond'); D.check = x.get('check')
@@ -438,6 +451,8 @@ def apply_restore(D):
 def start(D, p):
     if D.state in ('run', 'check', 'arm'):
         return
+    if D.need_manual:
+        raise Exception(NEED_MANUAL_TXT)
     if D.state == 'paused' and not p.get('fresh'):
         raise Exception('중간 멈춘 시험이 있어요. [이어서 시험] 또는 [여기서 종료]를 먼저 눌러 주세요.')
     if D.lost:
@@ -519,6 +534,8 @@ def eval_check(D):
 
 
 def stop(D):
+    if D.need_manual:
+        raise Exception(NEED_MANUAL_TXT)
     send(D, 0x25, [0, 0, 0, 0])
     if D.state == 'run':
         finish(D, 'manual')
@@ -535,7 +552,7 @@ def stop(D):
 def manual_end(D, p):
     """USB가 끊긴 채 시험이 끝나 기록이 없는 칸: DL24 화면의 mAh·Wh를 사람이 넣어 결과로 저장 (11/18 6번 칸, DL24 USB가 멈춰 전원을 껐다 켜야만 살아남)
     화면 값 = 장비 누적값 → 이 시험 값 = 화면 값 - base (DL24 재시작 뒤 이어서 잰 시험은 base가 음수라 앞 구간이 더해짐). 정전류라 시간 = mAh ÷ 전류"""
-    if D.state != 'run' or not D.lost:
+    if not (D.state == 'run' and D.lost or D.need_manual):
         raise Exception('USB가 끊긴 채 시험 중인 칸에서만 DL24 화면 값을 넣을 수 있어요.')
     x = D.restore or {}   # 프로그램이 다시 켜진 뒤 끊긴 채로 복구된 칸은 시험 정보가 state.json 기록에만 있음
     D.cid = D.cid or x.get('cid') or ''; D.check = D.check or x.get('check'); D.base = D.base or x.get('base')
@@ -564,9 +581,30 @@ def manual_end(D, p):
     D.off_until = ms() + MANUAL_OFF_MS   # 다시 연결됐을 때 부하가 켜져 있으면 끔 (다음 배터리를 꽂으면 기록 없이 방전되는 것 방지)
     D.result = {'wh': wh, 'mah': mah, 'sec': sec, 'vStart': (D.check or {}).get('vload') or 0, 'avgV': wh * 1000.0 / mah, 'vMinMid': 0, 'maxT': 0}
     D.why = 'USB 끊김 — DL24 화면 값 직접 입력'
-    D.restore = None; D.msg = None; D.away_end = False
+    D.restore = None; D.msg = None; D.away_end = False; D.need_manual = False; D.est = None
     log('장비 %s 화면 값 직접 입력 %s 화면 %.2fWh %dmAh → %.2fWh %dmAh %ds' % (D.no, D.cond.get('sn') or D.sn, sw, sm, wh, mah, sec))
     save(D)
+    persist(True)
+
+
+def hold_manual(D):
+    """끊긴 채 끝난 시험인데 DL24가 껐다 켜져 장비에 끝 값이 없음 → 결과 입력(또는 기록 없이 넘기기) 전까지 이 칸에서 새 시험·이어서·종료 막음"""
+    D.state = 'paused'; D.need_manual = True; D.paused_at = ms(); D.end_probe = 0; D.off_cnt = 0; D.back_at = 0
+    lr = D.last_row; cur = float((D.cond or {}).get('cur') or 0); b = D.base or {}
+    if lr and cur and lr[4] > 0:   # 확인용 추정값(장비 화면 단위): 끊기기 전 값 + 전류 × 다시 켜질 때까지 — 그 전에 방전이 끝났으면 실제보다 큼
+        h = max(0, ms() - lr[0]) / 3600000.0; v = lr[3] * 1000.0 / lr[4] if lr[4] > 100 else (lr[1] or 0)
+        D.est = {'mah': round(lr[4] + cur * 1000 * h + (b.get('mah') or 0)), 'wh': round(lr[3] + cur * h * v + (b.get('wh') or 0), 2), 'at': ms()}
+    D.msg = ['bad', 'USB가 끊긴 채로 시험이 끝났고 DL24가 껐다 켜져서 장비에 끝 값이 없어요. [시험 끝 값 확인]에서 추정값을 찍어 둔 장비 화면의 Cap(mAh) · Ene(Wh)와 맞춰 저장해 주세요. 확인하거나 [기록 없이 넘기기]를 해야 이 칸에서 다음 시험을 시작할 수 있어요.']
+    log('장비 %s 결과 입력 대기 (%s, 끊기기 전 %s)' % (D.no, (D.cond or {}).get('sn') or D.sn, ('%.2fWh %dmAh' % (D.last_row[3], round(D.last_row[4]))) if D.last_row else '-'))
+    persist(True)
+
+
+def skip_manual(D):
+    if not D.need_manual:
+        raise Exception('결과 입력을 기다리는 칸이 아니에요.')
+    log('장비 %s 결과 입력 없이 넘김 (%s)' % (D.no, (D.cond or {}).get('sn') or D.sn))
+    D.need_manual = False; D.est = None; D.restore = None; D.state = 'idle'; D.cond = None; D.cid = ''; D.base = None; D.start_at = 0; D.last_row = None; D.result = None; D.saved = ''; D.resave = False
+    D.msg = ['warn', '이전 시험은 기록 없이 넘겼어요.']
     persist(True)
 
 
@@ -582,6 +620,8 @@ def pause(D, v_now, why=None):
 
 
 def resume(D, p):
+    if D.need_manual:
+        raise Exception(NEED_MANUAL_TXT)
     if D.lost:
         raise Exception('USB 연결이 끊겨 있어요.')
     if D.silent_n:
@@ -987,7 +1027,7 @@ def set_no(D, n):
     other = [x for x in DEVS.values() if x is not D and x.no == n]
     old = D.no
     for x in other:
-        if x.lost and x.state not in ('run', 'done'):
+        if x.lost and x.state not in ('run', 'done') and not x.need_manual:
             del DEVS[x.path]; continue
         x.no = old; STATE['chans'][x.key] = old
     D.no = n; STATE['chans'][D.key] = n
@@ -1024,6 +1064,8 @@ def renumber():
     live = sorted([D for D in DEVS.values() if D.no and not D.lost], key=lambda d: d.no)
     if any(D.state in ('run', 'arm', 'check') for D in DEVS.values()):
         raise Exception('시험 중인 장비가 있어서 번호를 바꿀 수 없어요. 시험이 끝난 뒤 다시 눌러 주세요.')
+    if any(D.need_manual for D in DEVS.values()):
+        raise Exception('결과 확인이 필요한 칸이 있어서 번호를 바꿀 수 없어요. [시험 끝 값 확인] 또는 [기록 없이 넘기기]를 먼저 해 주세요.')
     for path, D in list(DEVS.items()):
         if D.lost:
             del DEVS[path]
@@ -1298,6 +1340,8 @@ class Handler(BaseHTTPRequestHandler):
                     resume(D, p)
                 elif a == 'manual':
                     manual_end(D, p)
+                elif a == 'skipManual':
+                    skip_manual(D)
                 elif a == 'sn':
                     if not norm_sn(p.get('sn')) and D.state in ('run', 'arm', 'check', 'paused'):   # 늦게 도착한 'S/N 모두 지우기'가 막 시작한 시험의 S/N을 지우지 않게
                         return self._send(200, {'ok': True, 'dev': D.to_json()})
