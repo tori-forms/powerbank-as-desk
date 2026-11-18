@@ -19,7 +19,7 @@ import sys, os, json, time, threading, struct, random, traceback, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-VERSION = '1.3.23'
+VERSION = '1.3.24'
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE_FILE = os.path.join(HERE, 'state.json')
 CONFIG_FILE = os.path.join(HERE, 'config.json')
@@ -527,6 +527,35 @@ def stop(D):
     elif D.state in ('arm', 'check'):   # 빠져 있던 줄: 출력 대기 중 ■ 정지가 먹지 않던 문제 (11/4 6번)
         D.msg =['bad', '출력 대기를 취소했어요.' if D.state == 'arm' else '점검을 멈췄어요.']
         D.state = 'idle'
+    persist(True)
+
+
+def manual_end(D, p):
+    """USB가 끊긴 채 시험이 끝나 기록이 없는 칸: DL24 화면의 mAh·Wh·시간을 사람이 넣어 결과로 저장 (11/18 6번 칸, DL24 USB가 멈춰 전원을 껐다 켜야만 살아남)"""
+    if D.state not in ('run', 'paused') or not (D.lost or D.gaps):
+        raise Exception('USB가 끊겼던 시험 중 칸에서만 DL24 화면 값을 넣을 수 있어요.')
+    x = D.restore or {}   # 프로그램이 다시 켜진 뒤 끊긴 채로 복구된 칸은 시험 정보가 state.json 기록에만 있음
+    D.cid = D.cid or x.get('cid') or ''; D.check = D.check or x.get('check')
+    D.start_at = D.start_at or x.get('startAt') or 0; D.pause_ms = D.pause_ms or x.get('pauseMs') or 0
+    D.pauses = D.pauses or x.get('pauses') or 0; D.gaps = D.gaps or x.get('gaps') or 0; D.gap_ms = D.gap_ms or x.get('gapMs') or 0
+    if not D.cid or not D.cond:
+        raise Exception('이 칸의 시험 정보가 없어서 저장할 수 없어요.')
+    try:
+        mah = float(p.get('mah')); wh = float(p.get('wh')); sec = float(p.get('sec'))
+    except (TypeError, ValueError):
+        raise Exception('mAh · Wh · 시간을 숫자로 넣어 주세요.')
+    if not (0 < mah <= 60000 and 0 < wh <= 300 and 0 < sec <= 48 * 3600):
+        raise Exception('값이 범위를 벗어났어요. DL24 화면 값을 다시 확인해 주세요.')
+    if not D.start_at:
+        D.start_at = ms() - int(sec * 1000)
+    if D.saved:   # 중간 멈춤 때 저장된 앞부분 기록 → 같은 기록을 화면 값으로 고쳐 씀
+        D.saved = ''; D.resave = True
+    D.state = 'done'; D.end_at = D.start_at + int(sec * 1000) + (D.pause_ms or 0); D.dead_at = 0
+    D.result = {'wh': wh, 'mah': mah, 'sec': sec, 'vStart': (D.check or {}).get('vload') or 0, 'avgV': wh * 1000.0 / mah, 'vMinMid': 0, 'maxT': 0}
+    D.why = 'USB 끊김 — DL24 화면 값 직접 입력'
+    D.restore = None; D.msg = None; D.away_end = False
+    log('장비 %s 화면 값 직접 입력 %s %.2fWh %dmAh %ds' % (D.no, D.cond.get('sn') or D.sn, wh, mah, sec))
+    save(D)
     persist(True)
 
 
@@ -1256,6 +1285,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, {'ok': True})
                 elif a == 'resume':
                     resume(D, p)
+                elif a == 'manual':
+                    manual_end(D, p)
                 elif a == 'sn':
                     D.sn = norm_sn(p.get('sn'))
                     if D.state == 'run' and D.cond is not None and not D.cond.get('sn'):
