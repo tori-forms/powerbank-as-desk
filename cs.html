@@ -599,7 +599,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxLbgbwpMhBBSUMye
 
 var DEMO_MODE = false;
 
-var BUILD_ID = 'd45a3f785e32', NEW_VER = false;
+var BUILD_ID = 'a6a5791c3001', NEW_VER = false;
 function verBusy_() {
   if (typeof LT !== 'undefined' && LT.devs && ltRunning()) return true;
   return [].some.call(document.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=number]'), function (x) { return !x.readOnly && x.value; });
@@ -6136,8 +6136,11 @@ ACT.ltAdd = function () {
   }).catch(function (e) { toast('연결 실패: ' + e.message, true); });
 };
 ACT.ltAll = function () {
-  var go = LT.devs.filter(function (D) { return D.state !== 'run' && D.state !== 'check' && D.state !== 'arm' && !D.lost; });
-  if (!go.length) return toast('시작할 장비가 없어요.', true);
+  var unsaved = function (D) { return D.state === 'done' && D.result && !D.saved && !D.saving; };
+  var go = LT.devs.filter(function (D) { return D.state !== 'run' && D.state !== 'check' && D.state !== 'arm' && !D.lost && !unsaved(D); });
+  var kept = LT.devs.filter(unsaved).map(function (D) { return D.no; });
+  if (kept.length) toast('저장 안 된 결과가 있는 ' + kept.join('·') + '번 칸은 건너뛰었어요 — 저장하거나 칸의 ▶ 시작을 눌러 주세요.', true);
+  if (!go.length) return kept.length ? undefined : toast('시작할 장비가 없어요.', true);
   var noSn = go.filter(function (D) { return !D.sn; }).length;
   if (noSn) toast('S/N이 없는 칸 ' + noSn + '개 — 시험 중에 넣어도 돼요 (넣어야 저장돼요).', true);
   go.forEach(function (D) { ltStart(D); });
